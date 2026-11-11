@@ -168,7 +168,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             letterSpace = num("letterspace"),
             spacing = spacing,
         )
-        val body = indentText(text, num("indent"))
+        var body = indentText(text, num("indent"))
+        // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.
+        if (e.attrs["keepWord"] == "true") body = body.replace("/", "/\u2060")
         val engine = TextEngine(body, paint, width, size.height, opt)
         val used = engine.fit()
         engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
