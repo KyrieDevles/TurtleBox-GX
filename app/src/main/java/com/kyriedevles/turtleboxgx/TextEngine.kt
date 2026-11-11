@@ -46,6 +46,19 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
         return sl.height <= height
     }
 
+    /** Widest line as the drawing code measures it (trailing spaces and newlines trimmed). */
+    private fun widestLine(sl: StaticLayout): Float {
+        var widest = 0f
+        for (i in 0 until sl.lineCount) {
+            val start = sl.getLineStart(i)
+            var end = sl.getLineEnd(i)
+            while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
+            if (end <= start) continue
+            widest = maxOf(widest, paint.measureText(text, start, end))
+        }
+        return widest
+    }
+
     /** Chooses the font size and squeeze, and lays the text out. Returns the laid-out height. */
     fun fit(): Float {
         paint.letterSpacing = opt.letterSpace
@@ -102,6 +115,16 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
         paint.letterSpacing = opt.letterSpace
 
         var sl = build(width)
+        // Safety net: if any line is drawn wider than the box (wrap and draw measuring differently), squeeze until it fits.
+        var guard = 0
+        while (guard++ < 6) {
+            val widest = widestLine(sl)
+            if (widest <= width + 0.5f || widest <= 0f) break
+            val next = (paint.textScaleX * width / widest).coerceAtLeast(0.3f)
+            if (next >= paint.textScaleX) break
+            paint.textScaleX = next
+            sl = build(width)
+        }
         lineWidthLimit = width.toFloat()
         if (opt.justify >= 500f && sl.lineCount >= 2) {
             // Re-wrap at the narrowest width that keeps the same line count, then stretch to the full width.
