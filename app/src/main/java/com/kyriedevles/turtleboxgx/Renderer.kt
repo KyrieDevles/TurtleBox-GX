@@ -154,31 +154,31 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             return
         }
 
-        val align = when (h) {
-            2 -> TextLayout.Alignment.ALIGN_OPPOSITE
-            1 -> TextLayout.Alignment.ALIGN_CENTER
-            else -> TextLayout.Alignment.ALIGN_NORMAL
-        }
+        fun num(key: String): Float = ctx.sub(e.options[key] ?: "").trim().toFloatOrNull() ?: 0f
         val baseSpacing = e.attrs["line-space-scale"]?.toFloatOrNull() ?: 1f
-        val spacing = baseSpacing * (ctx.sub(e.options["linespace"] ?: "").toFloatOrNull()?.takeIf { it > 0f } ?: 1f)
-        var s = fontSize
-        var sl = build(text, paint, width, align, spacing)
-        while (sl.height > size.height && s > fontSize * 0.5f) {
-            s -= 0.25f
-            paint.textSize = s
-            sl = build(text, paint, width, align, spacing)
-        }
-        c.save()
-        c.translate(size.left, size.top + (size.height - sl.height).coerceAtLeast(0f) * v)
-        sl.draw(c)
-        c.restore()
+        val spacing = baseSpacing * (num("linespace").takeIf { it > 0f } ?: 1f)
+        val opt = TextOptions(
+            condense = num("condense"),
+            fitMode = num("fitmode").let { if (it <= 0f) 1 else (it + 0.5f).toInt() },
+            minSizePct = num("minsize"),
+            maxSizePct = num("maxsize"),
+            minLines = num("minline"),
+            justify = num("justify"),
+            letterSpace = num("letterspace"),
+            spacing = spacing,
+        )
+        val body = indentText(text, num("indent"))
+        val engine = TextEngine(body, paint, width, size.height, opt)
+        val used = engine.fit()
+        engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         drawn++
     }
 
-    private fun build(text: String, paint: TextPaint, width: Int, align: TextLayout.Alignment, spacing: Float): StaticLayout =
-        StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
-            .setAlignment(align)
-            .setLineSpacing(0f, spacing)
-            .setIncludePad(true)
-            .build()
+    /** First-line indent: non-breaking spaces at the start of every paragraph, like the old app (1 to 8). */
+    private fun indentText(s: String, amount: Float): String {
+        val n = (amount + 0.5f).toInt().coerceAtMost(8)
+        if (amount <= 0f || n < 1) return s
+        val pad = "\u00a0".repeat(n)
+        return pad + s.replace("\n", "\n" + pad)
+    }
 }
