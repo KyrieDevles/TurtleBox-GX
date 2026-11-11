@@ -202,9 +202,9 @@ class MainActivity : Activity() {
                 setOnClickListener { showTab(i) }
             }
             val ic = HotIcon(this, kind)
-            val tx = label(name, 12f, Hot.inactive)
-            col.addView(ic, LinearLayout.LayoutParams(dp(22), dp(22)))
-            col.addView(tx)
+            val tx = label(name, 12f, Hot.inactive).apply { gravity = Gravity.CENTER; includeFontPadding = false }
+            col.addView(ic, LinearLayout.LayoutParams(dp(22), dp(22)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(2) })
+            col.addView(tx, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             icons.add(ic)
             labels.add(tx)
             bar.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))

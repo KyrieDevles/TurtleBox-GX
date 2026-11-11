@@ -92,7 +92,7 @@ class HotIcon(context: Context, private val kind: String) : View(context) {
     private val shape by lazy { path() }
 
     override fun onDraw(c: Canvas) {
-        val s = minOf(width, height) / 24f
+        val s = minOf(minOf(width, height) / 24f, resources.displayMetrics.density)
         c.save()
         c.translate((width - 24f * s) / 2f, (height - 24f * s) / 2f)
         c.scale(s, s)
