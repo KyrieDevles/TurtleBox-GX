@@ -14,6 +14,9 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.SeekBar
+import android.content.Context
+import android.view.View
 import android.widget.ScrollView
 import android.widget.TextView
 import java.io.ByteArrayOutputStream
@@ -114,6 +117,41 @@ class Editor(
                     b.setOnClickListener { commitAll(commits); pickImage(f.name) }
                     box.addView(b, row())
                 }
+                f.items.isNotEmpty() && f.items.size <= 8 && f.items.all { it.first.length <= 34 } -> {
+                    var chosen = current
+                    val flow = FlowLayout(activity, dp(6))
+                    val chips = ArrayList<Pair<TextView, String>>()
+                    fun paint() {
+                        for ((tv, v) in chips) {
+                            val on = v == chosen
+                            tv.setTextColor(if (on) pink else Color.parseColor("#e7c3d6"))
+                            tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                            tv.background = GradientDrawable().apply {
+                                setColor(Color.BLACK)
+                                setStroke(dp(2), if (on) hot else Color.parseColor("#3a1a2c"))
+                                cornerRadius = dp(18).toFloat()
+                            }
+                        }
+                    }
+                    for ((name, v) in f.items) {
+                        val tv = TextView(activity).apply {
+                            text = name
+                            gravity = android.view.Gravity.CENTER
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                            setPadding(dp(14), 0, dp(14), 0)
+                            minimumHeight = dp(36)
+                            setOnClickListener {
+                                chosen = v
+                                paint()
+                            }
+                        }
+                        chips.add(tv to v)
+                        flow.addView(tv)
+                    }
+                    paint()
+                    commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
+                    box.addView(flow, row())
+                }
                 f.items.isNotEmpty() -> {
                     var chosen = current
                     val b = hotButton(f.items.firstOrNull { it.second == chosen }?.first ?: chosen.ifEmpty { "(none)" })
@@ -131,6 +169,37 @@ class Editor(
                     }
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
                     box.addView(b, row())
+                }
+                sliderRange(f.name) != null -> {
+                    val (lo, hi) = sliderRange(f.name)!!
+                    val start = (current.toFloatOrNull() ?: lo.toFloat()).toInt().coerceIn(lo, hi)
+                    var value = start
+                    val readout = TextView(activity).apply {
+                        text = "$start%"
+                        setTextColor(pink)
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                        gravity = android.view.Gravity.END
+                    }
+                    box.addView(readout, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = -dp(22) })
+                    val bar = SeekBar(activity).apply {
+                        max = hi - lo
+                        progress = start - lo
+                        progressTintList = android.content.res.ColorStateList.valueOf(pink)
+                        thumbTintList = android.content.res.ColorStateList.valueOf(pink)
+                        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                                value = lo + p
+                                readout.text = "$value%"
+                            }
+
+                            override fun onStartTrackingTouch(sb: SeekBar?) {}
+
+                            override fun onStopTrackingTouch(sb: SeekBar?) {}
+                        })
+                    }
+                    commits.add { if (value.toString() != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = value.toString() }
+                    box.addView(bar, row())
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
@@ -180,6 +249,17 @@ class Editor(
         style(dlg)
     }
 
+    /** Options that read better as a slider: Condense and the font size limits (percent). */
+    private fun sliderRange(name: String): Pair<Int, Int>? {
+        val n = name.lowercase()
+        return when {
+            n == "condense" -> 30 to 100
+            n.startsWith("maxsize") -> 50 to 120
+            n.startsWith("minsize") -> 0 to 100
+            else -> null
+        }
+    }
+
     private fun commitAll(commits: List<() -> Unit>) {
         commits.forEach { it() }
     }
@@ -226,5 +306,46 @@ class Editor(
         dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
         dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
         dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(Color.parseColor("#e7c3d6"))
+    }
+}
+
+
+/** Lays its children out left to right and wraps to the next line, for rows of option chips. */
+class FlowLayout(context: Context, private val gap: Int) : ViewGroup(context) {
+    override fun onMeasure(wSpec: Int, hSpec: Int) {
+        val maxW = MeasureSpec.getSize(wSpec)
+        var x = 0
+        var y = 0
+        var rowH = 0
+        for (i in 0 until childCount) {
+            val c = getChildAt(i)
+            c.measure(MeasureSpec.makeMeasureSpec(maxW, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            if (x > 0 && x + c.measuredWidth > maxW) {
+                x = 0
+                y += rowH + gap
+                rowH = 0
+            }
+            x += c.measuredWidth + gap
+            rowH = maxOf(rowH, c.measuredHeight)
+        }
+        setMeasuredDimension(maxW, y + rowH)
+    }
+
+    override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+        val maxW = r - l
+        var x = 0
+        var y = 0
+        var rowH = 0
+        for (i in 0 until childCount) {
+            val c = getChildAt(i)
+            if (x > 0 && x + c.measuredWidth > maxW) {
+                x = 0
+                y += rowH + gap
+                rowH = 0
+            }
+            c.layout(x, y, x + c.measuredWidth, y + c.measuredHeight)
+            x += c.measuredWidth + gap
+            rowH = maxOf(rowH, c.measuredHeight)
+        }
     }
 }
