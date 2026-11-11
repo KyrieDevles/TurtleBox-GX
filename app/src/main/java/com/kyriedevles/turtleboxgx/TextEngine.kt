@@ -46,6 +46,33 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
         return sl.height <= height
     }
 
+    var debug: String = ""
+        private set
+
+    /** One-line report: box width, size, squeeze, and for the widest line its measured width versus its ink bounds. */
+    private fun describe(sl: StaticLayout): String {
+        var wi = -1
+        var wm = 0f
+        for (i in 0 until sl.lineCount) {
+            var end = sl.getLineEnd(i)
+            val start = sl.getLineStart(i)
+            while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
+            if (end <= start) continue
+            val m = paint.measureText(text, start, end)
+            if (m > wm) { wm = m; wi = i }
+        }
+        if (wi < 0) return "text: empty"
+        var end = sl.getLineEnd(wi)
+        val start = sl.getLineStart(wi)
+        while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
+        val r = android.graphics.Rect()
+        paint.getTextBounds(text, start, end, r)
+        val adv = FloatArray(end - start)
+        val full = paint.getTextRunAdvances(text.toCharArray(), start, end - start, 0, text.length, false, adv, 0)
+        return "text: box=%.1f size=%.2f scaleX=%.3f ls=%.3f lines=%d widestMeasure=%.1f inkRight=%.1f runAdv=%.1f layoutLineW=%.1f".format(
+            width.toFloat(), paint.textSize, paint.textScaleX, paint.letterSpacing, sl.lineCount, wm, r.right.toFloat(), full, sl.getLineWidth(wi))
+    }
+
     /** Widest line as the drawing code measures it (trailing spaces and newlines trimmed). */
     private fun widestLine(sl: StaticLayout): Float {
         var widest = 0f
@@ -145,6 +172,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             if (best != null) sl = best
         }
         layout = sl
+        debug = describe(sl)
         return sl.height.toFloat()
     }
 
