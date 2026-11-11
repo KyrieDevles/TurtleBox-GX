@@ -7,7 +7,10 @@ import java.io.StringReader
 class Rect4(val left: Float, val top: Float, val width: Float, val height: Float)
 class FontSpec(val name: String, val style: String, val size: Float)
 class Cond<T>(val whenExpr: String?, val value: T)
-class DataDef(val name: String, val default: String?, val type: String?)
+class DataDef(val name: String, val default: String?, val type: String?, val desc: String?) {
+    /** Dropdown choices as (label, value). */
+    val items = ArrayList<Pair<String, String>>()
+}
 
 /** One `<image>` or `<text>` element of the layout. Children with a `when` attribute are tried in order. */
 class Element(val kind: String, val attrs: Map<String, String>, val order: Int) {
@@ -28,6 +31,7 @@ class Layout(
     val datas: Map<String, DataDef>,
     val bools: Map<String, String>,
     val elements: List<Element>,
+    val styleInfo: Map<String, String>,
 )
 
 object LayoutParser {
@@ -41,6 +45,9 @@ object LayoutParser {
         val datas = LinkedHashMap<String, DataDef>()
         val bools = LinkedHashMap<String, String>()
         val elements = ArrayList<Element>()
+        val styleInfo = LinkedHashMap<String, String>()
+        var curData: DataDef? = null
+        var inStyleInfo = false
         var inLayout = false
         var cur: Element? = null
         var curDepth = 0
@@ -57,11 +64,24 @@ object LayoutParser {
                             width = p.getAttributeValue(null, "width")?.toFloatOrNull() ?: width
                             height = p.getAttributeValue(null, "height")?.toFloatOrNull() ?: height
                         }
+                        n == "styleinfo" -> inStyleInfo = true
+                        inStyleInfo -> styleInfo[n] = p.nextText().trim()
                         n == "data" && !inLayout -> {
                             val name = p.getAttributeValue(null, "name")
                             if (name != null) {
-                                datas[name] = DataDef(name, p.getAttributeValue(null, "default"), p.getAttributeValue(null, "type"))
+                                val d = DataDef(
+                                    name,
+                                    p.getAttributeValue(null, "default"),
+                                    p.getAttributeValue(null, "type"),
+                                    p.getAttributeValue(null, "desc"),
+                                )
+                                datas[name] = d
+                                curData = if (p.isEmptyElementTag) null else d
                             }
+                        }
+                        n == "item" && curData != null -> {
+                            val label = p.getAttributeValue(null, "name") ?: ""
+                            curData?.items?.add(Pair(label, p.getAttributeValue(null, "value") ?: label))
                         }
                         n == "bool" && !inLayout -> {
                             val name = p.getAttributeValue(null, "name")
@@ -81,6 +101,10 @@ object LayoutParser {
                         cur = null
                     } else if (c == null && p.name == "layout") {
                         inLayout = false
+                    } else if (c == null && p.name == "data") {
+                        curData = null
+                    } else if (c == null && p.name == "styleinfo") {
+                        inStyleInfo = false
                     }
                 }
                 event = p.next()
@@ -88,7 +112,7 @@ object LayoutParser {
         } catch (e: org.xmlpull.v1.XmlPullParserException) {
             throw ParseError(e.message ?: "XML error", p.lineNumber, p.columnNumber)
         }
-        return Layout(width, height, datas, bools, elements)
+        return Layout(width, height, datas, bools, elements, styleInfo)
     }
 
     private fun attrsOf(p: XmlPullParser): Map<String, String> {

@@ -3,6 +3,7 @@ package com.kyriedevles.turtleboxgx
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -10,6 +11,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
@@ -32,8 +34,12 @@ class MainActivity : Activity() {
     private lateinit var setButton: Button
     private val prefs by lazy { getSharedPreferences("gx", MODE_PRIVATE) }
 
+    private lateinit var saveButton: Button
     private var layout: Layout? = null
     private var zipFile: File? = null
+    private var state: CardState? = null
+    private var hits: List<Hit> = emptyList()
+    private var pendingImageKey: String? = null
 
     private val pink = Color.parseColor("#ff4da6")
     private val pinkSoft = Color.parseColor("#ffc9e3")
@@ -94,6 +100,8 @@ class MainActivity : Activity() {
         addButton(root, drawButton)
         setButton = hotButton("Open card set (.msoe-set)", false) { pickSet() }.apply { isEnabled = false }
         addButton(root, setButton)
+        saveButton = hotButton("Save card set", false) { saveSet() }.apply { isEnabled = false }
+        addButton(root, saveButton)
 
         status = TextView(this).apply {
             text = "No folder chosen yet.\n\nPick the folder that holds yugioh-9-en.xml and yugioh-9-en.zip."
@@ -105,7 +113,13 @@ class MainActivity : Activity() {
         }
         root.addView(status)
 
-        preview = ImageView(this).apply { adjustViewBounds = true }
+        preview = ImageView(this).apply {
+            adjustViewBounds = true
+            setOnTouchListener { v, ev ->
+                if (ev.action == MotionEvent.ACTION_UP && v.width > 0) onTap(ev.x / v.width, ev.y / v.height)
+                true
+            }
+        }
         root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         setContentView(ScrollView(this).apply {
@@ -136,6 +150,47 @@ class MainActivity : Activity() {
         startActivityForResult(intent, REQ_TREE)
     }
 
+    private fun saveSet() {
+        val st = state ?: return
+        val name = (st.values["cardname"] ?: "card").replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifEmpty { "card" }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "$name.msoe-set")
+        startActivityForResult(intent, REQ_SAVE)
+    }
+
+    /** A tap on the card preview, as fractions of its width and height: open the topmost tappable element. */
+    private fun onTap(fx: Float, fy: Float) {
+        val l = layout ?: return
+        val st = state ?: return
+        val x = fx * l.width
+        val y = fy * l.height
+        val hit = hits.lastOrNull { it.rect.contains(x, y) } ?: return
+        Editor(
+            this, l, st,
+            onChanged = { renderState(st) },
+            pickImage = { key ->
+                pendingImageKey = key
+                startActivityForResult(
+                    Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),
+                    REQ_IMAGE,
+                )
+            },
+        ).open(hit.click)
+    }
+
+    /** Artwork can be huge; keep it at most 2000 px on its long side and store it as PNG. */
+    private fun shrinkToPng(bytes: ByteArray): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 2000) sample *= 2
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            ?: throw IllegalArgumentException("That file is not an image.")
+        val out = java.io.ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        return out.toByteArray()
+    }
+
     private fun pickSet() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
         startActivityForResult(intent, REQ_SET)
@@ -155,6 +210,33 @@ class MainActivity : Activity() {
                 }
                 prefs.edit().putString("tree", uri.toString()).apply()
                 scan(uri)
+            }
+            REQ_IMAGE -> {
+                val key = pendingImageKey ?: return
+                val l = layout ?: return
+                val st = state ?: return
+                try {
+                    val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                    val png = shrinkToPng(bytes)
+                    val def = l.datas[key]?.default ?: ""
+                    var fileName = Ctx(l, st.values).sub(def).ifBlank { "$key.png" }
+                    if (!fileName.contains('.')) fileName += ".png"
+                    st.files[fileName] = png
+                    st.values[key] = fileName
+                    renderState(st)
+                } catch (e: Exception) {
+                    status.text = "Could not use that image:\n${e.javaClass.simpleName}: ${e.message}"
+                }
+            }
+            REQ_SAVE -> {
+                val l = layout ?: return
+                val st = state ?: return
+                try {
+                    contentResolver.openOutputStream(uri)!!.use { it.write(SetWriter.build(l, st)) }
+                    status.text = "Saved ${st.values["cardname"] ?: "card"}."
+                } catch (e: Exception) {
+                    status.text = "Could not save:\n${e.javaClass.simpleName}: ${e.message}"
+                }
             }
             REQ_SET -> {
                 status.text = "Reading card set…"
@@ -228,8 +310,15 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Draws a card (a saved set, or null for the layout's defaults) on a background thread and shows it. */
+    /** Starts editing a card (a saved set, or null for the layout's defaults) and draws it. */
     private fun renderCard(set: CardSet?) {
+        val st = CardState.from(set)
+        state = st
+        renderState(st)
+    }
+
+    /** Draws the card being edited on a background thread and shows it. */
+    private fun renderState(st: CardState) {
         val l = layout ?: return
         val z = zipFile
         runOnUiThread { status.text = "Drawing…" }
@@ -238,14 +327,16 @@ class MainActivity : Activity() {
             var bmp: Bitmap? = null
             val msg = StringBuilder()
             var assets: Assets? = null
+            var newHits: List<Hit> = emptyList()
             try {
-                val ctx = Ctx(l, set?.values ?: emptyMap())
-                assets = Assets(z, set?.files ?: emptyMap(), cacheDir)
+                val ctx = Ctx(l, st.values)
+                assets = Assets(z, st.files, cacheDir)
                 val r = Renderer(l, ctx, assets)
                 bmp = r.render(2f)
                 val ms = SystemClock.elapsedRealtime() - t0
                 msg.append("Drew ${r.drawn} elements in $ms ms.\n")
-                if (set != null) msg.append("Card: ${set.values["cardname"] ?: "?"}\n")
+                msg.append("Card: ${st.values["cardname"] ?: "(default)"} · tap the card to edit\n")
+                newHits = r.hits
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
                 val real = assets.missing.filter { !isBlankOnPurpose(it) }
                 if (blank.isNotEmpty()) msg.append("Blank on purpose (none/off images): ${blank.size}\n")
@@ -261,7 +352,11 @@ class MainActivity : Activity() {
             }
             runOnUiThread {
                 status.text = msg.toString()
-                if (bmp != null) preview.setImageBitmap(bmp)
+                if (bmp != null) {
+                    preview.setImageBitmap(bmp)
+                    hits = newHits
+                    saveButton.isEnabled = true
+                }
             }
         }
     }
@@ -276,5 +371,7 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_TREE = 1001
         private const val REQ_SET = 1002
+        private const val REQ_IMAGE = 1003
+        private const val REQ_SAVE = 1004
     }
 }

@@ -13,9 +13,14 @@ import android.text.TextPaint
  * Phase 1b renderer: draws every visible element of the layout in z-order.
  * Text uses plain wrapping with a simple shrink-to-fit. The real text engine (condense, justify, kerning) is phase 3.
  */
+class Hit(val click: String, val rect: RectF)
+
 class Renderer(private val layout: Layout, private val ctx: Ctx, private val assets: Assets) {
     var drawn = 0
         private set
+
+    /** Areas that react to a tap, in drawing order (the last one is on top). */
+    val hits = ArrayList<Hit>()
 
     fun render(scale: Float): Bitmap {
         val bmp = Bitmap.createBitmap(
@@ -50,6 +55,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     private fun drawImage(c: Canvas, e: Element) {
         val size = pick(e.sizes) ?: return
         val rect = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
+        val click = e.attrs["click"]
         e.attrs["background"]?.let { bg ->
             try {
                 val p = Paint().apply { color = Color.parseColor(bg) }
@@ -57,8 +63,16 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             } catch (ex: IllegalArgumentException) {
             }
         }
-        val src = pick(e.srcs) ?: return
-        val bmp = assets.bitmap(ctx.sub(src)) ?: return
+        val src = pick(e.srcs)
+        if (src == null) {
+            click?.let { hits.add(Hit(it, rect)) }
+            return
+        }
+        val bmp = assets.bitmap(ctx.sub(src))
+        if (bmp == null) {
+            click?.let { hits.add(Hit(it, rect)) }
+            return
+        }
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         var dest = rect
         if (e.attrs["scaleType"].equals("FIT_CENTER", ignoreCase = true) && bmp.width > 0 && bmp.height > 0) {
@@ -68,11 +82,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             dest = RectF(rect.centerX() - w / 2f, rect.centerY() - h / 2f, rect.centerX() + w / 2f, rect.centerY() + h / 2f)
         }
         c.drawBitmap(bmp, null, dest, paint)
+        click?.let { hits.add(Hit(it, dest)) }
         drawn++
     }
 
     private fun drawText(c: Canvas, e: Element) {
         val size = pick(e.sizes) ?: return
+        e.attrs["click"]?.let { hits.add(Hit(it, RectF(size.left, size.top, size.left + size.width, size.top + size.height))) }
         val text = ctx.sub(e.text)
         if (text.isBlank()) return
         val font = pick(e.fonts)
