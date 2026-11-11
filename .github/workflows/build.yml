@@ -1,0 +1,45 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build debug APK
+        run: gradle assembleDebug --stacktrace
+
+      - name: Keep a copy as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurtleBox-GX-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Publishes the APK on the repo's Releases page, which is the easiest place to download it on a phone.
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk TurtleBox-GX.apk
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest TurtleBox-GX.apk \
+            --title "Latest build" \
+            --notes "Built from commit ${GITHUB_SHA::7}. Download TurtleBox-GX.apk and install it." \
+            --prerelease
