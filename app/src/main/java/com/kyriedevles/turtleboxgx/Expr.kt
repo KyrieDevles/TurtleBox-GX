@@ -8,7 +8,15 @@ class Ctx(private val layout: Layout, private val values: Map<String, String>) {
     private val cache = HashMap<String, String>()
     private var depth = 0
 
-    fun value(name: String): String {
+    // Layouts mix upper and lower case in names ({{ATK}} for the data called "atk"), so names match ignoring case.
+    private val keys = HashMap<String, String>().also { m ->
+        layout.datas.keys.forEach { m[it.lowercase()] = it }
+        layout.bools.keys.forEach { m[it.lowercase()] = it }
+        values.keys.forEach { m.putIfAbsent(it.lowercase(), it) }
+    }
+
+    fun value(rawName: String): String {
+        val name = keys[rawName.lowercase()] ?: rawName
         cache[name]?.let { return it }
         if (depth > 12) return ""
         depth++
@@ -154,11 +162,11 @@ object Expr {
             val left = operand()
             if (isOp("==")) {
                 p++
-                return left == operand()
+                return left.equals(operand(), ignoreCase = true)
             }
             if (isOp("!=")) {
                 p++
-                return left != operand()
+                return !left.equals(operand(), ignoreCase = true)
             }
             return left.equals("true", ignoreCase = true)
         }

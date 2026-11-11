@@ -60,7 +60,14 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val src = pick(e.srcs) ?: return
         val bmp = assets.bitmap(ctx.sub(src)) ?: return
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-        c.drawBitmap(bmp, null, rect, paint)
+        var dest = rect
+        if (e.attrs["scaleType"].equals("FIT_CENTER", ignoreCase = true) && bmp.width > 0 && bmp.height > 0) {
+            val k = minOf(rect.width() / bmp.width, rect.height() / bmp.height)
+            val w = bmp.width * k
+            val h = bmp.height * k
+            dest = RectF(rect.centerX() - w / 2f, rect.centerY() - h / 2f, rect.centerX() + w / 2f, rect.centerY() + h / 2f)
+        }
+        c.drawBitmap(bmp, null, dest, paint)
         drawn++
     }
 
@@ -86,9 +93,12 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             "center" in flags || "hcenter" in flags -> 1
             else -> 0
         }
+        val singleLine = e.attrs["singleline"] == "true"
         var v = when {
             "vcenter" in flags || "center" in flags -> 0.5f
             "bottom" in flags -> 1f
+            "top" in flags -> 0f
+            singleLine -> 0.5f
             else -> 0f
         }
         e.options["valign"]?.let { raw ->
@@ -103,7 +113,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         }
 
         val width = size.width.toInt().coerceAtLeast(1)
-        if (e.attrs["singleline"] == "true") {
+        if (singleLine) {
             val measured = paint.measureText(text)
             if (measured > size.width && measured > 0f) paint.textScaleX = (size.width / measured).coerceAtLeast(0.5f)
             val drawW = paint.measureText(text)

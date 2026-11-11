@@ -246,10 +246,13 @@ class MainActivity : Activity() {
                 val ms = SystemClock.elapsedRealtime() - t0
                 msg.append("Drew ${r.drawn} elements in $ms ms.\n")
                 if (set != null) msg.append("Card: ${set.values["cardname"] ?: "?"}\n")
-                if (assets.missing.isNotEmpty()) {
-                    msg.append("\nNot found / failed (${assets.missing.size}):\n")
-                    assets.missing.take(25).forEach { msg.append("  • $it\n") }
-                    if (assets.missing.size > 25) msg.append("  … and ${assets.missing.size - 25} more\n")
+                val blank = assets.missing.filter { isBlankOnPurpose(it) }
+                val real = assets.missing.filter { !isBlankOnPurpose(it) }
+                if (blank.isNotEmpty()) msg.append("Blank on purpose (none/off images): ${blank.size}\n")
+                if (real.isNotEmpty()) {
+                    msg.append("\nNot found / failed (${real.size}):\n")
+                    real.take(25).forEach { msg.append("  • $it\n") }
+                    if (real.size > 25) msg.append("  … and ${real.size - 25} more\n")
                 }
             } catch (e: Throwable) {
                 msg.append("Drawing failed: ${e.javaClass.simpleName}: ${e.message}")
@@ -261,6 +264,13 @@ class MainActivity : Activity() {
                 if (bmp != null) preview.setImageBitmap(bmp)
             }
         }
+    }
+
+    /** Layouts ask for names like none.png, off.png or ".png" when an option is switched off; the old app skips them quietly. */
+    private fun isBlankOnPurpose(name: String): Boolean {
+        if (name.equals("none", ignoreCase = true)) return true
+        val base = name.substringAfterLast('/').removeSuffix(".png").lowercase()
+        return base in setOf("", "none", "off", "dd_none")
     }
 
     companion object {
