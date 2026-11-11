@@ -234,8 +234,8 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     x += paint.measureText(" ") + spread
                     from = to + 1
                 }
+                maxRight = maxOf(maxRight, x - left)
             }
-            if (justified) maxRight = maxOf(maxRight, x - left)
             paint.letterSpacing = baseSpacing
         }
         debug += " | drawnRight=%.1f justifiedLines=%d".format(maxRight, justifiedLines)
