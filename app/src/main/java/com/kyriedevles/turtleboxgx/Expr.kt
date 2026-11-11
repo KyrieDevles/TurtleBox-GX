@@ -8,15 +8,13 @@ class Ctx(private val layout: Layout, private val values: Map<String, String>) {
     private val cache = HashMap<String, String>()
     private var depth = 0
 
-    // Layouts mix upper and lower case in names ({{ATK}} for the data called "atk"), so names match ignoring case.
-    private val keys = HashMap<String, String>().also { m ->
-        layout.datas.keys.forEach { m[it.lowercase()] = it }
-        layout.bools.keys.forEach { m[it.lowercase()] = it }
-        values.keys.forEach { m.putIfAbsent(it.lowercase(), it) }
-    }
+    // Like the old app, names match exactly (case-sensitive). A placeholder with no match stays as literal text
+    // ({{DEF}}), and a comparison against such a placeholder counts as true, which is how the old layouts behave.
+    private fun known(n: String) = layout.datas.containsKey(n) || layout.bools.containsKey(n) || values.containsKey(n)
 
     fun value(rawName: String): String {
-        val name = keys[rawName.lowercase()] ?: rawName
+        val name = rawName
+        if (!known(name)) return "{{$name}}"
         cache[name]?.let { return it }
         if (depth > 12) return ""
         depth++
@@ -162,14 +160,18 @@ object Expr {
             val left = operand()
             if (isOp("==")) {
                 p++
-                return left.equals(operand(), ignoreCase = true)
+                val r = operand()
+                return unresolved(left) || unresolved(r) || left.equals(r, ignoreCase = true)
             }
             if (isOp("!=")) {
                 p++
-                return !left.equals(operand(), ignoreCase = true)
+                val r = operand()
+                return unresolved(left) || unresolved(r) || !left.equals(r, ignoreCase = true)
             }
             return left.equals("true", ignoreCase = true)
         }
+
+        private fun unresolved(x: String) = x.startsWith("{{") && x.endsWith("}}")
 
         private fun operand(): String {
             if (p >= t.size || t[p].isOp) return ""
