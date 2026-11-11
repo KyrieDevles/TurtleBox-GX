@@ -174,7 +174,6 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val engine = TextEngine(body, paint, width, size.height, opt)
         val used = engine.fit()
         engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
-        notes.add(engine.debug)
         drawn++
     }
 

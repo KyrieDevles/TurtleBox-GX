@@ -50,33 +50,6 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
         return sl.height <= height
     }
 
-    var debug: String = ""
-        private set
-
-    /** One-line report: box width, size, squeeze, and for the widest line its measured width versus its ink bounds. */
-    private fun describe(sl: StaticLayout): String {
-        var wi = -1
-        var wm = 0f
-        for (i in 0 until sl.lineCount) {
-            var end = sl.getLineEnd(i)
-            val start = sl.getLineStart(i)
-            while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
-            if (end <= start) continue
-            val m = exactWidth(paint, text.substring(start, end))
-            if (m > wm) { wm = m; wi = i }
-        }
-        if (wi < 0) return "text: empty"
-        var end = sl.getLineEnd(wi)
-        val start = sl.getLineStart(wi)
-        while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
-        val r = android.graphics.Rect()
-        paint.getTextBounds(text, start, end, r)
-        val adv = FloatArray(end - start)
-        val full = paint.getTextRunAdvances(text.toCharArray(), start, end - start, 0, text.length, false, adv, 0)
-        return "text: box=%.1f size=%.2f scaleX=%.3f ls=%.3f lines=%d widestMeasure=%.1f inkRight=%.1f runAdv=%.1f layoutLineW=%.1f".format(
-            width.toFloat(), paint.textSize, paint.textScaleX, paint.letterSpacing, sl.lineCount, wm, r.right.toFloat(), full, sl.getLineWidth(wi))
-    }
-
     /** Widest line as the drawing code measures it (trailing spaces and newlines trimmed). */
     private fun widestLine(sl: StaticLayout): Float {
         var widest = 0f
@@ -176,7 +149,6 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             if (best != null) sl = best
         }
         layout = sl
-        debug = describe(sl)
         return sl.height.toFloat()
     }
 
@@ -186,8 +158,6 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
         val w = width.toFloat()
         val spaceW = exactWidth(paint, " ")
         val baseSpacing = paint.letterSpacing
-        var maxRight = 0f
-        var justifiedLines = 0
         for (i in 0 until sl.lineCount) {
             val start = sl.getLineStart(i)
             var end = sl.getLineEnd(i)
@@ -221,9 +191,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     else -> 0f
                 }
                 c.drawText(seg, x, baseline, paint)
-                maxRight = maxOf(maxRight, x - left + lw)
             } else {
-                justifiedLines++
                 // Place each word from the width of the whole line up to it, so the metrics match the wrapping.
                 var gap = 0
                 var from = 0
@@ -233,7 +201,6 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     if (to > from) {
                         val px = paint.measureText(seg, 0, from)
                         c.drawText(seg, from, to, left + px + spread * gap, baseline, paint)
-                        maxRight = maxOf(maxRight, paint.measureText(seg, 0, to) + spread * gap)
                     }
                     if (to >= seg.length) break
                     gap++
@@ -242,6 +209,5 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             }
             paint.letterSpacing = baseSpacing
         }
-        debug += " | drawnRight=%.1f justifiedLines=%d".format(maxRight, justifiedLines)
     }
 }
