@@ -139,9 +139,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
 
         val width = size.width.toInt().coerceAtLeast(1)
         if (singleLine) {
-            val measured = paint.measureText(text)
+            val measured = exactWidth(paint, text)
             if (measured > size.width && measured > 0f) paint.textScaleX = (size.width / measured).coerceAtLeast(0.5f)
-            val drawW = paint.measureText(text)
+            val drawW = exactWidth(paint, text)
             val fm = paint.fontMetrics
             val lineH = fm.bottom - fm.top
             val x = when (h) {

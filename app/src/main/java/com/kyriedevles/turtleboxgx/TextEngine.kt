@@ -5,6 +5,10 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 
+/** Exact (unrounded) advance width of a string; Paint.measureText rounds up on some devices. */
+fun exactWidth(p: android.graphics.Paint, s: String): Float =
+    if (s.isEmpty()) 0f else p.getRunAdvance(s, 0, s.length, 0, s.length, false, s.length)
+
 /** The text options of one box, already turned into numbers. Zero means "not set". */
 class TextOptions(
     val condense: Float = 0f, // 0.3..1.0 (or a percent such as 85)
@@ -58,7 +62,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             val start = sl.getLineStart(i)
             while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
             if (end <= start) continue
-            val m = paint.measureText(text, start, end)
+            val m = exactWidth(paint, text.substring(start, end))
             if (m > wm) { wm = m; wi = i }
         }
         if (wi < 0) return "text: empty"
@@ -81,7 +85,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             var end = sl.getLineEnd(i)
             while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
             if (end <= start) continue
-            widest = maxOf(widest, paint.measureText(text, start, end))
+            widest = maxOf(widest, exactWidth(paint, text.substring(start, end)))
         }
         return widest
     }
@@ -180,7 +184,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
     fun draw(c: Canvas, left: Float, top: Float, h: Int) {
         val sl = layout ?: return
         val w = width.toFloat()
-        val spaceW = paint.measureText(" ")
+        val spaceW = exactWidth(paint, " ")
         val baseSpacing = paint.letterSpacing
         var maxRight = 0f
         var justifiedLines = 0
@@ -191,7 +195,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             if (end <= start) continue
             val seg = text.substring(start, end)
             val baseline = top + sl.getLineBaseline(i)
-            val lw = paint.measureText(seg)
+            val lw = exactWidth(paint, seg)
             val endsParagraph = i == sl.lineCount - 1 || text[maxOf(sl.getLineEnd(i) - 1, 0)] == '\n'
             val gaps = seg.count { it == ' ' }
             val extra = w - lw
@@ -205,7 +209,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     // Last line: spread a little over the letters first (up to 0.08 em), the rest over the gaps.
                     val perChar = minOf(extra / (seg.length * paint.textSize), 0.08f)
                     paint.letterSpacing = baseSpacing + perChar
-                    val nw = paint.measureText(seg)
+                    val nw = exactWidth(paint, seg)
                     justified = true
                     spread = maxOf(0f, (w - nw) / gaps)
                 }
@@ -228,10 +232,10 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     if (to > from) {
                         val word = seg.substring(from, to)
                         c.drawText(word, x, baseline, paint)
-                        x += paint.measureText(word)
+                        x += exactWidth(paint, word)
                     }
                     if (to >= seg.length) break
-                    x += paint.measureText(" ") + spread
+                    x += exactWidth(paint, " ") + spread
                     from = to + 1
                 }
                 maxRight = maxOf(maxRight, x - left)
