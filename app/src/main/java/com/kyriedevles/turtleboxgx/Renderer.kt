@@ -95,6 +95,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG)
         font?.let { f -> assets.font(f.name)?.let { paint.typeface = it } }
         if (font?.style?.contains("bold", ignoreCase = true) == true) paint.isFakeBoldText = true
+        if (font?.style?.contains("italic", ignoreCase = true) == true) paint.textSkewX = -0.25f
         paint.color = try {
             Color.parseColor(pick(e.colors) ?: "#000000")
         } catch (ex: IllegalArgumentException) {
@@ -103,18 +104,17 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val fontSize = font?.size ?: 12f
         paint.textSize = fontSize
 
-        val flags = (pick(e.aligns) ?: "left").lowercase().split('|')
+        // Same rules as the old app: align tokens become Android gravity flags. Without a vertical token the
+        // text sits at the top (TextView adds TOP), and "top"/"bottom" are not recognised, so they count as top.
+        val flags = (pick(e.aligns) ?: "left").lowercase().split('|').map { it.trim() }
         val h = when {
             "right" in flags -> 2
-            "center" in flags || "hcenter" in flags -> 1
+            "center" in flags || "hcenter" in flags || "center_horizontal" in flags -> 1
             else -> 0
         }
         val singleLine = e.attrs["singleline"] == "true"
         var v = when {
-            "vcenter" in flags || "center" in flags -> 0.5f
-            "bottom" in flags -> 1f
-            "top" in flags -> 0f
-            singleLine -> 0.5f
+            "vcenter" in flags || "center" in flags || "center_vertical" in flags -> 0.5f
             else -> 0f
         }
         e.options["valign"]?.let { raw ->
@@ -134,12 +134,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             if (measured > size.width && measured > 0f) paint.textScaleX = (size.width / measured).coerceAtLeast(0.5f)
             val drawW = paint.measureText(text)
             val fm = paint.fontMetrics
+            val lineH = fm.bottom - fm.top
             val x = when (h) {
                 2 -> size.left + size.width - drawW
                 1 -> size.left + (size.width - drawW) / 2f
                 else -> size.left
             }
-            val y = size.top + (size.height - (fm.descent - fm.ascent)) * v - fm.ascent
+            val y = size.top + (size.height - lineH) * v - fm.top
             c.drawText(text, x, y, paint)
             drawn++
             return
@@ -150,7 +151,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             1 -> TextLayout.Alignment.ALIGN_CENTER
             else -> TextLayout.Alignment.ALIGN_NORMAL
         }
-        val spacing = ctx.sub(e.options["linespace"] ?: "").toFloatOrNull()?.takeIf { it > 0f } ?: 1f
+        val baseSpacing = e.attrs["line-space-scale"]?.toFloatOrNull() ?: 1f
+        val spacing = baseSpacing * (ctx.sub(e.options["linespace"] ?: "").toFloatOrNull()?.takeIf { it > 0f } ?: 1f)
         var s = fontSize
         var sl = build(text, paint, width, align, spacing)
         while (sl.height > size.height && s > fontSize * 0.5f) {
@@ -169,6 +171,6 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
             .setAlignment(align)
             .setLineSpacing(0f, spacing)
-            .setIncludePad(false)
+            .setIncludePad(true)
             .build()
 }
