@@ -95,7 +95,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val text = ctx.sub(e.text)
         if (text.isBlank()) return
         val font = pick(e.fonts)
-        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG)
+        if (android.os.Build.VERSION.SDK_INT >= 33) paint.hinting = Paint.HINTING_OFF
         font?.let { f ->
             val tf = assets.font(f.name)
             if (tf != null) paint.typeface = tf
