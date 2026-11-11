@@ -109,6 +109,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val flags = (pick(e.aligns) ?: "left").lowercase().split('|').map { it.trim() }
         val h = when {
             "right" in flags -> 2
+            "left" in flags -> 0
             "center" in flags || "hcenter" in flags || "center_horizontal" in flags -> 1
             else -> 0
         }
