@@ -224,21 +224,21 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                 maxRight = maxOf(maxRight, x - left + lw)
             } else {
                 justifiedLines++
-                var x = left
+                // Place each word from the width of the whole line up to it, so the metrics match the wrapping.
+                var gap = 0
                 var from = 0
                 while (from <= seg.length) {
                     var to = seg.indexOf(' ', from)
                     if (to < 0) to = seg.length
                     if (to > from) {
-                        val word = seg.substring(from, to)
-                        c.drawText(word, x, baseline, paint)
-                        x += exactWidth(paint, word)
+                        val px = paint.measureText(seg, 0, from)
+                        c.drawText(seg, from, to, left + px + spread * gap, baseline, paint)
+                        maxRight = maxOf(maxRight, paint.measureText(seg, 0, to) + spread * gap)
                     }
                     if (to >= seg.length) break
-                    x += exactWidth(paint, " ") + spread
+                    gap++
                     from = to + 1
                 }
-                maxRight = maxOf(maxRight, x - left)
             }
             paint.letterSpacing = baseSpacing
         }
