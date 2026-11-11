@@ -337,6 +337,7 @@ class MainActivity : Activity() {
                 msg.append("Drew ${r.drawn} elements in $ms ms.\n")
                 msg.append("Card: ${st.values["cardname"] ?: "(default)"} · tap the card to edit\n")
                 newHits = r.hits
+                r.notes.forEach { msg.append(it).append('\n') }
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
                 val real = assets.missing.filter { !isBlankOnPurpose(it) }
                 if (blank.isNotEmpty()) msg.append("Blank on purpose (none/off images): ${blank.size}\n")

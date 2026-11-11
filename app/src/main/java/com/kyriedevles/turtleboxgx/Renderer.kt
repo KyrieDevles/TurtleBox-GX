@@ -22,6 +22,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** Areas that react to a tap, in drawing order (the last one is on top). */
     val hits = ArrayList<Hit>()
 
+    /** Debug notes shown under the card. */
+    val notes = ArrayList<String>()
+
     fun render(scale: Float): Bitmap {
         val bmp = Bitmap.createBitmap(
             (layout.width * scale).toInt(),
@@ -93,11 +96,15 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         if (text.isBlank()) return
         val font = pick(e.fonts)
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG)
-        font?.let { f -> assets.font(f.name)?.let { paint.typeface = it } }
+        font?.let { f ->
+            val tf = assets.font(f.name)
+            if (tf != null) paint.typeface = tf
+            if (f.name.contains("LINK", ignoreCase = true)) notes.add("LINK font ${f.name}: ${if (tf != null) "loaded" else "NOT loaded"}, text \"$text\"")
+        }
         if (font?.style?.contains("bold", ignoreCase = true) == true) paint.isFakeBoldText = true
         if (font?.style?.contains("italic", ignoreCase = true) == true) paint.textSkewX = -0.25f
         paint.color = try {
-            Color.parseColor(pick(e.colors) ?: "#000000")
+            Color.parseColor(ctx.sub(pick(e.colors) ?: "#000000").trim())
         } catch (ex: IllegalArgumentException) {
             Color.BLACK
         }
