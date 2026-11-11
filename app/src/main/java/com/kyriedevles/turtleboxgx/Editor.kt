@@ -249,11 +249,14 @@ class Editor(
         style(dlg)
     }
 
-    /** Options that read better as a slider: Condense and the font size limits (percent). */
+    /**
+     * Options that read better as a slider: Condense and the font size limits (percent).
+     * Matching is by prefix so a box can have its own copy in the layout (condense_pendulum, maxsize_flavor, ...).
+     */
     private fun sliderRange(name: String): Pair<Int, Int>? {
         val n = name.lowercase()
         return when {
-            n == "condense" -> 30 to 100
+            n.startsWith("condense") -> 30 to 100
             n.startsWith("maxsize") -> 50 to 120
             n.startsWith("minsize") -> 0 to 100
             else -> null
