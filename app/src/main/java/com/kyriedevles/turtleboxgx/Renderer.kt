@@ -171,8 +171,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val body = indentText(text, num("indent"))
         val engine = TextEngine(body, paint, width, size.height, opt)
         val used = engine.fit()
-        notes.add(engine.debug)
         engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
+        notes.add(engine.debug)
         drawn++
     }
 

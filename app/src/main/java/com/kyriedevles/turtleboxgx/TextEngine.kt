@@ -182,6 +182,8 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
         val w = width.toFloat()
         val spaceW = paint.measureText(" ")
         val baseSpacing = paint.letterSpacing
+        var maxRight = 0f
+        var justifiedLines = 0
         for (i in 0 until sl.lineCount) {
             val start = sl.getLineStart(i)
             var end = sl.getLineEnd(i)
@@ -215,7 +217,9 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     else -> 0f
                 }
                 c.drawText(seg, x, baseline, paint)
+                maxRight = maxOf(maxRight, x - left + lw)
             } else {
+                justifiedLines++
                 var x = left
                 var from = 0
                 while (from <= seg.length) {
@@ -231,7 +235,9 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     from = to + 1
                 }
             }
+            if (justified) maxRight = maxOf(maxRight, x - left)
             paint.letterSpacing = baseSpacing
         }
+        debug += " | drawnRight=%.1f justifiedLines=%d".format(maxRight, justifiedLines)
     }
 }
