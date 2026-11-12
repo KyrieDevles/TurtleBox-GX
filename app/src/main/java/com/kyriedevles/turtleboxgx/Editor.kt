@@ -370,7 +370,7 @@ class Editor(
                     cornerRadius = dp(10).toFloat()
                 }
                 setPadding(dp(8), dp(4), dp(8), dp(4))
-                selectAllOnFocus = true
+                setSelectAllOnFocus(true)
             }
             head.addView(num, LinearLayout.LayoutParams(dp(90), dp(40)))
             box.addView(head)
