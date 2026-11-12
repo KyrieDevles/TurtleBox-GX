@@ -10,6 +10,9 @@ class Cond<T>(val whenExpr: String?, val value: T)
 class DataDef(val name: String, val default: String?, val type: String?, val desc: String?) {
     /** Dropdown choices as (label, value). */
     val items = ArrayList<Pair<String, String>>()
+
+    /** Name of a multi_select entry opened by a gear button beside this field (its settings panel). */
+    var gear: String? = null
 }
 
 /** One `<image>` or `<text>` element of the layout. Children with a `when` attribute are tried in order. */
@@ -75,6 +78,7 @@ object LayoutParser {
                                     p.getAttributeValue(null, "type"),
                                     p.getAttributeValue(null, "desc"),
                                 )
+                                d.gear = p.getAttributeValue(null, "gear")
                                 datas[name] = d
                                 curData = if (p.isEmptyElementTag) null else d
                             }

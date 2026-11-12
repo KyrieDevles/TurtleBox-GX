@@ -7,7 +7,18 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
+import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
+import android.os.Handler
+import android.os.Looper
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
+import android.view.Gravity
 import android.util.TypedValue
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -107,6 +118,7 @@ class Editor(
             setPadding(dp(20), dp(8), dp(20), dp(8))
         }
         var firstEdit: EditText? = null
+        var dlgRef: AlertDialog? = null
         for (f in fields) {
             if (f.type == "multi_select") continue
             box.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
@@ -229,7 +241,22 @@ class Editor(
                         val v = et.text.toString()
                         if (v != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = v
                     }
-                    box.addView(et, row())
+                    val gearName = f.gear
+                    if (gearName != null && find(gearName) != null) {
+                        val line = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                        line.addView(et, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        val g = gearButton()
+                        g.setOnClickListener {
+                            commitAll(commits)
+                            dlgRef?.dismiss()
+                            onChanged()
+                            openPanel(gearName) { open(click) }
+                        }
+                        line.addView(g, LinearLayout.LayoutParams(dp(48), dp(48)).apply { leftMargin = dp(10) })
+                        box.addView(line, row())
+                    } else {
+                        box.addView(et, row())
+                    }
                 }
             }
         }
@@ -243,10 +270,202 @@ class Editor(
             }
             .setNegativeButton("Cancel", null)
             .create()
+        dlgRef = dlg
         dlg.show()
         dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         style(dlg)
+    }
+
+
+    /** Round gradient hot-pink button with a white gear. */
+    private fun gearButton(): View = View(activity).apply {
+        background = LayerDrawable(
+            arrayOf(
+                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(hot, Color.parseColor("#ff00aa"), pink)).apply { shape = GradientDrawable.OVAL },
+                GearDrawable(),
+            ),
+        )
+        isClickable = true
+        contentDescription = "Settings"
+    }
+
+    private class GearDrawable : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        private val path = Path()
+        override fun onBoundsChange(b: android.graphics.Rect) {
+            path.reset()
+            val cx = b.exactCenterX()
+            val cy = b.exactCenterY()
+            val r = minOf(b.width(), b.height()) * 0.30f
+            val teeth = 8
+            val pts = teeth * 4
+            for (i in 0 until pts) {
+                val a = Math.PI * 2 * i / pts - Math.PI / pts
+                val rr = if ((i % 4) == 1 || (i % 4) == 2) r * 1.32f else r
+                val x = cx + (rr * Math.cos(a)).toFloat()
+                val y = cy + (rr * Math.sin(a)).toFloat()
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+            path.addCircle(cx, cy, r * 0.45f, Path.Direction.CCW)
+            path.fillType = Path.FillType.EVEN_ODD
+        }
+
+        override fun draw(c: Canvas) {
+            c.drawPath(path, paint)
+        }
+
+        override fun setAlpha(a: Int) {}
+        override fun setColorFilter(f: ColorFilter?) {}
+        @Suppress("OVERRIDE_DEPRECATION")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+
+    private fun fmt(v: Float): String {
+        val r = Math.round(v * 100f) / 100f
+        return if (r == Math.round(r).toFloat()) Math.round(r).toString() else r.toString()
+    }
+
+    /**
+     * Settings panel for a group of number options (the gear beside Materials). It docks at the bottom without
+     * dimming the screen, so the card stays visible, and every change is applied to the card right away.
+     * Cancel puts the old values back. [after] runs when the panel closes (the effect menu reopens).
+     */
+    private fun openPanel(groupName: String, after: () -> Unit) {
+        val g = find(groupName) ?: run { after(); return }
+        val fields = g.items.mapNotNull { find(it.second) }.filter { it.type != "multi_select" }
+        val ctx = Ctx(layout, state.values)
+        val before = fields.associate { it.name to (state.values[it.name] ?: ctx.value(it.name)) }
+        val handler = Handler(Looper.getMainLooper())
+        var pending = false
+        fun live() {
+            if (pending) return
+            pending = true
+            handler.postDelayed({ pending = false; onChanged() }, 90)
+        }
+        val box = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(4), dp(18), dp(4))
+        }
+        val resetters = ArrayList<() -> Unit>()
+        for (f in fields) {
+            val (lo, hi) = sliderRange(f.name) ?: (0 to 200)
+            val defText = f.default ?: before[f.name] ?: lo.toString()
+            val startV = (before[f.name]?.toFloatOrNull() ?: defText.toFloatOrNull() ?: lo.toFloat())
+            val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val name = label(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name)
+            head.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val num = EditText(activity).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                setSingleLine(true)
+                setText(fmt(startV))
+                setTextColor(pink)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(Color.BLACK)
+                    setStroke(dp(2), hot)
+                    cornerRadius = dp(10).toFloat()
+                }
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                selectAllOnFocus = true
+            }
+            head.addView(num, LinearLayout.LayoutParams(dp(90), dp(40)))
+            box.addView(head)
+            val bar = SeekBar(activity).apply {
+                max = (hi - lo) * 10
+                progress = Math.round((startV - lo) * 10f).coerceIn(0, max)
+                progressTintList = android.content.res.ColorStateList.valueOf(pink)
+                thumbTintList = android.content.res.ColorStateList.valueOf(pink)
+            }
+            var busy = false
+            fun apply(v: Float) {
+                state.values[f.name] = fmt(v)
+                live()
+            }
+            bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                    if (!fromUser || busy) return
+                    val v = lo + p / 10f
+                    busy = true
+                    num.setText(fmt(v))
+                    busy = false
+                    apply(v)
+                }
+
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+            num.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    if (busy) return
+                    val v = s?.toString()?.toFloatOrNull()?.takeIf { it > 0f } ?: return
+                    busy = true
+                    bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
+                    busy = false
+                    apply(v)
+                }
+            })
+            resetters.add {
+                val d = (f.default?.toFloatOrNull() ?: 100f)
+                num.setText(fmt(d))
+            }
+            box.addView(bar, row())
+        }
+
+        var finished = false
+        val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(g.desc?.takeIf { it.isNotBlank() } ?: g.name)
+            .setView(ScrollView(activity).apply { addView(box) })
+            .setPositiveButton("Done") { _, _ -> finished = true; onChanged() }
+            .setNegativeButton("Cancel") { _, _ ->
+                finished = true
+                for ((k, v) in before) state.values[k] = v
+                onChanged()
+            }
+            .setNeutralButton("Reset", null)
+            .create()
+        dlg.setOnDismissListener {
+            handler.removeCallbacksAndMessages(null)
+            if (!finished) {
+                for ((k, v) in before) state.values[k] = v
+                onChanged()
+            }
+            after()
+        }
+        dlg.show()
+        val w = dlg.window
+        w?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
+        w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+        w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
+        var atTop = false
+        fun place() {
+            w?.setGravity(if (atTop) Gravity.TOP else Gravity.BOTTOM)
+            dlg.getButton(AlertDialog.BUTTON_NEUTRAL)
+        }
+        place()
+        style(dlg)
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.apply {
+            setTextColor(Color.parseColor("#e7c3d6"))
+            setOnClickListener { resetters.forEach { it() } }
+        }
+        // Move: the panel can sit at the bottom or the top, whichever leaves the card visible.
+        val move = Button(activity).apply {
+            text = "Move ↑"
+            setAllCaps(false)
+            setTextColor(Color.parseColor("#e7c3d6"))
+            setBackgroundColor(Color.TRANSPARENT)
+            setOnClickListener {
+                atTop = !atTop
+                text = if (atTop) "Move ↓" else "Move ↑"
+                place()
+            }
+        }
+        box.addView(move, 0, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.END })
     }
 
     /**
