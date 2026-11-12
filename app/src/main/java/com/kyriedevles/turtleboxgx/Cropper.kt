@@ -291,10 +291,10 @@ class CropView(context: Context, base: Bitmap, private val aspect: Float, privat
 }
 
 object Cropper {
-    /** Crops from the ORIGINAL file at its own resolution (up to 8192 px wide); falls back to the preview if that fails. */
-    fun render(p: CropParams, aspect: Float, base: Bitmap, bytes: ByteArray, origW: Int): Bitmap {
+    /** Crops from the ORIGINAL file at its own resolution (up to [maxW] px wide); falls back to the preview if that fails. */
+    fun render(p: CropParams, aspect: Float, base: Bitmap, bytes: ByteArray, origW: Int, maxW: Int): Bitmap {
         val r = origW.toFloat() / base.width
-        val ow = minOf(Math.round(p.fw * r), 8192).coerceAtLeast(1)
+        val ow = minOf(Math.round(p.fw * r), maxW).coerceAtLeast(1)
         val oh = (ow / aspect).toInt().coerceAtLeast(1)
         val k = ow / p.fw
         val pw = base.width.toFloat()
@@ -355,8 +355,8 @@ object Cropper {
         }
     }
 
-    /** Full-screen crop. [onCrop] gets the cropped picture, [onWhole] means "use the whole image as it is". */
-    fun show(activity: Activity, preview: Bitmap, bytes: ByteArray, origW: Int, aspect: Float, onCrop: (Bitmap) -> Unit, onWhole: () -> Unit) {
+    /** Full-screen crop. [onCrop] gets the cropped picture, [onWhole] means "use the whole image" (true = keep the original resolution). */
+    fun show(activity: Activity, preview: Bitmap, bytes: ByteArray, origW: Int, aspect: Float, onCrop: (Bitmap) -> Unit, onWhole: (Boolean) -> Unit) {
         val d = activity.resources.displayMetrics.density
         val pink = Color.parseColor("#ff6ec7")
         val dlg = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
@@ -478,15 +478,24 @@ object Cropper {
             orientation = LinearLayout.HORIZONTAL
             setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (20 * d).toInt())
         }
+        val keep = android.widget.CheckBox(activity).apply {
+            text = "Keep original resolution (off = smaller copy, 2000 px)"
+            isChecked = true
+            setTextColor(Color.parseColor("#e7c3d6"))
+            buttonTintList = android.content.res.ColorStateList.valueOf(pink)
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)
+        }
         val cancel = btn("Cancel", false).apply { setOnClickListener { dlg.dismiss() } }
-        val whole = btn("Whole image", false).apply { setOnClickListener { dlg.dismiss(); onWhole() } }
+        val whole = btn("Whole image", false).apply { setOnClickListener { dlg.dismiss(); onWhole(keep.isChecked) } }
         val ok = btn("Crop", true)
         ok.setOnClickListener {
             val params = cv.snapshot()
+            val keepOriginal = keep.isChecked
             ok.text = "Cropping…"
             for (b in listOf(ok, cancel, whole)) b.isEnabled = false
             Thread {
-                val out = render(params, aspect, preview, bytes, origW)
+                val out = render(params, aspect, preview, bytes, origW, if (keepOriginal) 8192 else 2000)
                 activity.runOnUiThread {
                     dlg.dismiss()
                     onCrop(out)
@@ -498,6 +507,7 @@ object Cropper {
         }
         root.addView(angleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        root.addView(keep, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dlg.setContentView(root)
         dlg.show()

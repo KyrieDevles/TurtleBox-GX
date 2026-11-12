@@ -638,8 +638,8 @@ class MainActivity : Activity() {
                             val out = java.io.ByteArrayOutputStream()
                             cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
                             store(out.toByteArray())
-                        }, onWhole = {
-                            store(fullPng(bytes))
+                        }, onWhole = { original ->
+                            store(if (original) fullPng(bytes) else shrinkToPng(bytes))
                         })
                     }
                 } catch (e: Exception) {
