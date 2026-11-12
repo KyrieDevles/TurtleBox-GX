@@ -193,37 +193,15 @@ class Editor(
                 sliderRange(f.name) != null -> {
                     val (lo, hi) = sliderRange(f.name)!!
                     val start = (current.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
-                    val readout = TextView(activity).apply {
-                        text = if (f.name.startsWith("fontscale") && start == 0f) "Auto" else fmt(start) + "%"
-                        setTextColor(pink)
-                        typeface = Typeface.DEFAULT_BOLD
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                        gravity = android.view.Gravity.END
+                    val shown = if (f.name.startsWith("fontscale") && start == 0f) "Auto" else fmt(start) + "%"
+                    val b = hotButton("$shown   ·   tap to adjust")
+                    b.setOnClickListener {
+                        commitAll(commits)
+                        dlgRef?.dismiss()
+                        onChanged()
+                        openPanelFields(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name, listOf(f)) { open(click) }
                     }
-                    box.addView(readout, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = -dp(22) })
-                    val original = state.values[f.name]
-                    restores.add { if (original == null) state.values.remove(f.name) else state.values[f.name] = original }
-                    val bar = SeekBar(activity).apply {
-                        max = (hi - lo) * 10
-                        progress = Math.round((start - lo) * 10f).coerceIn(0, max)
-                        progressTintList = android.content.res.ColorStateList.valueOf(pink)
-                        thumbTintList = android.content.res.ColorStateList.valueOf(pink)
-                        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                                val v = lo + p / 10f
-                                readout.text = if (f.name.startsWith("fontscale") && v == 0f) "Auto" else fmt(v) + "%"
-                                if (fromUser) {
-                                    state.values[f.name] = fmt(v)
-                                    liveApply()
-                                }
-                            }
-
-                            override fun onStartTrackingTouch(sb: SeekBar?) {}
-
-                            override fun onStopTrackingTouch(sb: SeekBar?) {}
-                        })
-                    }
-                    box.addView(bar, row())
+                    box.addView(b, row())
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
@@ -346,6 +324,12 @@ class Editor(
         override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
+    private fun statusBarPad(): Int {
+        val r = android.graphics.Rect()
+        activity.window.decorView.getWindowVisibleDisplayFrame(r)
+        return r.top
+    }
+
     private fun fmt(v: Float): String {
         val r = Math.round(v * 100f) / 100f
         return if (r == Math.round(r).toFloat()) Math.round(r).toString() else r.toString()
@@ -359,6 +343,10 @@ class Editor(
     private fun openPanel(groupName: String, after: () -> Unit) {
         val g = find(groupName) ?: run { after(); return }
         val fields = g.items.mapNotNull { find(it.second) }.filter { it.type != "multi_select" }
+        openPanelFields(g.desc?.takeIf { it.isNotBlank() } ?: g.name, fields, after)
+    }
+
+    private fun openPanelFields(title: String, fields: List<DataDef>, after: () -> Unit) {
         val ctx = Ctx(layout, state.values)
         val before = fields.associate { it.name to (state.values[it.name] ?: ctx.value(it.name)) }
         val handler = Handler(Looper.getMainLooper())
@@ -443,7 +431,7 @@ class Editor(
 
         var finished = false
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle(g.desc?.takeIf { it.isNotBlank() } ?: g.name)
+            .setTitle(title)
             .setView(ScrollView(activity).apply { addView(box) })
             .setPositiveButton("Done") { _, _ -> finished = true; onChanged() }
             .setNegativeButton("Cancel") { _, _ ->
@@ -466,30 +454,46 @@ class Editor(
         w?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
-        var atTop = false
-        fun place() {
-            w?.setGravity(if (atTop) Gravity.TOP else Gravity.BOTTOM)
-            dlg.getButton(AlertDialog.BUTTON_NEUTRAL)
-        }
-        place()
+        w?.setGravity(Gravity.BOTTOM)
         style(dlg)
         dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.apply {
             setTextColor(Color.parseColor("#e7c3d6"))
             setOnClickListener { resetters.forEach { it() } }
         }
-        // Move: the panel can sit at the bottom or the top, whichever leaves the card visible.
-        val move = Button(activity).apply {
-            text = "Move ↑"
-            setAllCaps(false)
-            setTextColor(Color.parseColor("#e7c3d6"))
-            setBackgroundColor(Color.TRANSPARENT)
-            setOnClickListener {
-                atTop = !atTop
-                text = if (atTop) "Move ↓" else "Move ↑"
-                place()
+        // Drag the grip bar (or the title) to move the panel anywhere, so the card stays in view.
+        var dx = 0f
+        var dy = 0f
+        val drag = View.OnTouchListener { _, ev ->
+            val lp = w?.attributes ?: return@OnTouchListener false
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    val loc = IntArray(2)
+                    w.decorView.getLocationOnScreen(loc)
+                    lp.gravity = Gravity.TOP or Gravity.START
+                    lp.x = loc[0]
+                    lp.y = loc[1] - statusBarPad()
+                    w.attributes = lp
+                    dx = ev.rawX - lp.x
+                    dy = ev.rawY - lp.y
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    lp.x = (ev.rawX - dx).toInt()
+                    lp.y = (ev.rawY - dy).toInt()
+                    w.attributes = lp
+                }
             }
+            true
         }
-        box.addView(move, 0, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.END })
+        val grip = TextView(activity).apply {
+            text = "☰   drag here to move"
+            setTextColor(Color.parseColor("#e7c3d6"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(8), 0, dp(8))
+            setOnTouchListener(drag)
+        }
+        box.addView(grip, 0, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setOnTouchListener(drag)
     }
 
     /**
