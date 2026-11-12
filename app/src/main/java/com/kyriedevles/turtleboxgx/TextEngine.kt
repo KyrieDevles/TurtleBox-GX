@@ -1,13 +1,54 @@
 package com.kyriedevles.turtleboxgx
 
 import android.graphics.Canvas
+import android.graphics.Typeface
 import android.text.Layout
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.StyleSpan
 
 /** Exact (unrounded) advance width of a string; Paint.measureText rounds up on some devices. */
 fun exactWidth(p: android.graphics.Paint, s: String): Float =
     if (s.isEmpty()) 0f else p.getRunAdvance(s, 0, s.length, 0, s.length, false, s.length)
+
+/** Text with its inline tags removed, and the style of every remaining character: 0 plain, 1 bold, 2 italic, 3 both. */
+class StyledText(val text: String, val styles: IntArray) {
+    val hasStyle: Boolean = styles.any { it != 0 }
+}
+
+/**
+ * Reads the inline tags <b>..</b> and <i>..</i> (same tags as ygocarder). A tag that is never closed stays on to the
+ * end of the text, across lines and paragraphs. Anything else that looks like a tag is left as ordinary text.
+ */
+fun parseMarkup(raw: String): StyledText {
+    if (raw.indexOf('<') < 0) return StyledText(raw, IntArray(raw.length))
+    val out = StringBuilder(raw.length)
+    val st = IntArray(raw.length)
+    var n = 0
+    var bold = false
+    var italic = false
+    var i = 0
+    while (i < raw.length) {
+        if (raw[i] == '<') {
+            var tagLen = 0
+            if (raw.startsWith("<b>", i)) { bold = true; tagLen = 3 }
+            else if (raw.startsWith("</b>", i)) { bold = false; tagLen = 4 }
+            else if (raw.startsWith("<i>", i)) { italic = true; tagLen = 3 }
+            else if (raw.startsWith("</i>", i)) { italic = false; tagLen = 4 }
+            if (tagLen > 0) {
+                i += tagLen
+                continue
+            }
+        }
+        out.append(raw[i])
+        st[n] = (if (bold) 1 else 0) or (if (italic) 2 else 0)
+        n++
+        i++
+    }
+    return StyledText(out.toString(), st.copyOf(n))
+}
 
 /** The text options of one box, already turned into numbers. Zero means "not set". */
 class TextOptions(
@@ -29,13 +70,88 @@ class TextOptions(
  * the last line of a paragraph only when its gaps are small enough (the Justify option), and "balanced"
  * first re-wraps the paragraph a little narrower so the lines come out even.
  */
-class TextEngine(private val text: String, private val paint: TextPaint, private val width: Int, private val height: Float, private val opt: TextOptions) {
+class TextEngine(rawText: String, private val paint: TextPaint, private val width: Int, private val height: Float, private val opt: TextOptions) {
+    private val styled = parseMarkup(rawText)
+    private val text: String = styled.text
+    private val styles: IntArray = styled.styles
+    /** What the line breaker measures: the plain string when there is no markup (unchanged behaviour), else a string with style spans. */
+    private val source: CharSequence = if (styled.hasStyle) styledSource() else text
     private val baseSize = paint.textSize
     private var layout: StaticLayout? = null
     private var lineWidthLimit = width.toFloat()
 
+    private fun spanStyle(v: Int): Int = when (v) {
+        1 -> Typeface.BOLD
+        2 -> Typeface.ITALIC
+        else -> Typeface.BOLD_ITALIC
+    }
+
+    private fun styledSource(): CharSequence {
+        val s = SpannableString(text)
+        var a = 0
+        while (a < styles.size) {
+            var b = a + 1
+            while (b < styles.size && styles[b] == styles[a]) b++
+            if (styles[a] != 0) s.setSpan(StyleSpan(spanStyle(styles[a])), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            a = b
+        }
+        return s
+    }
+
+    /** The paint for one style: the box paint (same size, squeeze and spacing) with bold and/or italic applied. */
+    private fun paintFor(style: Int): TextPaint {
+        if (style == 0) return paint
+        val p = TextPaint(paint)
+        StyleSpan(spanStyle(style)).updateDrawState(p)
+        return p
+    }
+
+    /** Calls [fn] for each stretch of equal style inside [from, to). */
+    private inline fun runs(from: Int, to: Int, fn: (Int, Int, Int) -> Unit) {
+        var a = from
+        while (a < to) {
+            val s = if (a < styles.size) styles[a] else 0
+            var b = a + 1
+            while (b < to && b < styles.size && styles[b] == s) b++
+            fn(a, b, s)
+            a = b
+        }
+    }
+
+    /** Exact width of text[from, to) with every stretch measured in its own style. */
+    private fun rangeWidth(from: Int, to: Int): Float {
+        if (to <= from) return 0f
+        if (!styled.hasStyle) return exactWidth(paint, text.substring(from, to))
+        var w = 0f
+        runs(from, to) { a, b, s -> w += exactWidth(paintFor(s), text.substring(a, b)) }
+        return w
+    }
+
+    /** Width used to place a word inside a justified line (measureText, as the wrapping sees it). */
+    private fun prefixWidth(from: Int, to: Int): Float {
+        if (to <= from) return 0f
+        if (!styled.hasStyle) return paint.measureText(text, from, to)
+        var w = 0f
+        runs(from, to) { a, b, s -> w += paintFor(s).measureText(text, a, b) }
+        return w
+    }
+
+    private fun drawRange(c: Canvas, from: Int, to: Int, x: Float, baseline: Float) {
+        if (to <= from) return
+        if (!styled.hasStyle) {
+            c.drawText(text, from, to, x, baseline, paint)
+            return
+        }
+        var cx = x
+        runs(from, to) { a, b, s ->
+            val p = paintFor(s)
+            c.drawText(text, a, b, cx, baseline, p)
+            cx += exactWidth(p, text.substring(a, b))
+        }
+    }
+
     private fun build(w: Int): StaticLayout =
-        StaticLayout.Builder.obtain(text, 0, text.length, paint, w.coerceAtLeast(1))
+        StaticLayout.Builder.obtain(source, 0, source.length, paint, w.coerceAtLeast(1))
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(0f, opt.spacing)
             .setIncludePad(true)
@@ -58,7 +174,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             var end = sl.getLineEnd(i)
             while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
             if (end <= start) continue
-            widest = maxOf(widest, exactWidth(paint, text.substring(start, end)))
+            widest = maxOf(widest, rangeWidth(start, end))
         }
         return widest
     }
@@ -165,7 +281,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
             if (end <= start) continue
             val seg = text.substring(start, end)
             val baseline = top + sl.getLineBaseline(i)
-            val lw = exactWidth(paint, seg)
+            val lw = rangeWidth(start, end)
             val endsParagraph = i == sl.lineCount - 1 || text[maxOf(sl.getLineEnd(i) - 1, 0)] == '\n'
             val gaps = seg.count { it == ' ' }
             val extra = w - lw
@@ -179,7 +295,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     // Last line: spread a little over the letters first (up to 0.08 em), the rest over the gaps.
                     val perChar = minOf(extra / (seg.length * paint.textSize), 0.08f)
                     paint.letterSpacing = baseSpacing + perChar
-                    val nw = exactWidth(paint, seg)
+                    val nw = rangeWidth(start, end)
                     justified = true
                     spread = maxOf(0f, (w - nw) / gaps)
                 }
@@ -190,7 +306,7 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     1 -> (w - lw) / 2f
                     else -> 0f
                 }
-                c.drawText(seg, x, baseline, paint)
+                drawRange(c, start, end, x, baseline)
             } else {
                 // Place each word from the width of the whole line up to it, so the metrics match the wrapping.
                 var gap = 0
@@ -199,8 +315,8 @@ class TextEngine(private val text: String, private val paint: TextPaint, private
                     var to = seg.indexOf(' ', from)
                     if (to < 0) to = seg.length
                     if (to > from) {
-                        val px = paint.measureText(seg, 0, from)
-                        c.drawText(seg, from, to, left + px + spread * gap, baseline, paint)
+                        val px = prefixWidth(start, start + from)
+                        drawRange(c, start + from, start + to, left + px + spread * gap, baseline)
                     }
                     if (to >= seg.length) break
                     gap++
