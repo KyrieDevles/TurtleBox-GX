@@ -131,33 +131,8 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
         }
     }
 
-    /** Called while two fingers twist the picture, with the new angle in degrees (-180..180). */
-    var onAngle: ((Float) -> Unit)? = null
-    private var twist = 0f
-
-    private fun pairAngle(ev: MotionEvent): Float =
-        Math.toDegrees(Math.atan2((ev.getY(1) - ev.getY(0)).toDouble(), (ev.getX(1) - ev.getX(0)).toDouble())).toFloat()
-
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         scaler.onTouchEvent(ev)
-        if (ev.pointerCount == 2) {
-            if (ev.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
-                twist = pairAngle(ev)
-            } else if (ev.actionMasked == MotionEvent.ACTION_MOVE) {
-                val now = pairAngle(ev)
-                var delta = now - twist
-                if (delta > 180f) delta -= 360f
-                if (delta < -180f) delta += 360f
-                twist = now
-                m.postRotate(delta, (ev.getX(0) + ev.getX(1)) / 2f, (ev.getY(0) + ev.getY(1)) / 2f)
-                angle += delta
-                if (angle > 180f) angle -= 360f
-                if (angle < -180f) angle += 360f
-                clamp()
-                invalidate()
-                onAngle?.invoke(angle)
-            }
-        }
         if (scaler.isInProgress) {
             lastId = -1
             return true
@@ -225,7 +200,7 @@ object Cropper {
         val cv = CropView(activity, bmp, aspect)
         root.addView(cv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val hint = TextView(activity).apply {
-            text = "Drag to move, pinch to zoom, twist with two fingers or use the slider to rotate"
+            text = "Drag to move, pinch to zoom, use the slider or type an angle to rotate"
             setTextColor(Color.parseColor("#e7c3d6"))
             gravity = Gravity.CENTER
             setPadding(0, (28 * d).toInt(), 0, 0)
@@ -251,10 +226,20 @@ object Cropper {
             setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (20 * d).toInt())
         }
         // Rotation: free angle -180..180 in 0.1 steps, plus quarter turns, mirror and reset.
-        val angleText = TextView(activity).apply {
-            text = "Rotate 0.0°"
+        val angleBox = android.widget.EditText(activity).apply {
+            setText("0")
             setTextColor(Color.parseColor("#ff6ec7"))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+            setSingleLine(true)
+            setSelectAllOnFocus(true)
+            background = GradientDrawable().apply {
+                setColor(Color.BLACK)
+                setStroke((2 * d).toInt(), Color.parseColor("#ff1493"))
+                cornerRadius = 10 * d
+            }
+            setPadding((6 * d).toInt(), (4 * d).toInt(), (6 * d).toInt(), (4 * d).toInt())
         }
         val seek = SeekBar(activity).apply {
             max = 3600
@@ -262,23 +247,36 @@ object Cropper {
             progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
             thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
         }
-        cv.onAngle = { v ->
-            angleText.text = "Rotate " + String.format(java.util.Locale.US, "%.1f", v) + "°"
-            seek.progress = Math.round((v + 180f) * 10f).coerceIn(0, 3600)
+        var busy = false
+        fun fmtA(v: Float): String {
+            val r = Math.round(v * 100f) / 100f
+            return if (r == Math.round(r).toFloat()) Math.round(r).toString() else r.toString()
         }
-        fun setAngle(deg: Float) {
+        // Rotation in degrees, -180..180: from the slider (0.1 steps) or typed in the box (any fraction).
+        fun setAngle(deg: Float, fromBox: Boolean = false) {
             val v = deg.coerceIn(-180f, 180f)
             cv.rotateTo(v)
-            angleText.text = "Rotate " + String.format(java.util.Locale.US, "%.1f", v) + "°"
-            if (seek.progress != Math.round((v + 180f) * 10f)) seek.progress = Math.round((v + 180f) * 10f)
+            busy = true
+            if (!fromBox) angleBox.setText(fmtA(v))
+            seek.progress = Math.round((v + 180f) * 10f)
+            busy = false
         }
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                if (fromUser) setAngle(p / 10f - 180f)
+                if (fromUser && !busy) setAngle(p / 10f - 180f)
             }
 
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        angleBox.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(t: android.text.Editable?) {
+                if (busy) return
+                val v = t?.toString()?.toFloatOrNull() ?: return
+                setAngle(v, fromBox = true)
+            }
         })
         fun small(t: String, act: () -> Unit) = btn(t, false).apply { setOnClickListener { act() } }
         val tools = LinearLayout(activity).apply {
@@ -296,8 +294,15 @@ object Cropper {
             tools.addView(b, LinearLayout.LayoutParams(0, (44 * d).toInt(), 1f).apply { marginStart = (3 * d).toInt(); marginEnd = (3 * d).toInt() })
         }
         val controls = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-        controls.addView(angleText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        controls.addView(seek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = (16 * d).toInt(); marginEnd = (16 * d).toInt() })
+        val angleRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)
+        }
+        angleRow.addView(seek, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        angleRow.addView(angleBox, LinearLayout.LayoutParams((84 * d).toInt(), (42 * d).toInt()))
+        angleRow.addView(TextView(activity).apply { text = "°"; setTextColor(Color.parseColor("#ff6ec7")); setPadding((4 * d).toInt(), 0, 0, 0) })
+        controls.addView(angleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         controls.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val cancel = btn("Cancel", false).apply { setOnClickListener { dlg.dismiss() } }
