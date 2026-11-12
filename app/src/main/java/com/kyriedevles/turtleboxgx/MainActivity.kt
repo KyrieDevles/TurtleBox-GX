@@ -621,7 +621,7 @@ class MainActivity : Activity() {
                         while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 2000) sample *= 2
                         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
                             ?: throw IllegalArgumentException("That file is not an image.")
-                        Cropper.show(this, bmp, aspect, onCrop = { cropped ->
+                        Cropper.show(this, bmp, bytes, bounds.outWidth, aspect, onCrop = { cropped ->
                             val out = java.io.ByteArrayOutputStream()
                             cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
                             store(out.toByteArray())
