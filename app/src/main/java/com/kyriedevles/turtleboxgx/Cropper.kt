@@ -17,6 +17,7 @@ import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.SeekBar
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -43,7 +44,7 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
     private val scaler = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(d: ScaleGestureDetector): Boolean {
             val cur = scaleNow()
-            val target = (cur * d.scaleFactor).coerceIn(minScale, minScale * 10f)
+            val target = (cur * d.scaleFactor).coerceIn(minScale * 0.2f, minScale * 10f)
             val k = target / cur
             m.postScale(k, k, d.focusX, d.focusY)
             clamp()
@@ -68,22 +69,65 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
         }
         frame.set((w - fw) / 2f, (h - fh) / 2f, (w + fw) / 2f, (h + fh) / 2f)
         minScale = maxOf(fw / bmp.width, fh / bmp.height)
+        reset()
+    }
+
+    private var angle = 0f
+
+    fun reset() {
+        angle = 0f
         m.reset()
         m.postScale(minScale, minScale)
         m.postTranslate(frame.centerX() - bmp.width * minScale / 2f, frame.centerY() - bmp.height * minScale / 2f)
+        invalidate()
     }
 
-    /** Keeps the image covering the whole frame. */
+    /** Free rotation of the picture under the frame, in degrees (fractions allowed). */
+    fun rotateTo(deg: Float) {
+        m.postRotate(deg - angle, frame.centerX(), frame.centerY())
+        angle = deg
+        clamp()
+        invalidate()
+    }
+
+    /** Mirror the picture left-right, or top-bottom when [vertical]. */
+    fun flip(vertical: Boolean) {
+        if (vertical) m.postScale(1f, -1f, frame.centerX(), frame.centerY()) else m.postScale(-1f, 1f, frame.centerX(), frame.centerY())
+        clamp()
+        invalidate()
+    }
+
+    /** Keeps the image covering the whole frame, also when it is rotated: zooms in if needed, then slides back inside. */
     private fun clamp() {
-        val r = RectF(0f, 0f, bmp.width.toFloat(), bmp.height.toFloat())
-        m.mapRect(r)
-        var dx = 0f
-        var dy = 0f
-        if (r.left > frame.left) dx = frame.left - r.left
-        if (r.right < frame.right) dx = frame.right - r.right
-        if (r.top > frame.top) dy = frame.top - r.top
-        if (r.bottom < frame.bottom) dy = frame.bottom - r.bottom
-        m.postTranslate(dx, dy)
+        val v = FloatArray(9)
+        m.getValues(v)
+        val sc = Math.hypot(v[Matrix.MSCALE_X].toDouble(), v[Matrix.MSKEW_Y].toDouble()).toFloat()
+        if (sc <= 0f) return
+        val cs = Math.abs(v[Matrix.MSCALE_X]) / sc
+        val sn = Math.abs(v[Matrix.MSKEW_Y]) / sc
+        val a = frame.width() / 2f / sc
+        val b = frame.height() / 2f / sc
+        var ex = a * cs + b * sn
+        var ey = a * sn + b * cs
+        val bw = bmp.width / 2f
+        val bh = bmp.height / 2f
+        val k = maxOf(ex / bw, ey / bh)
+        if (k > 1f) {
+            m.postScale(k, k, frame.centerX(), frame.centerY())
+            ex /= k
+            ey /= k
+        }
+        val inv = Matrix()
+        m.invert(inv)
+        val p = floatArrayOf(frame.centerX(), frame.centerY())
+        inv.mapPoints(p)
+        val nx = p[0].coerceIn(ex, bmp.width - ex)
+        val ny = p[1].coerceIn(ey, bmp.height - ey)
+        if (nx != p[0] || ny != p[1]) {
+            val q = floatArrayOf(nx, ny)
+            m.mapPoints(q)
+            m.postTranslate(frame.centerX() - q[0], frame.centerY() - q[1])
+        }
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
@@ -129,22 +173,18 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
         c.drawRect(frame, line)
     }
 
-    /** The part of the image inside the frame, up to 1600 px wide. */
+    /** The part of the image inside the frame (rotation and mirror included), up to 1600 px wide. */
     fun result(): Bitmap {
-        val inv = Matrix()
-        m.invert(inv)
-        val src = RectF(frame)
-        inv.mapRect(src)
-        val sr = Rect(
-            Math.round(src.left).coerceIn(0, bmp.width - 1),
-            Math.round(src.top).coerceIn(0, bmp.height - 1),
-            Math.round(src.right).coerceIn(1, bmp.width),
-            Math.round(src.bottom).coerceIn(1, bmp.height),
-        )
-        val ow = minOf(sr.width(), 1600).coerceAtLeast(1)
+        val v = FloatArray(9)
+        m.getValues(v)
+        val sc = Math.hypot(v[Matrix.MSCALE_X].toDouble(), v[Matrix.MSKEW_Y].toDouble()).toFloat().coerceAtLeast(0.0001f)
+        val ow = minOf(Math.round(frame.width() / sc), 1600).coerceAtLeast(1)
         val oh = (ow / aspect).toInt().coerceAtLeast(1)
         val out = Bitmap.createBitmap(ow, oh, Bitmap.Config.ARGB_8888)
-        Canvas(out).drawBitmap(bmp, sr, RectF(0f, 0f, ow.toFloat(), oh.toFloat()), paint)
+        val mat = Matrix(m)
+        mat.postTranslate(-frame.left, -frame.top)
+        mat.postScale(ow / frame.width(), oh / frame.height())
+        Canvas(out).drawBitmap(bmp, mat, paint)
         return out
     }
 }
@@ -158,7 +198,7 @@ object Cropper {
         val cv = CropView(activity, bmp, aspect)
         root.addView(cv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val hint = TextView(activity).apply {
-            text = "Drag to move, pinch to zoom"
+            text = "Drag to move, pinch to zoom, slider to rotate"
             setTextColor(Color.parseColor("#e7c3d6"))
             gravity = Gravity.CENTER
             setPadding(0, (28 * d).toInt(), 0, 0)
@@ -183,13 +223,62 @@ object Cropper {
             orientation = LinearLayout.HORIZONTAL
             setPadding((12 * d).toInt(), (8 * d).toInt(), (12 * d).toInt(), (20 * d).toInt())
         }
+        // Rotation: free angle -180..180 in 0.1 steps, plus quarter turns, mirror and reset.
+        val angleText = TextView(activity).apply {
+            text = "Rotate 0.0°"
+            setTextColor(Color.parseColor("#ff6ec7"))
+            gravity = Gravity.CENTER
+        }
+        val seek = SeekBar(activity).apply {
+            max = 3600
+            progress = 1800
+            progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
+            thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
+        }
+        fun setAngle(deg: Float) {
+            val v = deg.coerceIn(-180f, 180f)
+            cv.rotateTo(v)
+            angleText.text = "Rotate " + String.format(java.util.Locale.US, "%.1f", v) + "°"
+            if (seek.progress != Math.round((v + 180f) * 10f)) seek.progress = Math.round((v + 180f) * 10f)
+        }
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                if (fromUser) setAngle(p / 10f - 180f)
+            }
+
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        fun small(t: String, act: () -> Unit) = btn(t, false).apply { setOnClickListener { act() } }
+        val tools = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)
+        }
+        val cur = { (seek.progress / 10f - 180f) }
+        for (b in listOf(
+            small("↺ 90°") { var v = cur() - 90f; if (v < -180f) v += 360f; setAngle(v) },
+            small("↻ 90°") { var v = cur() + 90f; if (v > 180f) v -= 360f; setAngle(v) },
+            small("⇋ Mirror") { cv.flip(false) },
+            small("⇅ Flip") { cv.flip(true) },
+            small("Reset") { cv.reset(); setAngle(0f) },
+        )) {
+            tools.addView(b, LinearLayout.LayoutParams(0, (44 * d).toInt(), 1f).apply { marginStart = (3 * d).toInt(); marginEnd = (3 * d).toInt() })
+        }
+        val controls = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        controls.addView(angleText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        controls.addView(seek, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = (16 * d).toInt(); marginEnd = (16 * d).toInt() })
+        controls.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
         val cancel = btn("Cancel", false).apply { setOnClickListener { dlg.dismiss() } }
         val whole = btn("Whole image", false).apply { setOnClickListener { dlg.dismiss(); onWhole() } }
         val ok = btn("Crop", true).apply { setOnClickListener { dlg.dismiss(); onCrop(cv.result()) } }
         for (b in listOf(cancel, whole, ok)) {
             bar.addView(b, LinearLayout.LayoutParams(0, (48 * d).toInt(), 1f).apply { marginStart = (4 * d).toInt(); marginEnd = (4 * d).toInt() })
         }
-        root.addView(bar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+        val bottom = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        bottom.addView(controls)
+        bottom.addView(bar)
+        root.addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
         dlg.setContentView(root)
         dlg.show()
     }
