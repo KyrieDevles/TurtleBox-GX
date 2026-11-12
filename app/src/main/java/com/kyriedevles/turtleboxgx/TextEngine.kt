@@ -78,6 +78,8 @@ class TextEngine(
     private val opt: TextOptions,
     /** Optional first line (Fusion / Synchro / Xyz / Link materials): same size as the text, but squeezed on its own to stay on one line. */
     private val materials: String = "",
+    /** Font size of the materials line as a percent of the text size (100 = same size). */
+    private val materialsPct: Float = 100f,
 ) {
     private val styled = parseMarkup(rawText)
     private val text: String = styled.text
@@ -101,7 +103,14 @@ class TextEngine(
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .build()
 
-    private fun materialsHeight(): Float = if (materials.isEmpty()) 0f else buildMaterials().height.toFloat()
+    private fun materialsHeight(): Float {
+        if (materials.isEmpty()) return 0f
+        val bodySize = paint.textSize
+        paint.textSize = bodySize * materialsPct / 100f
+        val h = buildMaterials().height.toFloat()
+        paint.textSize = bodySize
+        return h
+    }
 
     private fun spanStyle(v: Int): Int = when (v) {
         1 -> Typeface.BOLD
@@ -293,12 +302,15 @@ class TextEngine(
         if (materials.isNotEmpty()) {
             // Same font size as the text, but its own squeeze: natural width unless it is too long for one line.
             val bodyScale = paint.textScaleX
+            val bodySize = paint.textSize
             paint.textScaleX = 1f
+            paint.textSize = bodySize * materialsPct / 100f
             val natural = exactWidth(paint, materials)
             matScale = if (natural > width && natural > 0f) (width / natural).coerceAtLeast(0.3f) else 1f
             val ml = buildMaterials()
             matLayout = ml
             matH = ml.height.toFloat()
+            paint.textSize = bodySize
             paint.textScaleX = bodyScale
         }
         return sl.height.toFloat() + matH
@@ -306,7 +318,9 @@ class TextEngine(
 
     private fun drawMaterials(c: Canvas, left: Float, top: Float, h: Int, ml: StaticLayout) {
         val bodyScale = paint.textScaleX
+        val bodySize = paint.textSize
         paint.textScaleX = matScale
+        paint.textSize = bodySize * materialsPct / 100f
         val mw = exactWidth(paint, materials)
         val x = left + when (h) {
             2 -> width - mw
@@ -314,6 +328,7 @@ class TextEngine(
             else -> 0f
         }
         c.drawText(materials, x, top + ml.getLineBaseline(0), paint)
+        paint.textSize = bodySize
         paint.textScaleX = bodyScale
     }
 

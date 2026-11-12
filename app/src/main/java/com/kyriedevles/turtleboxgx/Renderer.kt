@@ -174,7 +174,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         if (e.attrs["keepWord"] == "true") body = body.replace(Regex("(?<!<)/"), "/\u2060")
         // Optional <materials> child: its own first line in this box (Fusion / Synchro / Xyz / Link materials).
         val mats = ctx.sub(e.options["materials"] ?: "").replace("\n", " ").trim()
-        val engine = TextEngine(body, paint, width, size.height, opt, mats)
+        val matPct = num("materialssize").takeIf { it > 0f } ?: 100f
+        val engine = TextEngine(body, paint, width, size.height, opt, mats, matPct)
         val used = engine.fit()
         engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         drawn++
