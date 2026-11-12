@@ -70,7 +70,15 @@ class TextOptions(
  * the last line of a paragraph only when its gaps are small enough (the Justify option), and "balanced"
  * first re-wraps the paragraph a little narrower so the lines come out even.
  */
-class TextEngine(rawText: String, private val paint: TextPaint, private val width: Int, private val height: Float, private val opt: TextOptions) {
+class TextEngine(
+    rawText: String,
+    private val paint: TextPaint,
+    private val width: Int,
+    private val height: Float,
+    private val opt: TextOptions,
+    /** Optional first line (Fusion / Synchro / Xyz / Link materials): same size as the text, but squeezed on its own to stay on one line. */
+    private val materials: String = "",
+) {
     private val styled = parseMarkup(rawText)
     private val text: String = styled.text
     private val styles: IntArray = styled.styles
@@ -79,6 +87,21 @@ class TextEngine(rawText: String, private val paint: TextPaint, private val widt
     private val baseSize = paint.textSize
     private var layout: StaticLayout? = null
     private var lineWidthLimit = width.toFloat()
+    private var matLayout: StaticLayout? = null
+    private var matScale = 1f
+    private var matH = 0f
+
+    /** The materials line laid out alone (never wrapped), so its height and natural width can be read from it. */
+    private fun buildMaterials(): StaticLayout =
+        StaticLayout.Builder.obtain(materials, 0, materials.length, paint, 100000)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, opt.spacing)
+            .setIncludePad(true)
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .build()
+
+    private fun materialsHeight(): Float = if (materials.isEmpty()) 0f else buildMaterials().height.toFloat()
 
     private fun spanStyle(v: Int): Int = when (v) {
         1 -> Typeface.BOLD
@@ -163,7 +186,7 @@ class TextEngine(rawText: String, private val paint: TextPaint, private val widt
         paint.textSize = size
         paint.textScaleX = scaleX
         val sl = build(width)
-        return sl.height <= height
+        return materialsHeight() + sl.height <= height
     }
 
     /** Widest line as the drawing code measures it (trailing spaces and newlines trimmed). */
@@ -265,7 +288,33 @@ class TextEngine(rawText: String, private val paint: TextPaint, private val widt
             if (best != null) sl = best
         }
         layout = sl
-        return sl.height.toFloat()
+        matLayout = null
+        matH = 0f
+        if (materials.isNotEmpty()) {
+            // Same font size as the text, but its own squeeze: natural width unless it is too long for one line.
+            val bodyScale = paint.textScaleX
+            paint.textScaleX = 1f
+            val natural = exactWidth(paint, materials)
+            matScale = if (natural > width && natural > 0f) (width / natural).coerceAtLeast(0.3f) else 1f
+            val ml = buildMaterials()
+            matLayout = ml
+            matH = ml.height.toFloat()
+            paint.textScaleX = bodyScale
+        }
+        return sl.height.toFloat() + matH
+    }
+
+    private fun drawMaterials(c: Canvas, left: Float, top: Float, h: Int, ml: StaticLayout) {
+        val bodyScale = paint.textScaleX
+        paint.textScaleX = matScale
+        val mw = exactWidth(paint, materials)
+        val x = left + when (h) {
+            2 -> width - mw
+            1 -> (width - mw) / 2f
+            else -> 0f
+        }
+        c.drawText(materials, x, top + ml.getLineBaseline(0), paint)
+        paint.textScaleX = bodyScale
     }
 
     /** Draws the laid-out text with its top at [top]. [h] is 0 left, 1 centre, 2 right. */
@@ -274,13 +323,15 @@ class TextEngine(rawText: String, private val paint: TextPaint, private val widt
         val w = width.toFloat()
         val spaceW = exactWidth(paint, " ")
         val baseSpacing = paint.letterSpacing
+        matLayout?.let { drawMaterials(c, left, top, h, it) }
+        val bodyTop = top + matH
         for (i in 0 until sl.lineCount) {
             val start = sl.getLineStart(i)
             var end = sl.getLineEnd(i)
             while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
             if (end <= start) continue
             val seg = text.substring(start, end)
-            val baseline = top + sl.getLineBaseline(i)
+            val baseline = bodyTop + sl.getLineBaseline(i)
             val lw = rangeWidth(start, end)
             val endsParagraph = i == sl.lineCount - 1 || text[maxOf(sl.getLineEnd(i) - 1, 0)] == '\n'
             val gaps = seg.count { it == ' ' }
