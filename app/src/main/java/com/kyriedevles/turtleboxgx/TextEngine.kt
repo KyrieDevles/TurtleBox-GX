@@ -59,6 +59,8 @@ class TextOptions(
     val minLines: Float = 0f,
     val justify: Float = 0f, // 0 off, 100 light, 200 normal, 400 full, 500 balanced reflow
     val letterSpace: Float = 0f, // em
+    val lastStretch: Float = 0f, // % of the last line's gap to the box width that is closed (0..100, fractions allowed)
+    val flow: Float = 0f, // % of the whole-text reflow toward the narrowest wrap with the same line count (0..100)
     val spacing: Float = 1f, // line spacing multiplier
 )
 
@@ -282,7 +284,8 @@ class TextEngine(
             sl = build(width)
         }
         lineWidthLimit = width.toFloat()
-        if (opt.justify >= 500f && sl.lineCount >= 2) {
+        val flowPct = if (opt.justify >= 500f) 100f else opt.flow.coerceIn(0f, 100f)
+        if (flowPct > 0f && sl.lineCount >= 2) {
             // Re-wrap at the narrowest width that keeps the same line count, then stretch to the full width.
             val n = sl.lineCount
             var a = (width * 0.8f).toInt()
@@ -298,7 +301,10 @@ class TextEngine(
                     a = mid + 1
                 }
             }
-            if (best != null) sl = best
+            if (best != null) {
+                val target = (width - (width - best.width) * flowPct / 100f).toInt().coerceIn(best.width, width)
+                sl = if (flowPct >= 100f || target >= width) best else build(target).takeIf { it.lineCount == n } ?: best
+            }
         }
         layout = sl
         matLayout = null
@@ -358,11 +364,19 @@ class TextEngine(
             val extra = w - lw
             var justified = false
             var spread = 0f
-            if (h == 0 && sl.lineCount > 1 && gaps > 0 && extra > 0f) {
+            if (h == 0 && sl.lineCount > 1 && extra > 0f && (gaps > 0 || (endsParagraph && opt.lastStretch > 0f))) {
                 if (!endsParagraph) {
+                    justified = gaps > 0
+                    spread = if (gaps > 0) extra / gaps else 0f
+                } else if (opt.lastStretch > 0f) {
+                    // Continuous: close lastStretch % of the gap. Letters take up to 0.08 em first, the rest goes to the gaps.
+                    val want = extra * opt.lastStretch.coerceIn(0f, 100f) / 100f
+                    val perChar = minOf(want / (seg.length * paint.textSize), 0.08f)
+                    paint.letterSpacing = baseSpacing + perChar
+                    val nw = rangeWidth(start, end)
                     justified = true
-                    spread = extra / gaps
-                } else if (opt.justify > 0f && extra / gaps <= spaceW * opt.justify / 100f) {
+                    spread = if (gaps > 0) maxOf(0f, (lw + want - nw) / gaps) else 0f
+                } else if (gaps > 0 && opt.justify > 0f && extra / gaps <= spaceW * opt.justify / 100f) {
                     // Last line: spread a little over the letters first (up to 0.08 em), the rest over the gaps.
                     val perChar = minOf(extra / (seg.length * paint.textSize), 0.08f)
                     paint.letterSpacing = baseSpacing + perChar

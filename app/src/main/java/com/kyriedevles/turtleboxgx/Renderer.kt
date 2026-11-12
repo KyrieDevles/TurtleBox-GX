@@ -165,6 +165,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             maxSizePct = num("maxsize"),
             minLines = num("minline"),
             justify = num("justify"),
+            lastStretch = num("justifylast"),
+            flow = num("justifyflow"),
             letterSpace = num("letterspace"),
             spacing = spacing,
         )

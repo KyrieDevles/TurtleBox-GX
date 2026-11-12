@@ -119,6 +119,14 @@ class Editor(
         }
         var firstEdit: EditText? = null
         var dlgRef: AlertDialog? = null
+        val restores = ArrayList<() -> Unit>()
+        val liveHandler = Handler(Looper.getMainLooper())
+        var livePending = false
+        fun liveApply() {
+            if (livePending) return
+            livePending = true
+            liveHandler.postDelayed({ livePending = false; onChanged() }, 90)
+        }
         for (f in fields) {
             if (f.type == "multi_select") continue
             box.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
@@ -184,25 +192,30 @@ class Editor(
                 }
                 sliderRange(f.name) != null -> {
                     val (lo, hi) = sliderRange(f.name)!!
-                    val start = (current.toFloatOrNull() ?: lo.toFloat()).toInt().coerceIn(lo, hi)
-                    var value = start
+                    val start = (current.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
                     val readout = TextView(activity).apply {
-                        text = "$start%"
+                        text = fmt(start) + "%"
                         setTextColor(pink)
                         typeface = Typeface.DEFAULT_BOLD
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                         gravity = android.view.Gravity.END
                     }
                     box.addView(readout, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = -dp(22) })
+                    val original = state.values[f.name]
+                    restores.add { if (original == null) state.values.remove(f.name) else state.values[f.name] = original }
                     val bar = SeekBar(activity).apply {
-                        max = hi - lo
-                        progress = start - lo
+                        max = (hi - lo) * 10
+                        progress = Math.round((start - lo) * 10f).coerceIn(0, max)
                         progressTintList = android.content.res.ColorStateList.valueOf(pink)
                         thumbTintList = android.content.res.ColorStateList.valueOf(pink)
                         setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                                value = lo + p
-                                readout.text = "$value%"
+                                val v = lo + p / 10f
+                                readout.text = fmt(v) + "%"
+                                if (fromUser) {
+                                    state.values[f.name] = fmt(v)
+                                    liveApply()
+                                }
                             }
 
                             override fun onStartTrackingTouch(sb: SeekBar?) {}
@@ -210,7 +223,6 @@ class Editor(
                             override fun onStopTrackingTouch(sb: SeekBar?) {}
                         })
                     }
-                    commits.add { if (value.toString() != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = value.toString() }
                     box.addView(bar, row())
                 }
                 else -> {
@@ -268,7 +280,12 @@ class Editor(
                 commitAll(commits)
                 onChanged()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton("Cancel") { _, _ ->
+                if (restores.isNotEmpty()) {
+                    restores.forEach { it() }
+                    onChanged()
+                }
+            }
             .create()
         dlgRef = dlg
         dlg.show()
@@ -478,6 +495,7 @@ class Editor(
             n.startsWith("condense") -> 30 to 100
             n.startsWith("maxsize") -> 50 to 120
             n.startsWith("minsize") -> 0 to 100
+            n.startsWith("justifylast") || n.startsWith("justifyflow") -> 0 to 100
             // materialssize, materialswidth, materialsline (but not the "materials" text itself)
             n.startsWith("materials") && n != "materials" -> 50 to 150
             else -> null
