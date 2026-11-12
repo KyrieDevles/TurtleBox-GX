@@ -130,8 +130,33 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
         }
     }
 
+    /** Called while two fingers twist the picture, with the new angle in degrees (-180..180). */
+    var onAngle: ((Float) -> Unit)? = null
+    private var twist = 0f
+
+    private fun pairAngle(ev: MotionEvent): Float =
+        Math.toDegrees(Math.atan2((ev.getY(1) - ev.getY(0)).toDouble(), (ev.getX(1) - ev.getX(0)).toDouble())).toFloat()
+
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         scaler.onTouchEvent(ev)
+        if (ev.pointerCount == 2) {
+            if (ev.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                twist = pairAngle(ev)
+            } else if (ev.actionMasked == MotionEvent.ACTION_MOVE) {
+                val now = pairAngle(ev)
+                var delta = now - twist
+                if (delta > 180f) delta -= 360f
+                if (delta < -180f) delta += 360f
+                twist = now
+                m.postRotate(delta, (ev.getX(0) + ev.getX(1)) / 2f, (ev.getY(0) + ev.getY(1)) / 2f)
+                angle += delta
+                if (angle > 180f) angle -= 360f
+                if (angle < -180f) angle += 360f
+                clamp()
+                invalidate()
+                onAngle?.invoke(angle)
+            }
+        }
         if (scaler.isInProgress) {
             lastId = -1
             return true
@@ -198,7 +223,7 @@ object Cropper {
         val cv = CropView(activity, bmp, aspect)
         root.addView(cv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val hint = TextView(activity).apply {
-            text = "Drag to move, pinch to zoom, slider to rotate"
+            text = "Drag to move, pinch to zoom, twist with two fingers or use the slider to rotate"
             setTextColor(Color.parseColor("#e7c3d6"))
             gravity = Gravity.CENTER
             setPadding(0, (28 * d).toInt(), 0, 0)
@@ -234,6 +259,10 @@ object Cropper {
             progress = 1800
             progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
             thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
+        }
+        cv.onAngle = { v ->
+            angleText.text = "Rotate " + String.format(java.util.Locale.US, "%.1f", v) + "°"
+            seek.progress = Math.round((v + 180f) * 10f).coerceIn(0, 3600)
         }
         fun setAngle(deg: Float) {
             val v = deg.coerceIn(-180f, 180f)
