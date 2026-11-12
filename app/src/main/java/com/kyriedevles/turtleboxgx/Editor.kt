@@ -415,7 +415,7 @@ class Editor(
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun afterTextChanged(s: Editable?) {
                     if (busy) return
-                    val v = s?.toString()?.toFloatOrNull()?.takeIf { it > 0f } ?: return
+                    val v = s?.toString()?.toFloatOrNull()?.takeIf { it >= 0f } ?: return
                     busy = true
                     bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
                     busy = false
