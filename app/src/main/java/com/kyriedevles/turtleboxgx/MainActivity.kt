@@ -532,6 +532,22 @@ class MainActivity : Activity() {
     }
 
     /** Artwork can be huge; keep it at most 2000 px on its long side and store it as PNG. */
+    /** Width / height of the box this image option is drawn in right now, or null when the layout has none. */
+    private fun artAspect(l: Layout, st: CardState, key: String): Float? {
+        val ctx = Ctx(l, st.values)
+        for (e in l.elements) {
+            if (e.kind != "image" || e.attrs["click"] != key) continue
+            for (c in e.sizes) {
+                val w = c.whenExpr
+                if (w == null || Expr.eval(w, ctx)) {
+                    val r = c.value
+                    if (r.width > 0f && r.height > 0f) return r.width / r.height
+                }
+            }
+        }
+        return null
+    }
+
     private fun shrinkToPng(bytes: ByteArray): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -587,13 +603,34 @@ class MainActivity : Activity() {
                 val st = state ?: return
                 try {
                     val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-                    val png = shrinkToPng(bytes)
                     val def = l.datas[key]?.default ?: ""
                     var fileName = Ctx(l, st.values).sub(def).ifBlank { "$key.png" }
                     if (!fileName.contains('.')) fileName += ".png"
-                    st.files[fileName] = png
-                    st.values[key] = fileName
-                    renderState(st)
+                    fun store(png: ByteArray) {
+                        st.files[fileName] = png
+                        st.values[key] = fileName
+                        renderState(st)
+                    }
+                    val aspect = artAspect(l, st, key)
+                    if (aspect == null) {
+                        store(shrinkToPng(bytes))
+                    } else {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                        var sample = 1
+                        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 2000) sample *= 2
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+                            ?: throw IllegalArgumentException("That file is not an image.")
+                        Cropper.show(this, bmp, aspect, onCrop = { cropped ->
+                            val out = java.io.ByteArrayOutputStream()
+                            cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
+                            store(out.toByteArray())
+                        }, onWhole = {
+                            val out = java.io.ByteArrayOutputStream()
+                            bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                            store(out.toByteArray())
+                        })
+                    }
                 } catch (e: Exception) {
                     setStatus("Could not use that image: ${e.javaClass.simpleName}: ${e.message}")
                 }
