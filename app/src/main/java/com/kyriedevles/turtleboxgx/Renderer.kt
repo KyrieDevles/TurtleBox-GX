@@ -157,7 +157,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
 
         fun num(key: String): Float = ctx.sub(e.options[key] ?: "").trim().toFloatOrNull() ?: 0f
         val baseSpacing = e.attrs["line-space-scale"]?.toFloatOrNull() ?: 1f
-        val spacing = baseSpacing * (num("linespace").takeIf { it > 0f } ?: 1f)
+        val spacing = baseSpacing * (num("linespace").takeIf { it > 0f } ?: 1f) * ((num("leading").takeIf { it > 0f } ?: 100f) / 100f)
         val opt = TextOptions(
             condense = num("condense"),
             fitMode = num("fitmode").let { if (it <= 0f) 1 else (it + 0.5f).toInt() },
@@ -168,7 +168,11 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             lastStretch = num("justifylast"),
             flow = num("justifyflow"),
             fontScale = num("fontscale"),
-            letterSpace = num("letterspace"),
+            letterSpace = num("letterspace") + num("tracking") / 1000f,
+            hScale = num("hscale").takeIf { it > 0f } ?: 100f,
+            vScale = num("vscale").takeIf { it > 0f } ?: 100f,
+            baselineShift = num("baseline"),
+            wordSpace = num("wordspace").takeIf { it > 0f } ?: 100f,
             spacing = spacing,
         )
         var body = indentText(text, num("indent"))

@@ -55,7 +55,7 @@ object SetWriter {
         sb.append("</style>")
         val written = HashSet<String>()
         for (d in layout.datas.values) {
-            if (d.type == "multi_select") continue
+            if (d.type == "multi_select" || d.type == "button") continue
             written.add(d.name)
             sb.append("<data><key>").append(esc(d.name)).append("</key><value>")
                 .append(esc(state.values[d.name] ?: ctx.value(d.name))).append("</value></data>")
@@ -129,6 +129,27 @@ class Editor(
         }
         for (f in fields) {
             if (f.type == "multi_select") continue
+            if (f.type == "button") {
+                // A button that opens a settings panel (gear = the multi_select group it shows).
+                val grp = f.gear?.let { find(it) }
+                if (grp != null) {
+                    val members = grp.items.mapNotNull { find(it.second) }.filter { it.type != "multi_select" }
+                    val changed = members.any { m ->
+                        val v = (state.values[m.name] ?: ctx.value(m.name)).toFloatOrNull()
+                        val def = m.default?.toFloatOrNull()
+                        v != null && def != null && v != def
+                    }
+                    val b = hotButton((f.desc?.takeIf { it.isNotBlank() } ?: f.name) + if (changed) "   ●  changed" else "")
+                    b.setOnClickListener {
+                        commitAll(commits)
+                        dlgRef?.dismiss()
+                        onChanged()
+                        openPanel(grp.name) { open(click) }
+                    }
+                    box.addView(b, row())
+                }
+                continue
+            }
             box.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
             val current = state.values[f.name] ?: ctx.value(f.name)
             when {
@@ -369,7 +390,7 @@ class Editor(
             val name = label(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name)
             head.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             val num = EditText(activity).apply {
-                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
                 setSingleLine(true)
                 setText(fmt(startV))
                 setTextColor(pink)
@@ -415,7 +436,7 @@ class Editor(
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun afterTextChanged(s: Editable?) {
                     if (busy) return
-                    val v = s?.toString()?.toFloatOrNull()?.takeIf { it >= 0f } ?: return
+                    val v = s?.toString()?.toFloatOrNull() ?: return
                     busy = true
                     bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
                     busy = false
@@ -451,6 +472,7 @@ class Editor(
         }
         dlg.show()
         val w = dlg.window
+        if (fields.size > 3) w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.45f).toInt())
         w?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
@@ -507,6 +529,12 @@ class Editor(
             n.startsWith("maxsize") -> 50 to 120
             n.startsWith("minsize") -> 0 to 100
             n.startsWith("fontscale") -> 0 to 200
+            n.startsWith("tracking") -> -100 to 300
+            n.startsWith("leading") -> 50 to 200
+            n.startsWith("hscale") || n.startsWith("vscale") -> 30 to 200
+            n.startsWith("baseline") -> -50 to 50
+            n.startsWith("wordspace") -> 0 to 300
+            n.startsWith("weight") -> 0 to 100
             n.startsWith("justifylast") || n.startsWith("justifyflow") -> 0 to 100
             // materialssize, materialswidth, materialsline (but not the "materials" text itself)
             n.startsWith("materials") && n != "materials" -> 50 to 150

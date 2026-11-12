@@ -60,6 +60,10 @@ class TextOptions(
     val justify: Float = 0f, // 0 off, 100 light, 200 normal, 400 full, 500 balanced reflow
     val letterSpace: Float = 0f, // em
     val lastStretch: Float = 0f, // % of the last line's gap to the box width that is closed (0..100, fractions allowed)
+    val hScale: Float = 100f, // horizontal scale % of the whole block (100 = normal)
+    val vScale: Float = 100f, // vertical scale % of the whole block
+    val baselineShift: Float = 0f, // px, positive raises the text
+    val wordSpace: Float = 100f, // % of the normal space width
     val fontScale: Float = 0f, // manual font size in % of the layout size (0 = automatic fit)
     val flow: Float = 0f, // % of the whole-text reflow toward the narrowest wrap with the same line count (0..100)
     val spacing: Float = 1f, // line spacing multiplier
@@ -76,8 +80,8 @@ class TextOptions(
 class TextEngine(
     rawText: String,
     private val paint: TextPaint,
-    private val width: Int,
-    private val height: Float,
+    private val boxWidth: Int,
+    private val boxHeight: Float,
     private val opt: TextOptions,
     /** Optional first line (Fusion / Synchro / Xyz / Link materials): same size as the text, but squeezed on its own to stay on one line. */
     private val materials: String = "",
@@ -88,6 +92,11 @@ class TextEngine(
     /** Height of the materials row as a percent of a normal line (100 = normal). Lower pulls the text under it up. */
     private val materialsLinePct: Float = 100f,
 ) {
+    // Horizontal / vertical scale: lay the text out in a box 1/scale as big, then draw it stretched by the scale.
+    private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
+    private val vs = (opt.vScale.takeIf { it > 0f } ?: 100f) / 100f
+    private val width: Int = (boxWidth / hs).toInt().coerceAtLeast(1)
+    private val height: Float = boxHeight / vs
     private val styled = parseMarkup(rawText)
     private val text: String = styled.text
     private val styles: IntArray = styled.styles
@@ -329,7 +338,7 @@ class TextEngine(
             paint.textSize = bodySize
             paint.textScaleX = bodyScale
         }
-        return sl.height.toFloat() + matH
+        return (sl.height.toFloat() + matH) * vs
     }
 
     private fun drawMaterials(c: Canvas, left: Float, top: Float, h: Int, ml: StaticLayout) {
@@ -354,6 +363,8 @@ class TextEngine(
         val w = width.toFloat()
         val spaceW = exactWidth(paint, " ")
         val baseSpacing = paint.letterSpacing
+        val saved = c.save()
+        if (hs != 1f || vs != 1f) c.scale(hs, vs, left, top)
         matLayout?.let { drawMaterials(c, left, top, h, it) }
         val bodyTop = top + matH
         for (i in 0 until sl.lineCount) {
@@ -362,7 +373,7 @@ class TextEngine(
             while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
             if (end <= start) continue
             val seg = text.substring(start, end)
-            val baseline = bodyTop + sl.getLineBaseline(i)
+            val baseline = bodyTop + sl.getLineBaseline(i) - opt.baselineShift / vs
             val lw = rangeWidth(start, end)
             val endsParagraph = i == sl.lineCount - 1 || text[maxOf(sl.getLineEnd(i) - 1, 0)] == '\n'
             val gaps = seg.count { it == ' ' }
@@ -390,6 +401,18 @@ class TextEngine(
                     spread = maxOf(0f, (w - nw) / gaps)
                 }
             }
+            var xoff = 0f
+            if (!justified && opt.wordSpace > 0f && opt.wordSpace != 100f && gaps > 0) {
+                // Word spacing: extra (or less) room at every space, the line is then aligned as a whole.
+                spread = (opt.wordSpace / 100f - 1f) * spaceW
+                val lineW = lw + spread * gaps
+                xoff = when (h) {
+                    2 -> w - lineW
+                    1 -> (w - lineW) / 2f
+                    else -> 0f
+                }
+                justified = true
+            }
             if (!justified) {
                 val x = left + when (h) {
                     2 -> w - lw
@@ -406,7 +429,7 @@ class TextEngine(
                     if (to < 0) to = seg.length
                     if (to > from) {
                         val px = prefixWidth(start, start + from)
-                        drawRange(c, start + from, start + to, left + px + spread * gap, baseline)
+                        drawRange(c, start + from, start + to, left + xoff + px + spread * gap, baseline)
                     }
                     if (to >= seg.length) break
                     gap++
@@ -415,5 +438,6 @@ class TextEngine(
             }
             paint.letterSpacing = baseSpacing
         }
+        c.restoreToCount(saved)
     }
 }
