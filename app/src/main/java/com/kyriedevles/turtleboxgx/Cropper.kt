@@ -291,10 +291,10 @@ class CropView(context: Context, base: Bitmap, private val aspect: Float, privat
 }
 
 object Cropper {
-    /** Crops from the ORIGINAL file at its own resolution (up to 4096 px wide); falls back to the preview if that fails. */
+    /** Crops from the ORIGINAL file at its own resolution (up to 8192 px wide); falls back to the preview if that fails. */
     fun render(p: CropParams, aspect: Float, base: Bitmap, bytes: ByteArray, origW: Int): Bitmap {
         val r = origW.toFloat() / base.width
-        val ow = minOf(Math.round(p.fw * r), 4096).coerceAtLeast(1)
+        val ow = minOf(Math.round(p.fw * r), 8192).coerceAtLeast(1)
         val oh = (ow / aspect).toInt().coerceAtLeast(1)
         val k = ow / p.fw
         val pw = base.width.toFloat()

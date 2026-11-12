@@ -548,6 +548,19 @@ class MainActivity : Activity() {
         return null
     }
 
+    /** The whole picture at full resolution: a PNG is kept byte for byte, anything else is decoded without shrinking. */
+    private fun fullPng(bytes: ByteArray): ByteArray {
+        if (bytes.size > 8 && bytes[0] == 0x89.toByte() && bytes[1] == 'P'.code.toByte() && bytes[2] == 'N'.code.toByte() && bytes[3] == 'G'.code.toByte()) return bytes
+        return try {
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IllegalArgumentException("That file is not an image.")
+            val out = java.io.ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+            out.toByteArray()
+        } catch (e: OutOfMemoryError) {
+            shrinkToPng(bytes)
+        }
+    }
+
     private fun shrinkToPng(bytes: ByteArray): ByteArray {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -613,7 +626,7 @@ class MainActivity : Activity() {
                     }
                     val aspect = artAspect(l, st, key)
                     if (aspect == null) {
-                        store(shrinkToPng(bytes))
+                        store(fullPng(bytes))
                     } else {
                         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -626,9 +639,7 @@ class MainActivity : Activity() {
                             cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
                             store(out.toByteArray())
                         }, onWhole = {
-                            val out = java.io.ByteArrayOutputStream()
-                            bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
-                            store(out.toByteArray())
+                            store(fullPng(bytes))
                         })
                     }
                 } catch (e: Exception) {
