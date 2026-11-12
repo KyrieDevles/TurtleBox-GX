@@ -259,6 +259,8 @@ class Editor(
             n.startsWith("condense") -> 30 to 100
             n.startsWith("maxsize") -> 50 to 120
             n.startsWith("minsize") -> 0 to 100
+            // materialssize, materialswidth, materialsline (but not the "materials" text itself)
+            n.startsWith("materials") && n != "materials" -> 50 to 150
             else -> null
         }
     }

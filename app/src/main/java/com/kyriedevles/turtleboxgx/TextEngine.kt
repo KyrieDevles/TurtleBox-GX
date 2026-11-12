@@ -80,6 +80,10 @@ class TextEngine(
     private val materials: String = "",
     /** Font size of the materials line as a percent of the text size (100 = same size). */
     private val materialsPct: Float = 100f,
+    /** Width of the materials line as a percent of its natural width (100 = natural). Above 100 stretches it, but never past the box width. */
+    private val materialsWidthPct: Float = 100f,
+    /** Height of the materials row as a percent of a normal line (100 = normal). Lower pulls the text under it up. */
+    private val materialsLinePct: Float = 100f,
 ) {
     private val styled = parseMarkup(rawText)
     private val text: String = styled.text
@@ -107,7 +111,7 @@ class TextEngine(
         if (materials.isEmpty()) return 0f
         val bodySize = paint.textSize
         paint.textSize = bodySize * materialsPct / 100f
-        val h = buildMaterials().height.toFloat()
+        val h = buildMaterials().height.toFloat() * materialsLinePct / 100f
         paint.textSize = bodySize
         return h
     }
@@ -306,10 +310,11 @@ class TextEngine(
             paint.textScaleX = 1f
             paint.textSize = bodySize * materialsPct / 100f
             val natural = exactWidth(paint, materials)
-            matScale = if (natural > width && natural > 0f) (width / natural).coerceAtLeast(0.3f) else 1f
+            // The width setting stretches or squeezes it; it never goes past the box, so a long line still fits on one line.
+            matScale = if (natural > 0f) minOf(materialsWidthPct / 100f, width / natural).coerceAtLeast(0.3f) else 1f
             val ml = buildMaterials()
             matLayout = ml
-            matH = ml.height.toFloat()
+            matH = ml.height.toFloat() * materialsLinePct / 100f
             paint.textSize = bodySize
             paint.textScaleX = bodyScale
         }
