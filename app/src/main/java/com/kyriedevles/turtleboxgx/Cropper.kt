@@ -28,11 +28,12 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
     private val m = Matrix()
     private var minScale = 1f
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val dim = Paint().apply { color = Color.argb(170, 0, 0, 0) }
+    private val dim = Paint().apply { color = Color.argb(120, 0, 0, 0) }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#ff1493")
         style = Paint.Style.STROKE
-        strokeWidth = 3f * resources.displayMetrics.density
+        strokeWidth = 1f * resources.displayMetrics.density
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f * resources.displayMetrics.density, 4f * resources.displayMetrics.density), 0f)
     }
     private val grid = Paint().apply {
         color = Color.argb(110, 255, 255, 255)
@@ -195,7 +196,8 @@ class CropView(context: Context, private val bmp: Bitmap, private val aspect: Fl
             c.drawLine(x, frame.top, x, frame.bottom, grid)
             c.drawLine(frame.left, y, frame.right, y, grid)
         }
-        c.drawRect(frame, line)
+        val o = line.strokeWidth / 2f
+        c.drawRect(frame.left - o, frame.top - o, frame.right + o, frame.bottom + o, line)
     }
 
     /** The part of the image inside the frame (rotation and mirror included), up to 1600 px wide. */
