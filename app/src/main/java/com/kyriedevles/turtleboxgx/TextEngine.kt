@@ -364,11 +364,11 @@ class TextEngine(
             val extra = w - lw
             var justified = false
             var spread = 0f
-            if (h == 0 && sl.lineCount > 1 && extra > 0f && (gaps > 0 || (endsParagraph && opt.lastStretch > 0f))) {
+            if (h == 0 && sl.lineCount > 1 && extra > 0f && (gaps > 0 || (i == sl.lineCount - 1 && opt.lastStretch > 0f))) {
                 if (!endsParagraph) {
                     justified = gaps > 0
                     spread = if (gaps > 0) extra / gaps else 0f
-                } else if (opt.lastStretch > 0f) {
+                } else if (opt.lastStretch > 0f && i == sl.lineCount - 1) {
                     // Continuous: close lastStretch % of the gap. Letters take up to 0.08 em first, the rest goes to the gaps.
                     val want = extra * opt.lastStretch.coerceIn(0f, 100f) / 100f
                     val perChar = minOf(want / (seg.length * paint.textSize), 0.08f)
