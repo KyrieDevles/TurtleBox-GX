@@ -167,6 +167,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             justify = num("justify"),
             lastStretch = num("justifylast"),
             flow = num("justifyflow"),
+            fontScale = num("fontscale"),
             letterSpace = num("letterspace"),
             spacing = spacing,
         )

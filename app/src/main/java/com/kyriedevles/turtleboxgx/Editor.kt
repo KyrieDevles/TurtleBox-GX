@@ -194,7 +194,7 @@ class Editor(
                     val (lo, hi) = sliderRange(f.name)!!
                     val start = (current.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
                     val readout = TextView(activity).apply {
-                        text = fmt(start) + "%"
+                        text = if (f.name.startsWith("fontscale") && start == 0f) "Auto" else fmt(start) + "%"
                         setTextColor(pink)
                         typeface = Typeface.DEFAULT_BOLD
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
@@ -211,7 +211,7 @@ class Editor(
                         setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
                                 val v = lo + p / 10f
-                                readout.text = fmt(v) + "%"
+                                readout.text = if (f.name.startsWith("fontscale") && v == 0f) "Auto" else fmt(v) + "%"
                                 if (fromUser) {
                                     state.values[f.name] = fmt(v)
                                     liveApply()
@@ -289,6 +289,13 @@ class Editor(
             .create()
         dlgRef = dlg
         dlg.show()
+        // Docked at the bottom, half height, no dimming: the card stays visible above while sliders apply live.
+        if (restores.isNotEmpty()) {
+            dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            dlg.window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+            dlg.window?.setGravity(android.view.Gravity.BOTTOM)
+            dlg.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.5f).toInt())
+        }
         dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         style(dlg)
@@ -495,6 +502,7 @@ class Editor(
             n.startsWith("condense") -> 30 to 100
             n.startsWith("maxsize") -> 50 to 120
             n.startsWith("minsize") -> 0 to 100
+            n.startsWith("fontscale") -> 0 to 200
             n.startsWith("justifylast") || n.startsWith("justifyflow") -> 0 to 100
             // materialssize, materialswidth, materialsline (but not the "materials" text itself)
             n.startsWith("materials") && n != "materials" -> 50 to 150

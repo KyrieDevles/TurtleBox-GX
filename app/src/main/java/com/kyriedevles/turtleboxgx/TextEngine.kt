@@ -60,6 +60,7 @@ class TextOptions(
     val justify: Float = 0f, // 0 off, 100 light, 200 normal, 400 full, 500 balanced reflow
     val letterSpace: Float = 0f, // em
     val lastStretch: Float = 0f, // % of the last line's gap to the box width that is closed (0..100, fractions allowed)
+    val fontScale: Float = 0f, // manual font size in % of the layout size (0 = automatic fit)
     val flow: Float = 0f, // % of the whole-text reflow toward the narrowest wrap with the same line count (0..100)
     val spacing: Float = 1f, // line spacing multiplier
 )
@@ -248,6 +249,10 @@ class TextEngine(
             if (cap < maxSize) maxSize = cap
         }
         if (opt.fitMode == 7) minSize = maxSize
+        if (opt.fontScale > 0f) {
+            minSize = opt.fontScale * baseSize / 100f
+            maxSize = minSize
+        }
 
         var lo = minSize
         var hi = maxSize
@@ -259,7 +264,7 @@ class TextEngine(
         val size = lo
         paint.textSize = size
         var scale = 1f
-        if (!fits(size, 1f)) {
+        if (opt.fontScale <= 0f && !fits(size, 1f)) {
             var a = phase2Floor
             var b = 1f
             while (b - a > 0.005f) {
