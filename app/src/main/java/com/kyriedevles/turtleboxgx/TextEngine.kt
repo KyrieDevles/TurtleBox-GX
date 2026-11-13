@@ -92,11 +92,13 @@ class TextEngine(
     /** Height of the materials row as a percent of a normal line (100 = normal). Lower pulls the text under it up. */
     private val materialsLinePct: Float = 100f,
 ) {
-    // Horizontal / vertical scale: lay the text out in a box 1/scale as big, then draw it stretched by the scale.
+    // Horizontal / vertical scale work like Photoshop's: they stretch the glyphs after the normal fit. Horizontal scale
+    // re-wraps the lines at the scaled width; vertical scale stretches each line about its baseline (leading does not change).
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
     private val vs = (opt.vScale.takeIf { it > 0f } ?: 100f) / 100f
-    private val width: Int = (boxWidth / hs).toInt().coerceAtLeast(1)
-    private val height: Float = boxHeight / vs
+    private val width: Int = boxWidth
+    private val height: Float = boxHeight
+    private var effWidth = boxWidth
     private val styled = parseMarkup(rawText)
     private val text: String = styled.text
     private val styles: IntArray = styled.styles
@@ -320,6 +322,11 @@ class TextEngine(
                 sl = if (flowPct >= 100f || target >= width) best else build(target).takeIf { it.lineCount == n } ?: best
             }
         }
+        effWidth = width
+        if (hs != 1f) {
+            effWidth = (width / hs).toInt().coerceAtLeast(1)
+            sl = build(effWidth)
+        }
         layout = sl
         matLayout = null
         matH = 0f
@@ -338,7 +345,7 @@ class TextEngine(
             paint.textSize = bodySize
             paint.textScaleX = bodyScale
         }
-        return (sl.height.toFloat() + matH) * vs
+        return sl.height.toFloat() + matH
     }
 
     private fun drawMaterials(c: Canvas, left: Float, top: Float, h: Int, ml: StaticLayout) {
@@ -360,12 +367,12 @@ class TextEngine(
     /** Draws the laid-out text with its top at [top]. [h] is 0 left, 1 centre, 2 right. */
     fun draw(c: Canvas, left: Float, top: Float, h: Int) {
         val sl = layout ?: return
-        val w = width.toFloat()
+        val w = effWidth.toFloat()
         val spaceW = exactWidth(paint, " ")
         val baseSpacing = paint.letterSpacing
-        val saved = c.save()
-        if (hs != 1f || vs != 1f) c.scale(hs, vs, left, top)
         matLayout?.let { drawMaterials(c, left, top, h, it) }
+        val saved = c.save()
+        if (hs != 1f) c.scale(hs, 1f, left, top)
         val bodyTop = top + matH
         for (i in 0 until sl.lineCount) {
             val start = sl.getLineStart(i)
@@ -373,7 +380,9 @@ class TextEngine(
             while (end > start && (text[end - 1] == '\n' || text[end - 1] == ' ')) end--
             if (end <= start) continue
             val seg = text.substring(start, end)
-            val baseline = bodyTop + sl.getLineBaseline(i) - opt.baselineShift / vs
+            val baseline = bodyTop + sl.getLineBaseline(i) - opt.baselineShift
+            val lineSaved = c.save()
+            if (vs != 1f) c.scale(1f, vs, left, baseline)
             val lw = rangeWidth(start, end)
             val endsParagraph = i == sl.lineCount - 1 || text[maxOf(sl.getLineEnd(i) - 1, 0)] == '\n'
             val gaps = seg.count { it == ' ' }
@@ -436,6 +445,7 @@ class TextEngine(
                     from = to + 1
                 }
             }
+            c.restoreToCount(lineSaved)
             paint.letterSpacing = baseSpacing
         }
         c.restoreToCount(saved)
