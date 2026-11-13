@@ -267,7 +267,7 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
 
     override fun onDraw(cv: Canvas) {
         val w = width - 2 * pad
-        val barH = height - dp(34)
+        val barH = height - dp(32)
         val sorted = stops.sortedBy { it.pos }
         if (sorted.size >= 2) {
             bar.shader = LinearGradient(pad, 0f, pad + w, 0f, IntArray(sorted.size) { sorted[it].color or (0xff shl 24) }, FloatArray(sorted.size) { sorted[it].pos }, Shader.TileMode.CLAMP)
@@ -281,17 +281,17 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
         edge.strokeWidth = dp(2)
         edge.color = Color.parseColor("#ff1493")
         cv.drawRoundRect(RectF(dp(1), dp(1), width - dp(1), barH - dp(1)), rr, rr, edge)
-        for (s in stops) {
+        val order = stops.filter { it !== selected } + selected
+        for (s in order) {
             val x = pad + s.pos * w
             val on = s === selected
-            val cy = barH + dp(19)
+            val cy = barH + dp(18)
+            val r = dp(if (on) 12 else 9)
             box.style = Paint.Style.FILL
             box.color = if (on) Color.parseColor("#ff1493") else Color.parseColor("#e7c3d6")
-            cv.drawCircle(x, cy, dp(if (on) 13 else 11), box)
-            box.color = Color.BLACK
-            cv.drawCircle(x, cy, dp(if (on) 10 else 8.5f.toInt()), box)
+            cv.drawCircle(x, cy, r, box)
             box.color = s.color or (0xff shl 24)
-            cv.drawCircle(x, cy, dp(if (on) 8 else 7), box)
+            cv.drawCircle(x, cy, r - dp(if (on) 3 else 2), box)
             if (on) {
                 box.color = Color.parseColor("#ff1493")
                 cv.drawRect(x - dp(1), barH, x + dp(1), barH + dp(6), box)

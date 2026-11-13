@@ -328,8 +328,25 @@ class NameStyleEditor(
             return m
         }
 
+        fun card(title: String?): LinearLayout {
+            val c = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(12))
+                background = GradientDrawable().apply { setColor(Color.parseColor("#0f0a14")); setStroke(dp(1) + 1, Color.parseColor("#2c1226")); cornerRadius = dp(14).toFloat() }
+            }
+            if (title != null) c.addView(TextView(activity).apply {
+                text = title.uppercase()
+                setTextColor(Color.parseColor("#b98aa5"))
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                letterSpacing = 0.05f
+                setPadding(0, 0, 0, dp(6))
+            })
+            body.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+            return c
+        }
+
         fun gradientUi() {
-            header("Has Gradient?", "grad")
             val stops = ArrayList<GStop>()
             for (part in (st.v["gstops"] ?: "").split(',')) {
                 val p = part.split('|')
@@ -340,24 +357,69 @@ class NameStyleEditor(
                 stops.add(GStop(0f, parseHex(st.v["fill"] ?: "#000000")))
                 stops.add(GStop(1f, Color.WHITE))
             }
-            fun save() {
-                st.v["gstops"] = stops.sortedBy { it.pos }.joinToString(",") { String.format(java.util.Locale.US, "%.3f", it.pos) + "|" + hex(it.color) }
-                commit()
-            }
-            if (st.v["gstops"] == null) st.v["gstops"] = stops.sortedBy { it.pos }.joinToString(",") { String.format(java.util.Locale.US, "%.3f", it.pos) + "|" + hex(it.color) }
+            fun ser() = stops.sortedBy { it.pos }.joinToString(",") { String.format(java.util.Locale.US, "%.3f", it.pos) + "|" + hex(it.color) }
+            fun save() { st.v["gstops"] = ser(); commit() }
+            if (st.v["gstops"] == null) st.v["gstops"] = ser()
             val stopAt = EditText(activity)
+            val info = TextView(activity).apply { setTextColor(Color.parseColor("#b98aa5")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setSingleLine(true) }
             lateinit var picker: ColorPickerView
             lateinit var bar: GradientBarView
-            bar = GradientBarView(activity, stops, { s ->
-                stopAt.setText(Math.round(s.pos * 100f).toString())
-                picker.setColor(s.color)
-            }) {
+            lateinit var addBtn: Button
+            fun refreshInfo() {
+                val sorted = stops.sortedBy { it.pos }
+                info.text = "· ${sorted.indexOf(bar.selected) + 1} of ${stops.size}"
+                addBtn.text = "Add Point (${stops.size}/20)"
+            }
+            fun select(g: GStop) {
+                bar.selected = g
+                stopAt.setText(Math.round(g.pos * 100f).toString())
+                picker.setColor(g.color)
+                bar.invalidate()
+                refreshInfo()
+            }
+            fun smallBtn(t: String, bg: String, click: () -> Unit) = Button(activity).apply {
+                text = t
+                setAllCaps(false)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.parseColor(bg))
+                tidyBtn(this, 13f)
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor(bg)); cornerRadius = dp(10).toFloat() }
+                setOnClickListener { click() }
+            }
+            fun sq(t: String, click: () -> Unit) = smallBtn(t, "#ff1493", click).apply { setTextColor(pink) }
+
+            // Card 1: switch, bar, stop stepper, add / remove
+            val c1 = card(null)
+            val sw = android.widget.Switch(activity).apply {
+                text = "Has Gradient?"
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                isChecked = st.v["grad"] == "1"
+                val checked = intArrayOf(android.R.attr.state_checked)
+                thumbTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.WHITE, Color.parseColor("#c98aae")))
+                trackTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#4a1a35")))
+                setOnCheckedChangeListener { _, on -> setV("grad", if (on) "1" else "0"); rebuildChips() }
+            }
+            c1.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+            bar = GradientBarView(activity, stops, { g -> select(g) }) {
                 stopAt.setText(Math.round(bar.selected.pos * 100f).toString())
                 save()
+                refreshInfo()
             }
-            body.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)))
+            c1.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)))
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            row.addView(label("Stop at:"))
+            row.addView(sq("◀") {
+                val sorted = stops.sortedBy { it.pos }
+                val i = sorted.indexOf(bar.selected)
+                select(sorted[(i - 1 + sorted.size) % sorted.size])
+            }, LinearLayout.LayoutParams(dp(34), dp(32)))
+            val mid = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(10).toFloat() }
+            }
+            mid.addView(label("Stop at").apply { setPadding(0, 0, dp(6), 0) })
             stopAt.apply {
                 inputType = InputType.TYPE_CLASS_NUMBER
                 setSingleLine(true)
@@ -365,7 +427,7 @@ class NameStyleEditor(
                 setTextColor(pink)
                 typeface = Typeface.DEFAULT_BOLD
                 tidyField(this)
-                background = GradientDrawable().apply { setColor(Color.parseColor("#000000")); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
+                background = null
                 addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                     override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -376,33 +438,22 @@ class NameStyleEditor(
                             bar.selected.pos = np
                             bar.invalidate()
                             save()
+                            refreshInfo()
                         }
                     }
                 })
             }
-            row.addView(stopAt, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(8) })
-            fun smallBtn(t: String, bg: String, click: () -> Unit) = Button(activity).apply {
-                text = t
-                setAllCaps(false)
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.parseColor(bg))
-                tidyBtn(this, 13f)
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor(bg)); cornerRadius = dp(10).toFloat() }
-                setOnClickListener { click() }
-            }
-            val btnRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-            val removeBtn = smallBtn("Remove", "#ff4d6d") {
-                if (stops.size > 2) {
-                    stops.remove(bar.selected)
-                    bar.selected = stops.first()
-                    stopAt.setText(Math.round(bar.selected.pos * 100f).toString())
-                    picker.setColor(bar.selected.color)
-                    bar.invalidate()
-                    save()
-                }
-            }
-            body.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
-            val addBtn = smallBtn("Add Point (${stops.size}/20)", "#ff6ec7") {
+            mid.addView(stopAt, LinearLayout.LayoutParams(dp(44), dp(30)))
+            mid.addView(TextView(activity).apply { text = "%"; setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f) })
+            mid.addView(info.apply { setPadding(dp(6), 0, 0, 0) })
+            row.addView(mid, LinearLayout.LayoutParams(0, dp(32), 1f).apply { setMargins(dp(8), 0, dp(8), 0) })
+            row.addView(sq("▶") {
+                val sorted = stops.sortedBy { it.pos }
+                val i = sorted.indexOf(bar.selected)
+                select(sorted[(i + 1) % sorted.size])
+            }, LinearLayout.LayoutParams(dp(34), dp(32)))
+            c1.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            addBtn = smallBtn("Add Point", "#ff6ec7") {
                 if (stops.size < 20) {
                     val sorted = stops.sortedBy { it.pos }
                     var bi = 0
@@ -410,28 +461,57 @@ class NameStyleEditor(
                     for (i in 0 until sorted.size - 1) if (sorted[i + 1].pos - sorted[i].pos > gap) { gap = sorted[i + 1].pos - sorted[i].pos; bi = i }
                     val a = sorted[bi]
                     val b = sorted[bi + 1]
-                    val ns = GStop((a.pos + b.pos) / 2f, android.graphics.Color.rgb(
+                    val ns = GStop((a.pos + b.pos) / 2f, Color.rgb(
                         (Color.red(a.color) + Color.red(b.color)) / 2, (Color.green(a.color) + Color.green(b.color)) / 2, (Color.blue(a.color) + Color.blue(b.color)) / 2,
                     ))
                     stops.add(ns)
-                    bar.selected = ns
-                    stopAt.setText(Math.round(ns.pos * 100f).toString())
-                    picker.setColor(ns.color)
-                    bar.invalidate()
+                    select(ns)
                     save()
-                    revise()
                 }
             }
+            val removeBtn = smallBtn("Remove", "#ff4d6d") {
+                if (stops.size > 2) {
+                    val sorted = stops.sortedBy { it.pos }
+                    val i = sorted.indexOf(bar.selected)
+                    stops.remove(bar.selected)
+                    val rest = stops.sortedBy { it.pos }
+                    select(rest[(i - 1).coerceIn(0, rest.size - 1)])
+                    save()
+                }
+            }
+            val btnRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             btnRow.addView(addBtn, LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
             btnRow.addView(removeBtn, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(4) })
-            body.addView(btnRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-            val side = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-            val left = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-            dial("Direction", "gangle", 0, left, 84)
-            side.addView(left, LinearLayout.LayoutParams(dp(116), ViewGroup.LayoutParams.WRAP_CONTENT))
+            c1.addView(btnRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+
+            // Card 2: direction
+            val c2 = card("Direction")
+            val dRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val d = DialView(activity) { a -> setV("gangle", a.toString()) }
+            d.angle = st.v["gangle"]?.toFloatOrNull()?.toInt() ?: 0
+            dRow.addView(d, LinearLayout.LayoutParams(dp(76), dp(76)))
+            val dCol = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0) }
+            val deg = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setSingleLine(true) }
+            fun upd() { deg.text = "${d.angle}°" }
+            fun setAng(a: Int) { d.angle = a; setV("gangle", d.angle.toString()); upd() }
+            val chips = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+            for (a in listOf(0, 90, 180, 270)) chips.addView(smallBtn("$a°", "#ff6ec7") { setAng(a) }, LinearLayout.LayoutParams(0, dp(30), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
+            dCol.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val stepRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            stepRow.addView(sq("−") { setAng(d.angle - 1) }, LinearLayout.LayoutParams(dp(34), dp(30)))
+            stepRow.addView(deg, LinearLayout.LayoutParams(0, dp(30), 1f))
+            stepRow.addView(sq("+") { setAng(d.angle + 1) }, LinearLayout.LayoutParams(dp(34), dp(30)))
+            dCol.addView(stepRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            dRow.addView(dCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            d.setOnTouchListener { _, ev -> val r = d.onTouchEvent(ev); upd(); r }
+            upd()
+            c2.addView(dRow)
+
+            // Card 3: colour of the selected stop
+            val c3 = card("Stop colour")
             picker = ColorPickerView(activity, bar.selected.color, true, true) { col -> bar.selected.color = col; bar.invalidate(); save() }
-            side.addView(picker, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(10) })
-            body.addView(side, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            c3.addView(picker)
+            refreshInfo()
         }
 
         fun sectionBody() {
@@ -546,6 +626,32 @@ class NameStyleEditor(
             }
             modeRow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
+        val saveBtn = Button(activity).apply {
+                        text = "Save preset"
+                        tidyBtn(this, 14f)
+                        setAllCaps(false)
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(pink)
+                        background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(11).toFloat() }
+                        setOnClickListener {
+                            val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
+                            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                                .setTitle("Save preset")
+                                .setView(input)
+                                .setPositiveButton("Save") { _, _ ->
+                                    val n = input.text.toString().trim().replace('\t', ' ').replace('\n', ' ')
+                                    if (n.isNotEmpty()) {
+                                        val m = userPresets()
+                                        m[n] = st.serialize().substringAfter('|')
+                                        saveUserPresets(m)
+                                        onChanged()
+                                        rebuild()
+                                    }
+                                }
+                                .setNegativeButton("Cancel", null)
+                                .show()
+                        }
+                    }
         var chipFlow: FlowLayout? = null
         val chipButtons = LinkedHashMap<String, TextView>()
         fun used(s: String) = when (s) {
@@ -566,6 +672,7 @@ class NameStyleEditor(
             body.removeAllViews()
             chipButtons.clear()
             tabScroll.visibility = if (st.mode == "custom") View.VISIBLE else View.GONE
+            saveBtn.visibility = if (st.mode == "custom") View.VISIBLE else View.GONE
             paintMode()
             refreshPreview()
             when (st.mode) {
@@ -586,32 +693,6 @@ class NameStyleEditor(
                         tabRow.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(6) })
                     }
                     sectionBody()
-                    val save = Button(activity).apply {
-                        text = "Save preset"
-                        tidyBtn(this, 14f)
-                        setAllCaps(false)
-                        setTextColor(Color.WHITE)
-                        setBackgroundColor(Color.parseColor("#ff1493"))
-                        setOnClickListener {
-                            val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
-                            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-                                .setTitle("Save preset")
-                                .setView(input)
-                                .setPositiveButton("Save") { _, _ ->
-                                    val n = input.text.toString().trim().replace('\t', ' ').replace('\n', ' ')
-                                    if (n.isNotEmpty()) {
-                                        val m = userPresets()
-                                        m[n] = st.serialize().substringAfter('|')
-                                        saveUserPresets(m)
-                                        onChanged()
-                                        rebuild()
-                                    }
-                                }
-                                .setNegativeButton("Cancel", null)
-                                .show()
-                        }
-                    }
-                    body.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(8) })
                     val mine = userPresets()
                     if (mine.isNotEmpty()) {
                         body.addView(label("Your presets (tap to load, long-press to delete)"))
@@ -683,6 +764,7 @@ class NameStyleEditor(
             addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
             addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(saveBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(6); bottomMargin = dp(10) })
         }
         if (land) box.addView(head, 0)
         box.setPadding(0, dp(2), 0, dp(4))
