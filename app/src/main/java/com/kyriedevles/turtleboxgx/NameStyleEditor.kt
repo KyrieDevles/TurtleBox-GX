@@ -93,6 +93,27 @@ class NameStyleEditor(
         layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
+    /** A number / text box that keeps its text fully visible at a small fixed height. */
+    private fun tidyField(et: EditText, sp: Float = 14f) {
+        et.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+        et.setPadding(dp(6), 0, dp(6), 0)
+        et.minimumHeight = 0
+        et.minHeight = 0
+        et.includeFontPadding = false
+        et.gravity = Gravity.CENTER
+    }
+
+    private fun tidyBtn(b: Button, sp: Float) {
+        b.minimumHeight = 0
+        b.minHeight = 0
+        b.minimumWidth = 0
+        b.minWidth = 0
+        b.setPadding(dp(6), 0, dp(6), 0)
+        b.includeFontPadding = false
+        b.stateListAnimator = null
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+    }
+
     private fun label(t: String) = TextView(activity).apply {
         text = t
         setTextColor(soft)
@@ -178,8 +199,8 @@ class NameStyleEditor(
             val px = PadView(activity, range) { x, y -> st.v[kx] = x.toString(); st.v[ky] = y.toString(); commit() }
             px.px = st.v[kx]?.toFloatOrNull()?.toInt() ?: 0
             px.py = st.v[ky]?.toFloatOrNull()?.toInt() ?: 0
-            row.addView(px, LinearLayout.LayoutParams(dp(96), dp(96)))
-            val side = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
+            row.addView(px, LinearLayout.LayoutParams(dp(196), dp(196)))
+            val side = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, 0, 0) }
             fun field(name: String, k: String, other: () -> Unit) {
                 side.addView(label(name))
                 val et = EditText(activity).apply {
@@ -202,11 +223,12 @@ class NameStyleEditor(
                         }
                     })
                 }
-                side.addView(et, LinearLayout.LayoutParams(dp(90), dp(34)))
+                tidyField(et)
+                side.addView(et, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
             }
-            field("X Offset:", kx) { }
-            field("Y Offset:", ky) { }
-            row.addView(side)
+            field("X", kx) { }
+            field("Y", ky) { }
+            row.addView(side, LinearLayout.LayoutParams(0, dp(196), 1f))
             body.addView(label("Position"))
             body.addView(row)
         }
@@ -217,13 +239,14 @@ class NameStyleEditor(
             d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
             parent.addView(d, LinearLayout.LayoutParams(dp(size), dp(size)))
             val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val txt = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f) }
+            val txt = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) }
             fun upd() { txt.text = "${d.angle}°" }
             fun stepBtn(t: String, delta: Int) = Button(activity).apply {
                 text = t
                 setTextColor(pink)
                 typeface = Typeface.DEFAULT_BOLD
                 background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
+                tidyBtn(this, 16f)
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
             step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(30), dp(30)))
@@ -319,8 +342,9 @@ class NameStyleEditor(
                 inputType = InputType.TYPE_CLASS_NUMBER
                 setSingleLine(true)
                 setText(Math.round(bar.selected.pos * 100f).toString())
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
+                setTextColor(pink)
+                typeface = Typeface.DEFAULT_BOLD
+                tidyField(this)
                 background = GradientDrawable().apply { setColor(Color.parseColor("#000000")); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
                 addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -336,17 +360,18 @@ class NameStyleEditor(
                     }
                 })
             }
-            row.addView(stopAt, LinearLayout.LayoutParams(dp(60), dp(34)).apply { leftMargin = dp(6) })
+            row.addView(stopAt, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(8) })
             fun smallBtn(t: String, bg: String, click: () -> Unit) = Button(activity).apply {
                 text = t
                 setAllCaps(false)
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor(bg))
+                tidyBtn(this, 13f)
                 background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor(bg)); cornerRadius = dp(10).toFloat() }
                 setOnClickListener { click() }
             }
-            row.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
-            row.addView(smallBtn("Remove", "#ff4d6d") {
+            val btnRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+            val removeBtn = smallBtn("Remove", "#ff4d6d") {
                 if (stops.size > 2) {
                     stops.remove(bar.selected)
                     bar.selected = stops.first()
@@ -355,9 +380,9 @@ class NameStyleEditor(
                     bar.invalidate()
                     save()
                 }
-            }, LinearLayout.LayoutParams(dp(84), dp(34)))
-            body.addView(row)
-            body.addView(smallBtn("Add Point (${stops.size}/20)", "#ff6ec7") {
+            }
+            body.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
+            val addBtn = smallBtn("Add Point (${stops.size}/20)", "#ff6ec7") {
                 if (stops.size < 20) {
                     val sorted = stops.sortedBy { it.pos }
                     var bi = 0
@@ -376,7 +401,10 @@ class NameStyleEditor(
                     save()
                     revise()
                 }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(4) })
+            }
+            btnRow.addView(addBtn, LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
+            btnRow.addView(removeBtn, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(4) })
+            body.addView(btnRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
             val side = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             val left = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
             dial("Direction", "gangle", 0, left, 84)
@@ -532,6 +560,7 @@ class NameStyleEditor(
                     sectionBody()
                     val save = Button(activity).apply {
                         text = "Save preset"
+                        tidyBtn(this, 14f)
                         setAllCaps(false)
                         setTextColor(Color.WHITE)
                         setBackgroundColor(Color.parseColor("#ff1493"))

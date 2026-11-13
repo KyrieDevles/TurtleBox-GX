@@ -139,6 +139,10 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
             setTextColor(Color.parseColor("#ff6ec7"))
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+            setPadding(8, 0, 8, 0)
+            minimumHeight = 0
+            includeFontPadding = false
             setSelectAllOnFocus(true)
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
         }
@@ -251,6 +255,7 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
     var selected: GStop = stops.first()
     private val bar = Paint()
     private val box = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG)
     private val pad get() = dp(14)
 
     override fun onDraw(cv: Canvas) {
@@ -263,7 +268,12 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
             bar.shader = null
             bar.color = sorted.firstOrNull()?.color ?: Color.BLACK
         }
-        cv.drawRect(pad, 0f, pad + w, barH, bar)
+        val rr = dp(7)
+        cv.drawRoundRect(RectF(pad, 0f, pad + w, barH), rr, rr, bar)
+        edge.style = Paint.Style.STROKE
+        edge.strokeWidth = dp(2)
+        edge.color = Color.parseColor("#ff1493")
+        cv.drawRoundRect(RectF(pad + dp(1), dp(1), pad + w - dp(1), barH - dp(1)), rr, rr, edge)
         for (s in stops) {
             val x = pad + s.pos * w
             val on = s === selected
