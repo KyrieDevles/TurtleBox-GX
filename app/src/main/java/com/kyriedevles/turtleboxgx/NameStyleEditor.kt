@@ -82,7 +82,8 @@ class NameStyleEditor(
         this.text = text
         setTextColor(if (on) pink else soft)
         typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setPadding(dp(10), dp(6), dp(10), dp(6))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         background = GradientDrawable().apply {
             setColor(Color.BLACK)
             setStroke(dp(2), if (on) hot else Color.parseColor("#3a1a2c"))
@@ -95,8 +96,8 @@ class NameStyleEditor(
     private fun label(t: String) = TextView(activity).apply {
         text = t
         setTextColor(soft)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        setPadding(0, dp(6), 0, dp(4))
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        setPadding(0, dp(4), 0, dp(2))
     }
 
     fun show() {
@@ -104,7 +105,7 @@ class NameStyleEditor(
         var section = "Color"
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(4), dp(18), dp(4))
+            setPadding(0, dp(2), 0, dp(2))
         }
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         val before = state.values[key]
@@ -155,12 +156,12 @@ class NameStyleEditor(
             val cb = android.widget.Switch(activity).apply {
                 text = name
                 setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 isChecked = st.v[k] == "1"
                 thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
                 trackTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#5a1a40"))
                 setBackgroundColor(Color.parseColor("#14101a"))
-                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setPadding(dp(8), dp(4), dp(8), dp(4))
                 setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
             }
             body.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -177,7 +178,7 @@ class NameStyleEditor(
             val px = PadView(activity, range) { x, y -> st.v[kx] = x.toString(); st.v[ky] = y.toString(); commit() }
             px.px = st.v[kx]?.toFloatOrNull()?.toInt() ?: 0
             px.py = st.v[ky]?.toFloatOrNull()?.toInt() ?: 0
-            row.addView(px, LinearLayout.LayoutParams(dp(150), dp(150)))
+            row.addView(px, LinearLayout.LayoutParams(dp(96), dp(96)))
             val side = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
             fun field(name: String, k: String, other: () -> Unit) {
                 side.addView(label(name))
@@ -201,7 +202,7 @@ class NameStyleEditor(
                         }
                     })
                 }
-                side.addView(et, LinearLayout.LayoutParams(dp(110), dp(42)))
+                side.addView(et, LinearLayout.LayoutParams(dp(90), dp(34)))
             }
             field("X Offset:", kx) { }
             field("Y Offset:", ky) { }
@@ -225,9 +226,9 @@ class NameStyleEditor(
                 background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
-            step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(36), dp(38)))
-            step.addView(txt, LinearLayout.LayoutParams(0, dp(44), 1f))
-            step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(36), dp(38)))
+            step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(30), dp(30)))
+            step.addView(txt, LinearLayout.LayoutParams(0, dp(30), 1f))
+            step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(30), dp(30)))
             upd()
             // keep the number in step while dragging the dial
             val orig = d
@@ -243,12 +244,12 @@ class NameStyleEditor(
             var i = 0
             while (i < items.size) {
                 val r = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-                for (j in i until min(i + 2, items.size)) {
+                for (j in i until min(i + 3, items.size)) {
                     val iv = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
                     val bd = GradientDrawable().apply { setColor(Color.parseColor("#8a8a90")); cornerRadius = dp(10).toFloat() }
                     bd.setStroke(dp(3), if (selected(j)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
                     iv.background = bd
-                    iv.setPadding(dp(4), dp(4), dp(4), dp(4))
+                    iv.setPadding(dp(3), dp(2), dp(3), dp(2))
                     iv.contentDescription = items[j].first
                     iv.setOnClickListener {
                         pick(j)
@@ -256,10 +257,10 @@ class NameStyleEditor(
                     }
                     views.add(iv)
                     borders.add(bd)
-                    r.addView(iv, LinearLayout.LayoutParams(0, dp(66), 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
+                    r.addView(iv, LinearLayout.LayoutParams(0, dp(46), 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
                 }
                 grid.addView(r)
-                i += 2
+                i += 3
             }
             body.addView(grid)
             if (previewer == null) {
@@ -311,7 +312,7 @@ class NameStyleEditor(
                 stopAt.setText(Math.round(bar.selected.pos * 100f).toString())
                 save()
             }
-            body.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(86)))
+            body.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(66)))
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             row.addView(label("Stop at:"))
             stopAt.apply {
@@ -335,7 +336,7 @@ class NameStyleEditor(
                     }
                 })
             }
-            row.addView(stopAt, LinearLayout.LayoutParams(dp(80), dp(42)).apply { leftMargin = dp(8) })
+            row.addView(stopAt, LinearLayout.LayoutParams(dp(60), dp(34)).apply { leftMargin = dp(6) })
             fun smallBtn(t: String, bg: String, click: () -> Unit) = Button(activity).apply {
                 text = t
                 setAllCaps(false)
@@ -354,7 +355,7 @@ class NameStyleEditor(
                     bar.invalidate()
                     save()
                 }
-            }, LinearLayout.LayoutParams(dp(100), dp(42)))
+            }, LinearLayout.LayoutParams(dp(84), dp(34)))
             body.addView(row)
             body.addView(smallBtn("Add Point (${stops.size}/20)", "#ff6ec7") {
                 if (stops.size < 20) {
@@ -375,11 +376,11 @@ class NameStyleEditor(
                     save()
                     revise()
                 }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(4) })
             val side = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             val left = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-            dial("Direction", "gangle", 0, left, 104)
-            side.addView(left, LinearLayout.LayoutParams(dp(112), ViewGroup.LayoutParams.WRAP_CONTENT))
+            dial("Direction", "gangle", 0, left, 84)
+            side.addView(left, LinearLayout.LayoutParams(dp(92), ViewGroup.LayoutParams.WRAP_CONTENT))
             picker = ColorPickerView(activity, bar.selected.color, true, true) { col -> bar.selected.color = col; bar.invalidate(); save() }
             side.addView(picker, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(10) })
             body.addView(side, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -473,8 +474,8 @@ class NameStyleEditor(
                 text = lab
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                setPadding(0, dp(10), 0, dp(10))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setPadding(0, dp(8), 0, dp(8))
             }
             modeBtns[mode] = tv
             tv.setOnClickListener {
@@ -553,7 +554,7 @@ class NameStyleEditor(
                                 .show()
                         }
                     }
-                    body.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(12) })
+                    body.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(8) })
                     val mine = userPresets()
                     if (mine.isNotEmpty()) {
                         body.addView(label("Your presets (tap to load, long-press to delete)"))
@@ -580,42 +581,60 @@ class NameStyleEditor(
         val screenH = activity.resources.displayMetrics.heightPixels
         val head = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            addView(strip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply { bottomMargin = dp(8) })
-            addView(modeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+            addView(strip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply { bottomMargin = dp(6) })
+            addView(modeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) })
             addView(tabScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4) })
         }
-        val grip = TextView(activity).apply {
-            text = "━━━   drag up or down to resize   ━━━"
-            setTextColor(soft)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        // A short pill handle: drag it (or the title) up or down to resize the panel.
+        val grip = View(activity).apply {
+            background = GradientDrawable().apply { setColor(pink); cornerRadius = dp(3).toFloat() }
+        }
+        val gripBox = LinearLayout(activity).apply {
             gravity = Gravity.CENTER
-            setPadding(0, dp(10), 0, dp(10))
+            setPadding(0, dp(8), 0, dp(4))
+            addView(grip, LinearLayout.LayoutParams(dp(44), dp(5)))
+        }
+        val titleTv = TextView(activity).apply {
+            text = "Name Style"
+            setTextColor(Color.parseColor("#ff4da6"))
+            typeface = Typeface.DEFAULT_BOLD
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        fun textBtn(t: String, c: Int) = TextView(activity).apply {
+            text = t
+            setTextColor(c)
+            typeface = Typeface.DEFAULT_BOLD
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+        }
+        val cancelTv = textBtn("CANCEL", soft)
+        val doneTv = textBtn("DONE", pink)
+        val titleRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(titleTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(cancelTv)
+            addView(doneTv)
         }
         // In landscape there is little height, so the preview and tabs scroll with everything else.
         panelH = if (lastH > 0) lastH else if (land) (screenH * 0.86f).toInt() else (screenH * 0.6f).toInt()
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(2), dp(18), 0)
-            addView(grip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            setPadding(dp(14), 0, dp(14), 0)
+            addView(gripBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
             addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         if (land) box.addView(head, 0)
-        box.setPadding(0, dp(4), 0, dp(4))
+        box.setPadding(0, dp(2), 0, dp(4))
         refreshPreview()
 
         var finished = false
-        val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Name Style")
-            .setView(root)
-            .setPositiveButton("Done") { _, _ -> finished = true; onChanged() }
-            .setNegativeButton("Cancel") { _, _ ->
-                finished = true
-                if (before == null) state.values.remove(key) else state.values[key] = before
-                if (beforeUser == null) state.values.remove(userKey) else state.values[userKey] = beforeUser
-                onChanged()
-            }
-            .create()
+        val dlg = android.app.Dialog(activity)
+        dlg.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dlg.setContentView(root)
         dlg.setOnDismissListener {
             handler.removeCallbacksAndMessages(null)
             if (!finished) {
@@ -625,6 +644,8 @@ class NameStyleEditor(
             }
             after()
         }
+        doneTv.setOnClickListener { finished = true; onChanged(); dlg.dismiss() }
+        cancelTv.setOnClickListener { dlg.dismiss() }
         dlg.show()
         val w = dlg.window
         w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, panelH)
@@ -635,12 +656,9 @@ class NameStyleEditor(
         val outer = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#ff00aa"), Color.parseColor("#ff6ec7")),
-        ).apply { cornerRadius = dp(22).toFloat() }
-        val inner = GradientDrawable().apply { setColor(Color.parseColor("#000000")); cornerRadius = dp(20).toFloat() }
+        ).apply { cornerRadius = dp(20).toFloat() }
+        val inner = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = dp(18).toFloat() }
         w?.setBackgroundDrawable(LayerDrawable(arrayOf(outer, InsetDrawable(inner, dp(2)))))
-        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(soft)
         var startY = 0f
         var startH = 0
         val drag = View.OnTouchListener { _, ev ->
@@ -657,8 +675,8 @@ class NameStyleEditor(
             }
             true
         }
-        grip.setOnTouchListener(drag)
-        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setOnTouchListener(drag)
+        gripBox.setOnTouchListener(drag)
+        titleTv.setOnTouchListener(drag)
     }
 
     private var panelH = 0

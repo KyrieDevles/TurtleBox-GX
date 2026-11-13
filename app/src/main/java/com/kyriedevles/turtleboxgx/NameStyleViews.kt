@@ -109,8 +109,8 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
         sv = if (full) SvView(c) { s, v -> hsv[1] = s; hsv[2] = v; pushed() } else null
         hueV = if (full) HueView(c) { h -> hsv[0] = h; sv?.hue = h; pushed() } else null
         if (sv != null && hueV != null) {
-            addView(sv, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 104 else 150).toInt()))
-            addView(hueV, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34).toInt()))
+            addView(sv, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 88 else 130).toInt()))
+            addView(hueV, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 26 else 30).toInt()))
             sv.hue = hsv[0]; sv.sat = hsv[1]; sv.value = hsv[2]; hueV.hue = hsv[0]
         }
         val palette = listOf(
@@ -126,14 +126,14 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
                     background = GradientDrawable().apply { setColor(Color.parseColor(h)); setStroke(dp(1).toInt().coerceAtLeast(1), Color.parseColor("#3a1a2c")) }
                     setOnClickListener { setColor(Color.parseColor(h)); onColor(Color.parseColor(h)) }
                 }
-                r.addView(cell, LayoutParams(0, dp(26).toInt(), 1f).apply { setMargins(2, 2, 2, 2) })
+                r.addView(cell, LayoutParams(0, dp(22).toInt(), 1f).apply { setMargins(2, 1, 2, 1) })
             }
             grid.addView(r)
         }
         if (!compact) addView(grid, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
         val info = LinearLayout(c).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         preview = View(c)
-        info.addView(preview, LayoutParams(dp(30).toInt(), dp(30).toInt()).apply { rightMargin = dp(8).toInt() })
+        info.addView(preview, LayoutParams(dp(26).toInt(), dp(26).toInt()).apply { rightMargin = dp(8).toInt() })
         hexBox = EditText(c).apply {
             setSingleLine(true)
             setTextColor(Color.parseColor("#ff6ec7"))
@@ -142,7 +142,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
             setSelectAllOnFocus(true)
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
         }
-        info.addView(hexBox, if (compact) LayoutParams(0, dp(40).toInt(), 1f) else LayoutParams(dp(110).toInt(), dp(40).toInt()))
+        info.addView(hexBox, if (compact) LayoutParams(0, dp(34).toInt(), 1f) else LayoutParams(dp(100).toInt(), dp(34).toInt()))
         rgb = TextView(c).apply { setTextColor(Color.parseColor("#e7c3d6")); setPadding(dp(12).toInt(), 0, 0, 0) }
         if (!compact) info.addView(rgb)
         addView(info, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
