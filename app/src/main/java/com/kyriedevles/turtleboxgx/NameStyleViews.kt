@@ -147,7 +147,13 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
         }
         info.addView(hexBox, if (compact) LayoutParams(0, dp(34).toInt(), 1f) else LayoutParams(dp(100).toInt(), dp(34).toInt()))
-        rgb = TextView(c).apply { setTextColor(Color.parseColor("#e7c3d6")); setPadding(dp(12).toInt(), 0, 0, 0) }
+        rgb = TextView(c).apply {
+            setTextColor(Color.parseColor("#e7c3d6"))
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
+            letterSpacing = 0f
+            setSingleLine(true)
+            setPadding(dp(12).toInt(), 0, 0, 0)
+        }
         if (!compact) info.addView(rgb)
         addView(info, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
         hexBox.addTextChangedListener(object : TextWatcher {
@@ -183,7 +189,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
         hueV?.let { it.hue = hsv[0] }
         preview.background = GradientDrawable().apply { setColor(col); setStroke(2, Color.parseColor("#ff6ec7")); cornerRadius = 6f }
         if (writeHex) hexBox.setText(hex(col))
-        rgb.text = "R ${Color.red(col)}  G ${Color.green(col)}  B ${Color.blue(col)}"
+        rgb.text = "R ${Color.red(col)}   G ${Color.green(col)}   B ${Color.blue(col)}"
         busy = false
     }
 
