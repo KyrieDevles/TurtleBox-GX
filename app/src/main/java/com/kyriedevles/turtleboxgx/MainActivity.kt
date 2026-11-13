@@ -344,6 +344,14 @@ class MainActivity : Activity() {
                     REQ_IMAGE,
                 )
             },
+            namePreview = { maps ->
+                val a = Assets(zipFile, st.files, cacheDir)
+                try {
+                    Renderer(l, Ctx(l, st.values), a).previewName(maps, 360, 110)
+                } finally {
+                    a.close()
+                }
+            },
         ).open(click)
     }
 

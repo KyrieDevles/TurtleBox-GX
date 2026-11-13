@@ -2,6 +2,7 @@ package com.kyriedevles.turtleboxgx
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -20,11 +21,13 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
+import kotlin.math.min
 import android.widget.TextView
 
 /**
@@ -39,6 +42,7 @@ class NameStyleEditor(
     private val state: CardState,
     private val key: String,
     private val onChanged: () -> Unit,
+    private val previewer: ((List<Map<String, String>?>) -> List<Bitmap>)?,
     private val after: () -> Unit,
 ) {
     private val pink = Color.parseColor("#ff6ec7")
@@ -94,7 +98,6 @@ class NameStyleEditor(
 
     fun show() {
         var st = NameStyle.parse(current())
-        // Start Custom from the preset that was chosen, so it can be tweaked.
         var section = "Color"
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -114,198 +117,344 @@ class NameStyleEditor(
             commit()
         }
 
-        fun num(name: String, k: String, lo: Float, hi: Float, def: Float, int: Boolean = false) {
+        fun fmtN(v: Float, int: Boolean) = if (int) Math.round(v).toString() else String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
+
+        fun slider(name: String, k: String, lo: Float, hi: Float, def: Float, int: Boolean = false) {
             val start = st.v[k]?.toFloatOrNull() ?: def
-            fun f(v: Float) = if (int) Math.round(v).toString() else String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
             val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             head.addView(label(name), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val et = EditText(activity).apply {
-                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
-                setSingleLine(true)
-                setText(f(start))
-                setTextColor(pink)
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                setSelectAllOnFocus(true)
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
-            }
-            head.addView(et, LinearLayout.LayoutParams(dp(90), dp(40)))
+            val val_ = TextView(activity).apply { text = fmtN(start, int); setTextColor(pink); typeface = Typeface.DEFAULT_BOLD }
+            head.addView(val_)
             body.addView(head)
-            val steps = 100
+            val steps = 200
             val bar = SeekBar(activity).apply {
                 max = steps
                 progress = ((start - lo) / (hi - lo) * steps).toInt().coerceIn(0, steps)
-                progressTintList = android.content.res.ColorStateList.valueOf(pink)
-                thumbTintList = android.content.res.ColorStateList.valueOf(pink)
+                progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#2d9bff"))
+                thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             }
-            var busy = false
             bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                    if (!fromUser || busy) return
+                    if (!fromUser) return
                     val v = lo + (hi - lo) * p / steps
-                    busy = true; et.setText(f(v)); busy = false
-                    setV(k, f(v))
+                    val t = fmtN(v, int)
+                    val_.text = t
+                    setV(k, t)
                 }
 
                 override fun onStartTrackingTouch(s: SeekBar?) {}
                 override fun onStopTrackingTouch(s: SeekBar?) {}
             })
-            et.addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    if (busy) return
-                    val v = s?.toString()?.toFloatOrNull() ?: return
-                    busy = true; bar.progress = ((v - lo) / (hi - lo) * steps).toInt().coerceIn(0, steps); busy = false
-                    setV(k, f(v))
-                }
-            })
             body.addView(bar)
         }
 
-        fun colorRow(name: String, k: String, def: String) {
-            val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            head.addView(label(name), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val sw = View(activity)
-            fun paintSw(s: String) {
-                val c = try { Color.parseColor(s) } catch (e: Exception) { Color.TRANSPARENT }
-                sw.background = GradientDrawable().apply { setColor(c); setStroke(dp(2), pink); cornerRadius = dp(8).toFloat() }
-            }
-            val start = st.v[k] ?: def
-            paintSw(start)
-            head.addView(sw, LinearLayout.LayoutParams(dp(36), dp(36)).apply { rightMargin = dp(8) })
-            val et = EditText(activity).apply {
-                setSingleLine(true)
-                setText(start)
-                setTextColor(pink)
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                setSelectAllOnFocus(true)
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
-            }
-            et.addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    val t = s?.toString()?.trim() ?: return
-                    try {
-                        Color.parseColor(t)
-                    } catch (e: Exception) {
-                        return
-                    }
-                    paintSw(t)
-                    setV(k, t)
-                }
-            })
-            head.addView(et, LinearLayout.LayoutParams(dp(110), dp(40)))
-            body.addView(head)
-        }
-
-        fun toggle(name: String, k: String, then: () -> Unit) {
+        fun header(name: String, k: String) {
             val cb = CheckBox(activity).apply {
                 text = name
-                setTextColor(pink)
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
                 isChecked = st.v[k] == "1"
-                buttonTintList = android.content.res.ColorStateList.valueOf(pink)
-                setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); then() }
+                buttonTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#2d9bff"))
+                setBackgroundColor(Color.parseColor("#3a3d45"))
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
             }
-            body.addView(cb)
+            body.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
 
-        fun chips(items: List<Pair<String, String>>, k: String, none: String?) {
-            val flow = FlowLayout(activity, dp(6))
-            val all = ArrayList<Pair<String, String>>()
-            if (none != null) all.add(none to "")
-            all.addAll(items)
-            val views = ArrayList<Pair<TextView, String>>()
-            for ((lab, v) in all) {
-                val tv = chip(lab, (st.v[k] ?: "") == v) {
-                    setV(k, v)
-                    for ((t, vv) in views) {
-                        val on = vv == v
-                        t.setTextColor(if (on) pink else soft)
-                        t.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                        (t.background as GradientDrawable).setStroke(dp(2), if (on) hot else Color.parseColor("#3a1a2c"))
+        fun colorPicker(title: String?, k: String, def: String, full: Boolean) {
+            if (title != null) body.addView(label(title))
+            val cp = ColorPickerView(activity, parseHex(st.v[k] ?: def), full) { col -> setV(k, hex(col)) }
+            body.addView(cp)
+        }
+
+        fun pad(range: Int, kx: String, ky: String) {
+            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+            val px = PadView(activity, range) { x, y -> st.v[kx] = x.toString(); st.v[ky] = y.toString(); commit() }
+            px.px = st.v[kx]?.toFloatOrNull()?.toInt() ?: 0
+            px.py = st.v[ky]?.toFloatOrNull()?.toInt() ?: 0
+            row.addView(px, LinearLayout.LayoutParams(dp(150), dp(150)))
+            val side = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
+            fun field(name: String, k: String, other: () -> Unit) {
+                side.addView(label(name))
+                val et = EditText(activity).apply {
+                    inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_SIGNED
+                    setSingleLine(true)
+                    setText(st.v[k] ?: "0")
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    setSelectAllOnFocus(true)
+                    background = GradientDrawable().apply { setColor(Color.parseColor("#333333")); setStroke(2, Color.parseColor("#888888")); cornerRadius = 8f }
+                    addTextChangedListener(object : TextWatcher {
+                        override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                        override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                        override fun afterTextChanged(s: Editable?) {
+                            val v = s?.toString()?.toIntOrNull() ?: return
+                            setV(k, v.toString())
+                            px.px = st.v[kx]?.toFloatOrNull()?.toInt() ?: 0
+                            px.py = st.v[ky]?.toFloatOrNull()?.toInt() ?: 0
+                            px.invalidate()
+                        }
+                    })
+                }
+                side.addView(et, LinearLayout.LayoutParams(dp(110), dp(42)))
+            }
+            field("X Offset:", kx) { }
+            field("Y Offset:", ky) { }
+            row.addView(side)
+            body.addView(label("Position"))
+            body.addView(row)
+        }
+
+        fun dial(title: String, k: String, def: Int) {
+            body.addView(label(title))
+            val d = DialView(activity) { a -> setV(k, a.toString()) }
+            d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
+            body.addView(d, LinearLayout.LayoutParams(dp(150), dp(150)))
+            val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val txt = TextView(activity).apply { setTextColor(Color.WHITE); gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setBackgroundColor(Color.parseColor("#009cde")) }
+            fun upd() { txt.text = "${d.angle}°" }
+            fun stepBtn(t: String, delta: Int) = Button(activity).apply {
+                text = t
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor("#0a86c8"))
+                setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
+            }
+            step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(60), dp(44)))
+            step.addView(txt, LinearLayout.LayoutParams(0, dp(44), 1f))
+            step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(60), dp(44)))
+            upd()
+            // keep the number in step while dragging the dial
+            val orig = d
+            body.addView(step, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            d.setOnTouchListener { v, ev -> val r = d.onTouchEvent(ev); upd(); r }
+            if (orig !== d) return
+        }
+
+        fun tiles(items: List<Pair<String, Map<String, String>?>>, selected: (Int) -> Boolean, pick: (Int) -> Unit) {
+            val grid = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+            val views = ArrayList<ImageView>()
+            val borders = ArrayList<GradientDrawable>()
+            var i = 0
+            while (i < items.size) {
+                val r = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+                for (j in i until min(i + 2, items.size)) {
+                    val iv = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+                    val bd = GradientDrawable().apply { setColor(Color.parseColor("#777777")); cornerRadius = dp(8).toFloat() }
+                    bd.setStroke(dp(3), if (selected(j)) Color.parseColor("#2d9bff") else Color.parseColor("#3a3a3a"))
+                    iv.background = bd
+                    iv.setPadding(dp(4), dp(4), dp(4), dp(4))
+                    iv.contentDescription = items[j].first
+                    iv.setOnClickListener {
+                        pick(j)
+                        for (n in borders.indices) borders[n].setStroke(dp(3), if (selected(n)) Color.parseColor("#2d9bff") else Color.parseColor("#3a3a3a"))
                     }
+                    views.add(iv)
+                    borders.add(bd)
+                    r.addView(iv, LinearLayout.LayoutParams(0, dp(66), 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
                 }
-                views.add(tv to v)
-                flow.addView(tv)
+                grid.addView(r)
+                i += 2
             }
-            body.addView(flow)
+            body.addView(grid)
+            if (previewer == null) {
+                for ((n, v) in views.withIndex()) {
+                    val t = TextView(activity)
+                    v.contentDescription = items[n].first
+                }
+                body.addView(label("(preview not available)"))
+            } else {
+                val maps = items.map { it.second }
+                Thread {
+                    val bms = try { previewer.invoke(maps) } catch (e: Throwable) { emptyList() }
+                    activity.runOnUiThread { for ((n, b) in bms.withIndex()) if (n < views.size) views[n].setImageBitmap(b) }
+                }.start()
+            }
         }
 
-        fun gradient() {
-            val on = st.v["grad"] == "1"
-            body.addView(label("Turn on, then set the angle and stops. A stop is  position|#color  (0 to 1), separated by commas."))
-            toggle("Use gradient", "grad") { }
-            num("Angle", "gangle", 0f, 360f, 0f, true)
-            body.addView(label("Stops"))
-            val et = EditText(activity).apply {
-                setText(st.v["gstops"] ?: "0.000|#ffffff,1.000|#888888")
-                setTextColor(pink)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-            }
-            et.addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    setV("gstops", s?.toString()?.trim() ?: return)
-                }
-            })
-            body.addView(et)
-            if (!on && st.v["gstops"] == null) st.v["gstops"] = "0.000|#ffffff,1.000|#888888"
+        fun withFill(extra: Map<String, String>): Map<String, String> {
+            val m = LinkedHashMap<String, String>()
+            st.v["fill"]?.let { m["fill"] = it }
+            m.putAll(extra)
+            return m
         }
 
-        lateinit var rebuild: () -> Unit
+        fun gradientUi() {
+            header("Has Gradient?", "grad")
+            val stops = ArrayList<GStop>()
+            for (part in (st.v["gstops"] ?: "").split(',')) {
+                val p = part.split('|')
+                if (p.size == 2) stops.add(GStop(p[0].trim().toFloatOrNull()?.coerceIn(0f, 1f) ?: continue, parseHex(p[1].trim())))
+            }
+            if (stops.size < 2) {
+                stops.clear()
+                stops.add(GStop(0f, parseHex(st.v["fill"] ?: "#000000")))
+                stops.add(GStop(1f, Color.WHITE))
+            }
+            fun save() {
+                st.v["gstops"] = stops.sortedBy { it.pos }.joinToString(",") { String.format(java.util.Locale.US, "%.3f", it.pos) + "|" + hex(it.color) }
+                commit()
+            }
+            if (st.v["gstops"] == null) st.v["gstops"] = stops.sortedBy { it.pos }.joinToString(",") { String.format(java.util.Locale.US, "%.3f", it.pos) + "|" + hex(it.color) }
+            val stopAt = EditText(activity)
+            lateinit var picker: ColorPickerView
+            lateinit var bar: GradientBarView
+            bar = GradientBarView(activity, stops, { s ->
+                stopAt.setText(Math.round(s.pos * 100f).toString())
+                picker.setColor(s.color)
+            }) {
+                stopAt.setText(Math.round(bar.selected.pos * 100f).toString())
+                save()
+            }
+            body.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(86)))
+            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            row.addView(label("Stop at:"))
+            stopAt.apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                setSingleLine(true)
+                setText(Math.round(bar.selected.pos * 100f).toString())
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { setColor(Color.parseColor("#333333")); setStroke(2, Color.parseColor("#888888")); cornerRadius = 8f }
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun afterTextChanged(s: Editable?) {
+                        val v = s?.toString()?.toFloatOrNull() ?: return
+                        val np = (v / 100f).coerceIn(0f, 1f)
+                        if (Math.abs(np - bar.selected.pos) > 0.0005f) {
+                            bar.selected.pos = np
+                            bar.invalidate()
+                            save()
+                        }
+                    }
+                })
+            }
+            row.addView(stopAt, LinearLayout.LayoutParams(dp(80), dp(42)).apply { leftMargin = dp(8) })
+            fun smallBtn(t: String, bg: String, click: () -> Unit) = Button(activity).apply {
+                text = t
+                setAllCaps(false)
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor(bg))
+                setOnClickListener { click() }
+            }
+            row.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
+            row.addView(smallBtn("Remove", "#e96060") {
+                if (stops.size > 2) {
+                    stops.remove(bar.selected)
+                    bar.selected = stops.first()
+                    stopAt.setText(Math.round(bar.selected.pos * 100f).toString())
+                    picker.setColor(bar.selected.color)
+                    bar.invalidate()
+                    save()
+                }
+            }, LinearLayout.LayoutParams(dp(100), dp(42)))
+            body.addView(row)
+            body.addView(smallBtn("Add Point (${stops.size}/20)", "#5b7fcf") {
+                if (stops.size < 20) {
+                    val sorted = stops.sortedBy { it.pos }
+                    var bi = 0
+                    var gap = -1f
+                    for (i in 0 until sorted.size - 1) if (sorted[i + 1].pos - sorted[i].pos > gap) { gap = sorted[i + 1].pos - sorted[i].pos; bi = i }
+                    val a = sorted[bi]
+                    val b = sorted[bi + 1]
+                    val ns = GStop((a.pos + b.pos) / 2f, android.graphics.Color.rgb(
+                        (Color.red(a.color) + Color.red(b.color)) / 2, (Color.green(a.color) + Color.green(b.color)) / 2, (Color.blue(a.color) + Color.blue(b.color)) / 2,
+                    ))
+                    stops.add(ns)
+                    bar.selected = ns
+                    stopAt.setText(Math.round(ns.pos * 100f).toString())
+                    picker.setColor(ns.color)
+                    bar.invalidate()
+                    save()
+                    revise()
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
+            dial("Gradient Direction", "gangle", 0)
+            picker = ColorPickerView(activity, bar.selected.color, true) { col -> bar.selected.color = col; bar.invalidate(); save() }
+            body.addView(picker)
+        }
 
         fun sectionBody() {
             when (section) {
-                "Color" -> colorRow("Text color", "fill", "#ffffff")
+                "Color" -> colorPicker("Text Color", "fill", "#000000", true)
                 "Shadow" -> {
-                    toggle("Use shadow", "shadow") { }
-                    colorRow("Shadow color", "shcolor", "#000000")
-                    num("Offset X", "shx", -30f, 30f, 2f)
-                    num("Offset Y", "shy", -30f, 30f, 2f)
-                    num("Blur", "shblur", 0f, 30f, 2f)
+                    header("Has Shadow?", "shadow")
+                    pad(15, "shx", "shy")
+                    slider("Blur:", "shblur", 0f, 20f, 0f)
+                    colorPicker("Color", "shcolor", "#000000", false)
                 }
                 "Outline" -> {
-                    toggle("Use outline", "outline") { }
-                    colorRow("Outline color", "olcolor", "#000000")
-                    num("Width", "olw", 0f, 30f, 4f)
-                    num("Offset X", "olx", -20f, 20f, 0f)
-                    num("Offset Y", "oly", -20f, 20f, 0f)
+                    header("Has Outline?", "outline")
+                    pad(10, "olx", "oly")
+                    slider("Thickness:", "olw", 0f, 30f, 0f)
+                    colorPicker("Color", "olcolor", "#000000", false)
                 }
-                "Gradient" -> gradient()
+                "Gradient" -> gradientUi()
                 "Pattern" -> {
                     val items = layout.datas["namepatterns"]?.items ?: emptyList<Pair<String, String>>()
-                    if (items.isEmpty()) body.addView(label("This layout has no namepatterns list."))
-                    else chips(items.map { it.first to it.first }, "pattern", "None")
+                    if (items.isEmpty()) {
+                        body.addView(label("This layout has no namepatterns list."))
+                    } else {
+                        val list = ArrayList<Pair<String, Map<String, String>?>>()
+                        list.add("None" to withFill(emptyMap()))
+                        for (it in items) list.add(it.first to withFill(mapOf("pattern" to it.first)))
+                        tiles(list, { n -> (st.v["pattern"] ?: "") == (if (n == 0) "" else items[n - 1].first) }) { n ->
+                            setV("pattern", if (n == 0) "" else items[n - 1].first)
+                        }
+                    }
                 }
                 "Font" -> {
                     val items = layout.datas["namefonts"]?.items ?: emptyList<Pair<String, String>>()
-                    if (items.isEmpty()) body.addView(label("This layout has no namefonts list."))
-                    else chips(items.map { it.first to it.first }, "font", "Layout default")
+                    if (items.isEmpty()) {
+                        body.addView(label("This layout has no namefonts list."))
+                    } else {
+                        val list = ArrayList<Pair<String, Map<String, String>?>>()
+                        list.add("Auto" to withFill(emptyMap()))
+                        for (it in items) list.add(it.first to withFill(mapOf("font" to it.first)))
+                        tiles(list, { n -> (st.v["font"] ?: "") == (if (n == 0) "" else items[n - 1].first) }) { n ->
+                            setV("font", if (n == 0) "" else items[n - 1].first)
+                        }
+                    }
                 }
                 "Emboss" -> {
-                    toggle("Use emboss", "emboss") { }
-                    num("Light angle (pitch)", "epitch", 0f, 360f, 90f, true)
-                    num("Light height (yaw)", "eyaw", 0f, 180f, 90f, true)
-                    num("Thickness", "ethick", 0f, 10f, 0f)
+                    header("Use Emboss?", "emboss")
+                    body.addView(label("Emboss effect will override some text features. Change the color in the Color section."))
+                    slider("Thickness", "ethick", 0f, 10f, 0f)
+                    slider("Pitch", "epitch", 0f, 90f, 90f, true)
+                    dial("Yaw", "eyaw", 90)
                 }
             }
         }
 
+        lateinit var rebuild: () -> Unit
+        var chipFlow: FlowLayout? = null
+        val chipButtons = LinkedHashMap<String, TextView>()
+        fun used(s: String) = when (s) {
+            "Shadow" -> st.v["shadow"] == "1"
+            "Outline" -> st.v["outline"] == "1"
+            "Gradient" -> st.v["grad"] == "1"
+            "Pattern" -> !st.v["pattern"].isNullOrEmpty()
+            "Font" -> !st.v["font"].isNullOrEmpty()
+            "Emboss" -> st.v["emboss"] == "1"
+            else -> false
+        }
+        rebuildChipsRef = {
+            for ((s, tv) in chipButtons) tv.text = s + if (used(s)) " ●" else ""
+        }
+        reviseRef = { rebuild() }
+
         rebuild = {
             body.removeAllViews()
+            chipButtons.clear()
             val rg = RadioGroup(activity).apply { orientation = RadioGroup.VERTICAL }
             for ((lab, mode) in listOf("Auto" to "auto", "Predefined" to "predefined", "Custom" to "custom")) {
                 val rb = RadioButton(activity).apply {
                     text = lab
                     id = View.generateViewId()
-                    setTextColor(pink)
-                    buttonTintList = android.content.res.ColorStateList.valueOf(pink)
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                    buttonTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#2d9bff"))
                     isChecked = st.mode == mode
                 }
                 rg.addView(rb)
@@ -313,11 +462,7 @@ class NameStyleEditor(
                     if (st.mode != mode) {
                         val old = st
                         st = NameStyle(mode)
-                        if (mode == "custom") {
-                            st.v = LinkedHashMap(
-                                if (old.mode == "predefined") presetValues(old.preset) else old.v,
-                            )
-                        }
+                        if (mode == "custom") st.v = LinkedHashMap(if (old.mode == "predefined") presetValues(old.preset) else old.v)
                         if (mode == "predefined") st.preset = layout.datas["namepresets"]?.items?.firstOrNull()?.first ?: ""
                         commit()
                         rebuild()
@@ -327,40 +472,29 @@ class NameStyleEditor(
             body.addView(rg)
             when (st.mode) {
                 "predefined" -> {
-                    val all = ArrayList<Pair<String, String>>()
-                    layout.datas["namepresets"]?.items?.forEach { all.add(it.first to it.first) }
-                    userPresets().keys.forEach { all.add(it to it) }
-                    val flow = FlowLayout(activity, dp(6))
-                    for ((lab, v) in all) {
-                        flow.addView(chip(lab, st.preset == v) {
-                            st.preset = v
-                            commit()
-                            rebuild()
-                        })
+                    val names = ArrayList<String>()
+                    layout.datas["namepresets"]?.items?.forEach { names.add(it.first) }
+                    userPresets().keys.forEach { names.add(it) }
+                    tiles(names.map { it to presetValues(it) }, { n -> st.preset == names[n] }) { n ->
+                        st.preset = names[n]
+                        commit()
                     }
-                    body.addView(flow)
                 }
                 "custom" -> {
                     val flow = FlowLayout(activity, dp(6))
                     for (s in listOf("Color", "Shadow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
-                        val used = when (s) {
-                            "Shadow" -> st.v["shadow"] == "1"
-                            "Outline" -> st.v["outline"] == "1"
-                            "Gradient" -> st.v["grad"] == "1"
-                            "Pattern" -> !st.v["pattern"].isNullOrEmpty()
-                            "Font" -> !st.v["font"].isNullOrEmpty()
-                            "Emboss" -> st.v["emboss"] == "1"
-                            else -> true
-                        }
-                        flow.addView(chip(s + if (used && s != "Color") " ●" else "", section == s) { section = s; rebuild() })
+                        val tv = chip(s + if (used(s)) " ●" else "", section == s) { section = s; rebuild() }
+                        chipButtons[s] = tv
+                        flow.addView(tv)
                     }
+                    chipFlow = flow
                     body.addView(flow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
                     sectionBody()
                     val save = Button(activity).apply {
                         text = "Save preset"
                         setAllCaps(false)
-                        setTextColor(pink)
-                        background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.parseColor("#0094c8"))
                         setOnClickListener {
                             val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
                             AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
@@ -373,18 +507,19 @@ class NameStyleEditor(
                                         m[n] = st.serialize().substringAfter('|')
                                         saveUserPresets(m)
                                         onChanged()
+                                        rebuild()
                                     }
                                 }
                                 .setNegativeButton("Cancel", null)
                                 .show()
                         }
                     }
-                    body.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(10) })
-                    val del = userPresets()
-                    if (del.isNotEmpty()) {
+                    body.addView(save, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(12) })
+                    val mine = userPresets()
+                    if (mine.isNotEmpty()) {
                         body.addView(label("Your presets (tap to load, long-press to delete)"))
                         val flow2 = FlowLayout(activity, dp(6))
-                        for (n in del.keys.toList()) {
+                        for (n in mine.keys.toList()) {
                             val c = chip(n, false) {
                                 st.v = LinkedHashMap(NameStyle.kv(userPresets()[n] ?: ""))
                                 commit()
@@ -426,7 +561,7 @@ class NameStyleEditor(
         }
         dlg.show()
         val w = dlg.window
-        w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.5f).toInt())
+        w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.55f).toInt())
         w?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
@@ -435,12 +570,17 @@ class NameStyleEditor(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#ff00aa"), Color.parseColor("#ff6ec7")),
         ).apply { cornerRadius = dp(22).toFloat() }
-        val inner = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = dp(20).toFloat() }
+        val inner = GradientDrawable().apply { setColor(Color.parseColor("#4a4b50")); cornerRadius = dp(20).toFloat() }
         w?.setBackgroundDrawable(LayerDrawable(arrayOf(outer, InsetDrawable(inner, dp(2)))))
-        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
+        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#bfe3ff"))
         dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
         dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(soft)
     }
+
+    private var rebuildChipsRef: () -> Unit = {}
+    private var reviseRef: () -> Unit = {}
+    private fun rebuildChips() = rebuildChipsRef()
+    private fun revise() = reviseRef()
 
     private fun presetValues(name: String): Map<String, String> {
         userPresets()[name]?.let { return NameStyle.kv(it) }

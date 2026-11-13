@@ -50,6 +50,46 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         return bmp
     }
 
+    /** Small "Card Name" samples of name styles (for the Name Style panel), drawn with the layout's name font and colour. */
+    fun previewName(maps: List<Map<String, String>?>, w: Int, h: Int): List<Bitmap> {
+        val e = layout.elements.firstOrNull { it.options.containsKey("namestyle") }
+        val out = ArrayList<Bitmap>()
+        val font = e?.let { pick(it.fonts) }
+        val sample = "Card Name"
+        for (m in maps) {
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bmp)
+            c.drawColor(Color.parseColor("#8a8a90"))
+            val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG)
+            font?.let { f -> assets.font(f.name)?.let { paint.typeface = it } }
+            paint.color = try {
+                Color.parseColor(ctx.sub(e?.let { pick(it.colors) } ?: "#000000").trim())
+            } catch (ex: Exception) {
+                Color.BLACK
+            }
+            paint.textSize = font?.size ?: 50f
+            m?.get("font")?.takeIf { it.isNotBlank() }?.let { fn ->
+                val file = layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn
+                assets.font(file)?.let { paint.typeface = it }
+            }
+            val tw = exactWidth(paint, sample)
+            val k = ((w - 16f) / (tw + 8f)).coerceAtMost(h / (paint.textSize * 1.5f))
+            c.scale(k, k)
+            val wu = w / k
+            val hu = h / k
+            val fm = paint.fontMetrics
+            val x = (wu - tw) / 2f
+            val y = (hu - (fm.bottom - fm.top)) / 2f - fm.top
+            if (m != null) {
+                NameFx.draw(c, sample, x, y, paint, RectF(0f, 0f, wu, hu), tw, m, k, layout.width, layout, assets)
+            } else {
+                c.drawText(sample, x, y, paint)
+            }
+            out.add(bmp)
+        }
+        return out
+    }
+
     private fun <T> pick(list: List<Cond<T>>): T? {
         for (cnd in list) {
             val w = cnd.whenExpr

@@ -93,6 +93,7 @@ class Editor(
     private val state: CardState,
     private val onChanged: () -> Unit,
     private val pickImage: (String) -> Unit,
+    private val namePreview: ((List<Map<String, String>?>) -> List<android.graphics.Bitmap>)? = null,
 ) {
     private val pink = Color.parseColor("#ff6ec7")
     private val hot = Color.parseColor("#ff1493")
@@ -137,7 +138,7 @@ class Editor(
                     commitAll(commits)
                     dlgRef?.dismiss()
                     onChanged()
-                    NameStyleEditor(activity, layout, state, f.name, onChanged) { open(click) }.show()
+                    NameStyleEditor(activity, layout, state, f.name, onChanged, namePreview) { open(click) }.show()
                 }
                 box.addView(b, row())
                 continue
