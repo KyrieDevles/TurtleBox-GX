@@ -47,6 +47,11 @@ class NameStyleEditor(
     private val soft = Color.parseColor("#e7c3d6")
     private val userKey = "namepresets_user"
 
+    companion object {
+        /** The panel height the user last dragged to, kept for the session. */
+        var lastH = 0
+    }
+
     private fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
 
     private val handler = Handler(Looper.getMainLooper())
@@ -205,11 +210,11 @@ class NameStyleEditor(
             body.addView(row)
         }
 
-        fun dial(title: String, k: String, def: Int) {
-            body.addView(label(title))
+        fun dial(title: String, k: String, def: Int, parent: LinearLayout = body, size: Int = 150) {
+            parent.addView(label(title))
             val d = DialView(activity) { a -> setV(k, a.toString()) }
             d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
-            body.addView(d, LinearLayout.LayoutParams(dp(150), dp(150)))
+            parent.addView(d, LinearLayout.LayoutParams(dp(size), dp(size)))
             val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             val txt = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f) }
             fun upd() { txt.text = "${d.angle}°" }
@@ -220,13 +225,13 @@ class NameStyleEditor(
                 background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
-            step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(60), dp(44)))
+            step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(36), dp(38)))
             step.addView(txt, LinearLayout.LayoutParams(0, dp(44), 1f))
-            step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(60), dp(44)))
+            step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(36), dp(38)))
             upd()
             // keep the number in step while dragging the dial
             val orig = d
-            body.addView(step, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            parent.addView(step, LinearLayout.LayoutParams(dp(size), ViewGroup.LayoutParams.WRAP_CONTENT))
             d.setOnTouchListener { v, ev -> val r = d.onTouchEvent(ev); upd(); r }
             if (orig !== d) return
         }
@@ -371,9 +376,13 @@ class NameStyleEditor(
                     revise()
                 }
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
-            dial("Gradient Direction", "gangle", 0)
-            picker = ColorPickerView(activity, bar.selected.color, true) { col -> bar.selected.color = col; bar.invalidate(); save() }
-            body.addView(picker)
+            val side = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+            val left = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+            dial("Direction", "gangle", 0, left, 104)
+            side.addView(left, LinearLayout.LayoutParams(dp(112), ViewGroup.LayoutParams.WRAP_CONTENT))
+            picker = ColorPickerView(activity, bar.selected.color, true, true) { col -> bar.selected.color = col; bar.invalidate(); save() }
+            side.addView(picker, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(10) })
+            body.addView(side, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
 
         fun sectionBody() {
@@ -576,20 +585,20 @@ class NameStyleEditor(
             addView(tabScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4) })
         }
         val grip = TextView(activity).apply {
-            text = "☰   drag here to move"
+            text = "━━━   drag up or down to resize   ━━━"
             setTextColor(soft)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            setPadding(0, dp(6), 0, dp(6))
+            setPadding(0, dp(10), 0, dp(10))
         }
         // In landscape there is little height, so the preview and tabs scroll with everything else.
-        val scrollH = if (land) (screenH * 0.78f).toInt() - dp(130) else (screenH * 0.62f).toInt() - dp(250)
+        panelH = if (lastH > 0) lastH else if (land) (screenH * 0.86f).toInt() else (screenH * 0.6f).toInt()
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(2), dp(18), 0)
             addView(grip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
-            addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, scrollH.coerceAtLeast(dp(120))))
+            addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         if (land) box.addView(head, 0)
         box.setPadding(0, dp(4), 0, dp(4))
@@ -618,7 +627,7 @@ class NameStyleEditor(
         }
         dlg.show()
         val w = dlg.window
-        w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, panelH)
         w?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
@@ -632,27 +641,18 @@ class NameStyleEditor(
         dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
         dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
         dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(soft)
-        var dx = 0f
-        var dy = 0f
+        var startY = 0f
+        var startH = 0
         val drag = View.OnTouchListener { _, ev ->
-            val lp = w?.attributes ?: return@OnTouchListener false
             when (ev.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
-                    val loc = IntArray(2)
-                    w.decorView.getLocationOnScreen(loc)
-                    val r = android.graphics.Rect()
-                    activity.window.decorView.getWindowVisibleDisplayFrame(r)
-                    lp.gravity = Gravity.TOP or Gravity.START
-                    lp.x = loc[0]
-                    lp.y = loc[1] - r.top
-                    w.attributes = lp
-                    dx = ev.rawX - lp.x
-                    dy = ev.rawY - lp.y
+                    startY = ev.rawY
+                    startH = w?.decorView?.height ?: panelH
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
-                    lp.x = (ev.rawX - dx).toInt()
-                    lp.y = (ev.rawY - dy).toInt()
-                    w.attributes = lp
+                    val h = (startH + (startY - ev.rawY)).toInt().coerceIn(dp(190), (screenH * 0.94f).toInt())
+                    lastH = h
+                    w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, h)
                 }
             }
             true
@@ -661,6 +661,7 @@ class NameStyleEditor(
         dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setOnTouchListener(drag)
     }
 
+    private var panelH = 0
     private var rebuildChipsRef: () -> Unit = {}
     private var reviseRef: () -> Unit = {}
     private fun rebuildChips() = rebuildChipsRef()

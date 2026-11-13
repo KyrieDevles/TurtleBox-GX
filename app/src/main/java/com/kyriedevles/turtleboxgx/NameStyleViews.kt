@@ -94,7 +94,7 @@ class HueView(c: Context, private val onPick: (Float) -> Unit) : View(c) {
 }
 
 /** Colour picker: optional square + hue bar, the swatch grid and a hex box. */
-class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onColor: (Int) -> Unit) : LinearLayout(c) {
+class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean = false, private val onColor: (Int) -> Unit) : LinearLayout(c) {
     private val hsv = FloatArray(3)
     private var busy = false
     private val sv: SvView?
@@ -109,7 +109,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
         sv = if (full) SvView(c) { s, v -> hsv[1] = s; hsv[2] = v; pushed() } else null
         hueV = if (full) HueView(c) { h -> hsv[0] = h; sv?.hue = h; pushed() } else null
         if (sv != null && hueV != null) {
-            addView(sv, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150).toInt()))
+            addView(sv, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 104 else 150).toInt()))
             addView(hueV, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34).toInt()))
             sv.hue = hsv[0]; sv.sat = hsv[1]; sv.value = hsv[2]; hueV.hue = hsv[0]
         }
@@ -130,7 +130,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
             }
             grid.addView(r)
         }
-        addView(grid, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
+        if (!compact) addView(grid, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
         val info = LinearLayout(c).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         preview = View(c)
         info.addView(preview, LayoutParams(dp(30).toInt(), dp(30).toInt()).apply { rightMargin = dp(8).toInt() })
@@ -142,9 +142,9 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
             setSelectAllOnFocus(true)
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
         }
-        info.addView(hexBox, LayoutParams(dp(110).toInt(), dp(40).toInt()))
+        info.addView(hexBox, if (compact) LayoutParams(0, dp(40).toInt(), 1f) else LayoutParams(dp(110).toInt(), dp(40).toInt()))
         rgb = TextView(c).apply { setTextColor(Color.parseColor("#e7c3d6")); setPadding(dp(12).toInt(), 0, 0, 0) }
-        info.addView(rgb)
+        if (!compact) info.addView(rgb)
         addView(info, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
         hexBox.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
@@ -267,11 +267,14 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
         for (s in stops) {
             val x = pad + s.pos * w
             val on = s === selected
+            val cy = barH + dp(19)
             box.style = Paint.Style.FILL
-            box.color = Color.parseColor(if (on) "#ff6ec7" else "#6b3a55")
-            cv.drawRect(x - dp(13), barH + dp(6), x + dp(13), barH + dp(32), box)
+            box.color = if (on) Color.parseColor("#ff1493") else Color.parseColor("#e7c3d6")
+            cv.drawCircle(x, cy, dp(if (on) 13 else 11), box)
+            box.color = Color.BLACK
+            cv.drawCircle(x, cy, dp(if (on) 10 else 8.5f.toInt()), box)
             box.color = s.color or (0xff shl 24)
-            cv.drawRect(x - dp(9), barH + dp(10), x + dp(9), barH + dp(28), box)
+            cv.drawCircle(x, cy, dp(if (on) 8 else 7), box)
             if (on) {
                 box.color = Color.parseColor("#ff1493")
                 cv.drawRect(x - dp(1), barH, x + dp(1), barH + dp(6), box)
