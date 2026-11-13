@@ -179,9 +179,10 @@ class NameStyleEditor(
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 isChecked = st.v[k] == "1"
-                thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
-                trackTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#5a1a40"))
-                setBackgroundColor(Color.parseColor("#14101a"))
+                val checked = intArrayOf(android.R.attr.state_checked)
+                thumbTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.WHITE, Color.parseColor("#c98aae")))
+                trackTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#4a1a35")))
+                background = GradientDrawable().apply { setColor(Color.parseColor("#14101a")); cornerRadius = dp(10).toFloat() }
                 setPadding(dp(8), dp(4), dp(8), dp(4))
                 setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
             }
@@ -250,12 +251,14 @@ class NameStyleEditor(
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
             step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(30), dp(30)))
-            step.addView(txt, LinearLayout.LayoutParams(0, dp(30), 1f))
+            txt.setSingleLine(true)
+            txt.minWidth = dp(40)
+            step.addView(txt, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30)))
             step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(30), dp(30)))
             upd()
             // keep the number in step while dragging the dial
             val orig = d
-            parent.addView(step, LinearLayout.LayoutParams(dp(size), ViewGroup.LayoutParams.WRAP_CONTENT))
+            parent.addView(step, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             d.setOnTouchListener { v, ev -> val r = d.onTouchEvent(ev); upd(); r }
             if (orig !== d) return
         }
@@ -408,7 +411,7 @@ class NameStyleEditor(
             val side = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             val left = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
             dial("Direction", "gangle", 0, left, 84)
-            side.addView(left, LinearLayout.LayoutParams(dp(92), ViewGroup.LayoutParams.WRAP_CONTENT))
+            side.addView(left, LinearLayout.LayoutParams(dp(116), ViewGroup.LayoutParams.WRAP_CONTENT))
             picker = ColorPickerView(activity, bar.selected.color, true, true) { col -> bar.selected.color = col; bar.invalidate(); save() }
             side.addView(picker, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(10) })
             body.addView(side, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -476,6 +479,11 @@ class NameStyleEditor(
         val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(12).toFloat() }
+            setPadding(dp(2), dp(2), dp(2), dp(2))
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12).toFloat()) }
+            }
         }
         val modeBtns = LinkedHashMap<String, TextView>()
         fun paintMode() {
