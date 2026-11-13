@@ -123,7 +123,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
             val r = LinearLayout(c).apply { orientation = HORIZONTAL }
             for (h in row.split(' ')) {
                 val cell = View(c).apply {
-                    background = GradientDrawable().apply { setColor(Color.parseColor(h)); setStroke(dp(1).toInt().coerceAtLeast(1), Color.parseColor("#777777")) }
+                    background = GradientDrawable().apply { setColor(Color.parseColor(h)); setStroke(dp(1).toInt().coerceAtLeast(1), Color.parseColor("#3a1a2c")) }
                     setOnClickListener { setColor(Color.parseColor(h)); onColor(Color.parseColor(h)) }
                 }
                 r.addView(cell, LayoutParams(0, dp(26).toInt(), 1f).apply { setMargins(2, 2, 2, 2) })
@@ -139,7 +139,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setSelectAllOnFocus(true)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#333333")); setStroke(2, Color.WHITE); cornerRadius = 8f }
+            background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
         }
         info.addView(hexBox, LayoutParams(dp(110).toInt(), dp(40).toInt()))
         rgb = TextView(c).apply { setTextColor(Color.parseColor("#bbbbbb")); setPadding(dp(12).toInt(), 0, 0, 0) }
@@ -192,9 +192,9 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
 class PadView(c: Context, private val range: Int, private val onPick: (Int, Int) -> Unit) : View(c) {
     var px = 0
     var py = 0
-    private val bg = Paint().apply { color = Color.parseColor("#009cde") }
-    private val line = Paint().apply { color = Color.WHITE; strokeWidth = 3f }
-    private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#8fd3ff") }
+    private val bg = Paint().apply { color = Color.parseColor("#14101a") }
+    private val line = Paint().apply { color = Color.parseColor("#ff1493"); strokeWidth = 3f }
+    private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#ff6ec7") }
 
     override fun onDraw(cv: Canvas) {
         val w = width.toFloat()
@@ -219,9 +219,9 @@ class PadView(c: Context, private val range: Int, private val onPick: (Int, Int)
 class DialView(c: Context, private val onPick: (Int) -> Unit) : View(c) {
     var angle = 0
         set(v) { field = ((v % 360) + 360) % 360; invalidate() }
-    private val disc = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#ededed") }
-    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#4a7fc0"); style = Paint.Style.STROKE; strokeWidth = 3f }
-    private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#4a7fc0") }
+    private val disc = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#14101a") }
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#ff1493"); style = Paint.Style.STROKE; strokeWidth = 3f }
+    private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#ff6ec7") }
 
     override fun onDraw(cv: Canvas) {
         val r = min(width, height) / 2f - 4f
@@ -267,12 +267,12 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
             val x = pad + s.pos * w
             val on = s === selected
             box.style = Paint.Style.FILL
-            box.color = Color.parseColor(if (on) "#cfd6e4" else "#888888")
+            box.color = Color.parseColor(if (on) "#ff6ec7" else "#6b3a55")
             cv.drawRect(x - dp(13), barH + dp(6), x + dp(13), barH + dp(32), box)
             box.color = s.color or (0xff shl 24)
             cv.drawRect(x - dp(9), barH + dp(10), x + dp(9), barH + dp(28), box)
             if (on) {
-                box.color = Color.parseColor("#4a9bff")
+                box.color = Color.parseColor("#ff1493")
                 cv.drawRect(x - dp(1), barH, x + dp(1), barH + dp(6), box)
             }
         }

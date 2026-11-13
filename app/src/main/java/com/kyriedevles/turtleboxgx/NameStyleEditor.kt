@@ -19,12 +19,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.SeekBar
 import kotlin.math.min
@@ -54,10 +51,11 @@ class NameStyleEditor(
 
     private val handler = Handler(Looper.getMainLooper())
     private var pending = false
+    private var refreshPreview: () -> Unit = {}
     private fun live() {
         if (pending) return
         pending = true
-        handler.postDelayed({ pending = false; onChanged() }, 90)
+        handler.postDelayed({ pending = false; onChanged(); refreshPreview() }, 90)
     }
 
     private fun current(): String = state.values[key] ?: layout.datas[key]?.default ?: "auto"
@@ -130,7 +128,7 @@ class NameStyleEditor(
             val bar = SeekBar(activity).apply {
                 max = steps
                 progress = ((start - lo) / (hi - lo) * steps).toInt().coerceIn(0, steps)
-                progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#2d9bff"))
+                progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff1493"))
                 thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             }
             bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -149,13 +147,14 @@ class NameStyleEditor(
         }
 
         fun header(name: String, k: String) {
-            val cb = CheckBox(activity).apply {
+            val cb = android.widget.Switch(activity).apply {
                 text = name
                 setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 isChecked = st.v[k] == "1"
-                buttonTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#2d9bff"))
-                setBackgroundColor(Color.parseColor("#3a3d45"))
+                thumbTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#ff6ec7"))
+                trackTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#5a1a40"))
+                setBackgroundColor(Color.parseColor("#14101a"))
                 setPadding(dp(8), dp(8), dp(8), dp(8))
                 setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
             }
@@ -184,7 +183,7 @@ class NameStyleEditor(
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
                     setSelectAllOnFocus(true)
-                    background = GradientDrawable().apply { setColor(Color.parseColor("#333333")); setStroke(2, Color.parseColor("#888888")); cornerRadius = 8f }
+                    background = GradientDrawable().apply { setColor(Color.parseColor("#000000")); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
                     addTextChangedListener(object : TextWatcher {
                         override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -212,12 +211,12 @@ class NameStyleEditor(
             d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
             body.addView(d, LinearLayout.LayoutParams(dp(150), dp(150)))
             val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val txt = TextView(activity).apply { setTextColor(Color.WHITE); gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setBackgroundColor(Color.parseColor("#009cde")) }
+            val txt = TextView(activity).apply { setTextColor(Color.WHITE); gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setBackgroundColor(Color.parseColor("#ff1493")) }
             fun upd() { txt.text = "${d.angle}°" }
             fun stepBtn(t: String, delta: Int) = Button(activity).apply {
                 text = t
                 setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#0a86c8"))
+                setBackgroundColor(Color.parseColor("#2a0a1c"))
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
             step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(60), dp(44)))
@@ -240,14 +239,14 @@ class NameStyleEditor(
                 val r = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
                 for (j in i until min(i + 2, items.size)) {
                     val iv = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-                    val bd = GradientDrawable().apply { setColor(Color.parseColor("#777777")); cornerRadius = dp(8).toFloat() }
-                    bd.setStroke(dp(3), if (selected(j)) Color.parseColor("#2d9bff") else Color.parseColor("#3a3a3a"))
+                    val bd = GradientDrawable().apply { setColor(Color.parseColor("#14101a")); cornerRadius = dp(8).toFloat() }
+                    bd.setStroke(dp(3), if (selected(j)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
                     iv.background = bd
                     iv.setPadding(dp(4), dp(4), dp(4), dp(4))
                     iv.contentDescription = items[j].first
                     iv.setOnClickListener {
                         pick(j)
-                        for (n in borders.indices) borders[n].setStroke(dp(3), if (selected(n)) Color.parseColor("#2d9bff") else Color.parseColor("#3a3a3a"))
+                        for (n in borders.indices) borders[n].setStroke(dp(3), if (selected(n)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
                     }
                     views.add(iv)
                     borders.add(bd)
@@ -315,7 +314,7 @@ class NameStyleEditor(
                 setText(Math.round(bar.selected.pos * 100f).toString())
                 setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply { setColor(Color.parseColor("#333333")); setStroke(2, Color.parseColor("#888888")); cornerRadius = 8f }
+                background = GradientDrawable().apply { setColor(Color.parseColor("#000000")); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
                 addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                     override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -428,6 +427,57 @@ class NameStyleEditor(
         }
 
         lateinit var rebuild: () -> Unit
+        val strip = ImageView(activity).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            background = GradientDrawable().apply { setColor(Color.parseColor("#8a8a90")); setStroke(dp(2), Color.parseColor("#3a1a2c")); cornerRadius = dp(12).toFloat() }
+        }
+        val tabRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        val tabScroll = android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tabRow) }
+        val modeRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(12).toFloat() }
+        }
+        val modeBtns = LinkedHashMap<String, TextView>()
+        fun paintMode() {
+            for ((m, tv) in modeBtns) {
+                val on = st.mode == m
+                tv.setTextColor(if (on) Color.BLACK else soft)
+                tv.setBackgroundColor(if (on) Color.parseColor("#ff1493") else Color.BLACK)
+            }
+        }
+        refreshPreview = {
+            val m: Map<String, String>? = when (st.mode) {
+                "custom" -> st.v
+                "predefined" -> presetValues(st.preset)
+                else -> null
+            }
+            val pv = previewer
+            if (pv != null) Thread {
+                val b = try { pv.invoke(listOf(m)).firstOrNull() } catch (e: Throwable) { null }
+                if (b != null) activity.runOnUiThread { strip.setImageBitmap(b) }
+            }.start()
+        }
+        for ((lab, mode) in listOf("Auto" to "auto", "Predefined" to "predefined", "Custom" to "custom")) {
+            val tv = TextView(activity).apply {
+                text = lab
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setPadding(0, dp(10), 0, dp(10))
+            }
+            modeBtns[mode] = tv
+            tv.setOnClickListener {
+                if (st.mode != mode) {
+                    val old = st
+                    st = NameStyle(mode)
+                    if (mode == "custom") st.v = LinkedHashMap(if (old.mode == "predefined") presetValues(old.preset) else old.v)
+                    if (mode == "predefined") st.preset = layout.datas["namepresets"]?.items?.firstOrNull()?.first ?: ""
+                    commit()
+                    rebuild()
+                }
+            }
+            modeRow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }
         var chipFlow: FlowLayout? = null
         val chipButtons = LinkedHashMap<String, TextView>()
         fun used(s: String) = when (s) {
@@ -447,29 +497,9 @@ class NameStyleEditor(
         rebuild = {
             body.removeAllViews()
             chipButtons.clear()
-            val rg = RadioGroup(activity).apply { orientation = RadioGroup.VERTICAL }
-            for ((lab, mode) in listOf("Auto" to "auto", "Predefined" to "predefined", "Custom" to "custom")) {
-                val rb = RadioButton(activity).apply {
-                    text = lab
-                    id = View.generateViewId()
-                    setTextColor(Color.WHITE)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-                    buttonTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#2d9bff"))
-                    isChecked = st.mode == mode
-                }
-                rg.addView(rb)
-                rb.setOnClickListener {
-                    if (st.mode != mode) {
-                        val old = st
-                        st = NameStyle(mode)
-                        if (mode == "custom") st.v = LinkedHashMap(if (old.mode == "predefined") presetValues(old.preset) else old.v)
-                        if (mode == "predefined") st.preset = layout.datas["namepresets"]?.items?.firstOrNull()?.first ?: ""
-                        commit()
-                        rebuild()
-                    }
-                }
-            }
-            body.addView(rg)
+            tabScroll.visibility = if (st.mode == "custom") View.VISIBLE else View.GONE
+            paintMode()
+            refreshPreview()
             when (st.mode) {
                 "predefined" -> {
                     val names = ArrayList<String>()
@@ -481,20 +511,18 @@ class NameStyleEditor(
                     }
                 }
                 "custom" -> {
-                    val flow = FlowLayout(activity, dp(6))
+                    tabRow.removeAllViews()
                     for (s in listOf("Color", "Shadow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
                         val tv = chip(s + if (used(s)) " ●" else "", section == s) { section = s; rebuild() }
                         chipButtons[s] = tv
-                        flow.addView(tv)
+                        tabRow.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(6) })
                     }
-                    chipFlow = flow
-                    body.addView(flow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
                     sectionBody()
                     val save = Button(activity).apply {
                         text = "Save preset"
                         setAllCaps(false)
                         setTextColor(Color.WHITE)
-                        setBackgroundColor(Color.parseColor("#0094c8"))
+                        setBackgroundColor(Color.parseColor("#ff1493"))
                         setOnClickListener {
                             val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
                             AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
@@ -537,11 +565,21 @@ class NameStyleEditor(
         }
         box.addView(body)
         rebuild()
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(2), dp(18), 0)
+            addView(strip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply { bottomMargin = dp(8) })
+            addView(modeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+            addView(tabScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4) })
+            addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.62f).toInt() - dp(250)))
+        }
+        box.setPadding(0, dp(4), 0, dp(4))
+        refreshPreview()
 
         var finished = false
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Name Style")
-            .setView(ScrollView(activity).apply { addView(box) })
+            .setView(root)
             .setPositiveButton("Done") { _, _ -> finished = true; onChanged() }
             .setNegativeButton("Cancel") { _, _ ->
                 finished = true
@@ -561,7 +599,7 @@ class NameStyleEditor(
         }
         dlg.show()
         val w = dlg.window
-        w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.55f).toInt())
+        w?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         w?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
@@ -570,9 +608,9 @@ class NameStyleEditor(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#ff00aa"), Color.parseColor("#ff6ec7")),
         ).apply { cornerRadius = dp(22).toFloat() }
-        val inner = GradientDrawable().apply { setColor(Color.parseColor("#4a4b50")); cornerRadius = dp(20).toFloat() }
+        val inner = GradientDrawable().apply { setColor(Color.parseColor("#000000")); cornerRadius = dp(20).toFloat() }
         w?.setBackgroundDrawable(LayerDrawable(arrayOf(outer, InsetDrawable(inner, dp(2)))))
-        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#bfe3ff"))
+        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
         dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
         dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(soft)
     }
