@@ -228,6 +228,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             vScale = num("vscale").takeIf { it > 0f } ?: 100f,
             baselineShift = num("baseline"),
             wordSpace = num("wordspace").takeIf { it > 0f } ?: 100f,
+            bulletScale = num("bulletscale").takeIf { it > 0f } ?: 135f,
             leadingPx = num("leadingpx"),
             spacing = spacing,
         )
