@@ -59,7 +59,6 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         for (m in maps) {
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val c = Canvas(bmp)
-            c.drawColor(Color.parseColor("#8a8a90"))
             val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG)
             font?.let { f -> assets.font(f.name)?.let { paint.typeface = it } }
             paint.color = try {
@@ -79,7 +78,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val hu = h / k
             val fm = paint.fontMetrics
             val x = (wu - tw) / 2f
-            val y = (hu - (fm.bottom - fm.top)) / 2f - fm.top
+            val tb = android.graphics.Rect()
+            paint.getTextBounds(sample, 0, sample.length, tb)
+            val y = hu / 2f - (tb.top + tb.bottom) / 2f
             if (m != null) {
                 NameFx.draw(c, sample, x, y, paint, RectF(0f, 0f, wu, hu), tw, m, k, layout.width, layout, assets)
             } else {

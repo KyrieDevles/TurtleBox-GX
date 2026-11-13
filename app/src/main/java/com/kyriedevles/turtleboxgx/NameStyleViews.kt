@@ -52,7 +52,7 @@ class SvView(c: Context, private val onPick: (Float, Float) -> Unit) : View(c) {
         val y = (1f - value) * h
         ring.color = Color.BLACK
         cv.drawCircle(x, y, dp(9), ring)
-        ring.color = Color.WHITE
+        ring.color = Color.parseColor("#ff6ec7")
         cv.drawCircle(x, y, dp(8), ring)
     }
 
@@ -136,13 +136,14 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
         info.addView(preview, LayoutParams(dp(30).toInt(), dp(30).toInt()).apply { rightMargin = dp(8).toInt() })
         hexBox = EditText(c).apply {
             setSingleLine(true)
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#ff6ec7"))
+            typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             setSelectAllOnFocus(true)
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
         }
         info.addView(hexBox, LayoutParams(dp(110).toInt(), dp(40).toInt()))
-        rgb = TextView(c).apply { setTextColor(Color.parseColor("#bbbbbb")); setPadding(dp(12).toInt(), 0, 0, 0) }
+        rgb = TextView(c).apply { setTextColor(Color.parseColor("#e7c3d6")); setPadding(dp(12).toInt(), 0, 0, 0) }
         info.addView(rgb)
         addView(info, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8).toInt() })
         hexBox.addTextChangedListener(object : TextWatcher {
@@ -176,7 +177,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, private val onCol
         val col = cur()
         sv?.let { it.hue = hsv[0]; it.sat = hsv[1]; it.value = hsv[2]; it.invalidate() }
         hueV?.let { it.hue = hsv[0] }
-        preview.background = GradientDrawable().apply { setColor(col); setStroke(2, Color.WHITE); cornerRadius = 6f }
+        preview.background = GradientDrawable().apply { setColor(col); setStroke(2, Color.parseColor("#ff6ec7")); cornerRadius = 6f }
         if (writeHex) hexBox.setText(hex(col))
         rgb.text = "R ${Color.red(col)}  G ${Color.green(col)}  B ${Color.blue(col)}"
         busy = false

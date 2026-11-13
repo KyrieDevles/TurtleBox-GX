@@ -211,12 +211,13 @@ class NameStyleEditor(
             d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
             body.addView(d, LinearLayout.LayoutParams(dp(150), dp(150)))
             val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val txt = TextView(activity).apply { setTextColor(Color.WHITE); gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setBackgroundColor(Color.parseColor("#ff1493")) }
+            val txt = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f) }
             fun upd() { txt.text = "${d.angle}°" }
             fun stepBtn(t: String, delta: Int) = Button(activity).apply {
                 text = t
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor("#2a0a1c"))
+                setTextColor(pink)
+                typeface = Typeface.DEFAULT_BOLD
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
             step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(60), dp(44)))
@@ -239,7 +240,7 @@ class NameStyleEditor(
                 val r = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
                 for (j in i until min(i + 2, items.size)) {
                     val iv = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-                    val bd = GradientDrawable().apply { setColor(Color.parseColor("#14101a")); cornerRadius = dp(8).toFloat() }
+                    val bd = GradientDrawable().apply { setColor(Color.parseColor("#8a8a90")); cornerRadius = dp(10).toFloat() }
                     bd.setStroke(dp(3), if (selected(j)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
                     iv.background = bd
                     iv.setPadding(dp(4), dp(4), dp(4), dp(4))
@@ -333,12 +334,13 @@ class NameStyleEditor(
             fun smallBtn(t: String, bg: String, click: () -> Unit) = Button(activity).apply {
                 text = t
                 setAllCaps(false)
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.parseColor(bg))
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.parseColor(bg))
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor(bg)); cornerRadius = dp(10).toFloat() }
                 setOnClickListener { click() }
             }
             row.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
-            row.addView(smallBtn("Remove", "#e96060") {
+            row.addView(smallBtn("Remove", "#ff4d6d") {
                 if (stops.size > 2) {
                     stops.remove(bar.selected)
                     bar.selected = stops.first()
@@ -349,7 +351,7 @@ class NameStyleEditor(
                 }
             }, LinearLayout.LayoutParams(dp(100), dp(42)))
             body.addView(row)
-            body.addView(smallBtn("Add Point (${stops.size}/20)", "#5b7fcf") {
+            body.addView(smallBtn("Add Point (${stops.size}/20)", "#ff6ec7") {
                 if (stops.size < 20) {
                     val sorted = stops.sortedBy { it.pos }
                     var bi = 0
@@ -565,14 +567,31 @@ class NameStyleEditor(
         }
         box.addView(body)
         rebuild()
-        val root = LinearLayout(activity).apply {
+        val land = activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val screenH = activity.resources.displayMetrics.heightPixels
+        val head = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(2), dp(18), 0)
             addView(strip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply { bottomMargin = dp(8) })
             addView(modeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
             addView(tabScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4) })
-            addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.62f).toInt() - dp(250)))
         }
+        val grip = TextView(activity).apply {
+            text = "☰   drag here to move"
+            setTextColor(soft)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        // In landscape there is little height, so the preview and tabs scroll with everything else.
+        val scrollH = if (land) (screenH * 0.78f).toInt() - dp(130) else (screenH * 0.62f).toInt() - dp(250)
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(2), dp(18), 0)
+            addView(grip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            if (!land) addView(head)
+            addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, scrollH.coerceAtLeast(dp(120))))
+        }
+        if (land) box.addView(head, 0)
         box.setPadding(0, dp(4), 0, dp(4))
         refreshPreview()
 
@@ -613,6 +632,33 @@ class NameStyleEditor(
         dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
         dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
         dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(soft)
+        var dx = 0f
+        var dy = 0f
+        val drag = View.OnTouchListener { _, ev ->
+            val lp = w?.attributes ?: return@OnTouchListener false
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    val loc = IntArray(2)
+                    w.decorView.getLocationOnScreen(loc)
+                    val r = android.graphics.Rect()
+                    activity.window.decorView.getWindowVisibleDisplayFrame(r)
+                    lp.gravity = Gravity.TOP or Gravity.START
+                    lp.x = loc[0]
+                    lp.y = loc[1] - r.top
+                    w.attributes = lp
+                    dx = ev.rawX - lp.x
+                    dy = ev.rawY - lp.y
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    lp.x = (ev.rawX - dx).toInt()
+                    lp.y = (ev.rawY - dy).toInt()
+                    w.attributes = lp
+                }
+            }
+            true
+        }
+        grip.setOnTouchListener(drag)
+        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setOnTouchListener(drag)
     }
 
     private var rebuildChipsRef: () -> Unit = {}
