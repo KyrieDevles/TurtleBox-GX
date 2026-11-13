@@ -129,6 +129,19 @@ class Editor(
         }
         for (f in fields) {
             if (f.type == "multi_select") continue
+            if (f.type == "namestyle") {
+                val cur = state.values[f.name] ?: ctx.value(f.name)
+                val mode = cur.substringBefore('|').ifBlank { "auto" }
+                val b = hotButton((f.desc?.takeIf { it.isNotBlank() } ?: "Name Style") + "   ●  " + mode)
+                b.setOnClickListener {
+                    commitAll(commits)
+                    dlgRef?.dismiss()
+                    onChanged()
+                    NameStyleEditor(activity, layout, state, f.name, onChanged) { open(click) }.show()
+                }
+                box.addView(b, row())
+                continue
+            }
             if (f.type == "button") {
                 // A button that opens a settings panel (gear = the multi_select group it shows).
                 val grp = f.gear?.let { find(it) }

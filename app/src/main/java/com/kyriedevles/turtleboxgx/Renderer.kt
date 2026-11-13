@@ -25,7 +25,10 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** Debug notes shown under the card. */
     val notes = ArrayList<String>()
 
+    private var curScale = 1f
+
     fun render(scale: Float): Bitmap {
+        curScale = scale
         val bmp = Bitmap.createBitmap(
             (layout.width * scale).toInt(),
             (layout.height * scale).toInt(),
@@ -138,6 +141,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         }
 
         val width = size.width.toInt().coerceAtLeast(1)
+        val nameFx: Map<String, String>? = e.options["namestyle"]?.let { NameStyle.resolve(ctx.sub(it), layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "") }
+        if (singleLine && nameFx != null) {
+            nameFx["font"]?.takeIf { it.isNotBlank() }?.let { fn ->
+                val file = layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn
+                assets.font(file)?.let { paint.typeface = it }
+            }
+        }
         if (singleLine) {
             val measured = exactWidth(paint, text)
             if (measured > size.width && measured > 0f) paint.textScaleX = (size.width / measured).coerceAtLeast(0.5f)
@@ -150,7 +160,11 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
                 else -> size.left
             }
             val y = size.top + (size.height - lineH) * v - fm.top
-            c.drawText(text, x, y, paint)
+            if (nameFx != null) {
+                NameFx.draw(c, text, x, y, paint, RectF(size.left, size.top, size.left + size.width, size.top + size.height), drawW, nameFx, curScale, layout.width, layout, assets)
+            } else {
+                c.drawText(text, x, y, paint)
+            }
             drawn++
             return
         }
