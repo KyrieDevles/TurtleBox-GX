@@ -267,6 +267,8 @@ class NameStyleEditor(
             val grid = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
             val views = ArrayList<ImageView>()
             val borders = ArrayList<GradientDrawable>()
+            val names = ArrayList<TextView>()
+            fun paintNames() { for (n in names.indices) { val on = selected(n); names[n].setTextColor(if (on) pink else soft); names[n].typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT } }
             var i = 0
             while (i < items.size) {
                 val r = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
@@ -280,14 +282,29 @@ class NameStyleEditor(
                     iv.setOnClickListener {
                         pick(j)
                         for (n in borders.indices) borders[n].setStroke(dp(3), if (selected(n)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
+                        paintNames()
+                    }
+                    val nameTv = TextView(activity).apply {
+                        text = items[j].first
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                        gravity = Gravity.CENTER
+                        setSingleLine(true)
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        includeFontPadding = false
                     }
                     views.add(iv)
                     borders.add(bd)
-                    r.addView(iv, LinearLayout.LayoutParams(0, dp(46), 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(3)) })
+                    names.add(nameTv)
+                    val cell = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                    cell.addView(iv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
+                    cell.addView(nameTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
+                    r.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(4)) })
                 }
+                for (f in 0 until i + 3 - min(i + 3, items.size)) r.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
                 grid.addView(r)
                 i += 3
             }
+            paintNames()
             body.addView(grid)
             if (previewer == null) {
                 for ((n, v) in views.withIndex()) {
@@ -480,17 +497,20 @@ class NameStyleEditor(
             orientation = LinearLayout.HORIZONTAL
             background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(12).toFloat() }
             setPadding(dp(2), dp(2), dp(2), dp(2))
-            clipToOutline = true
-            outlineProvider = object : android.view.ViewOutlineProvider() {
-                override fun getOutline(v: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, v.width, v.height, dp(12).toFloat()) }
-            }
         }
         val modeBtns = LinkedHashMap<String, TextView>()
         fun paintMode() {
+            val r = dp(10).toFloat()
+            val ms = modeBtns.keys.toList()
             for ((m, tv) in modeBtns) {
                 val on = st.mode == m
                 tv.setTextColor(if (on) Color.BLACK else soft)
-                tv.setBackgroundColor(if (on) Color.parseColor("#ff1493") else Color.BLACK)
+                val first = m == ms.first()
+                val last = m == ms.last()
+                tv.background = GradientDrawable().apply {
+                    setColor(if (on) Color.parseColor("#ff1493") else Color.BLACK)
+                    cornerRadii = floatArrayOf(if (first) r else 0f, if (first) r else 0f, if (last) r else 0f, if (last) r else 0f, if (last) r else 0f, if (last) r else 0f, if (first) r else 0f, if (first) r else 0f)
+                }
             }
         }
         refreshPreview = {
