@@ -201,7 +201,7 @@ object NameFx {
                 val ny = gs / ws / 127.5f - 1f
                 val nz = bs / ws / 127.5f - 1f
                 val base = nx * lx + ny * ly + nz * lz
-                val intensity = (base / 2f * 1.8f).coerceIn(-0.9f, 0.9f).toFloat()
+                val intensity = (base / 2.0 * 1.8).coerceIn(-0.9, 0.9).toFloat()
                 val p = px[i]
                 val a = p ushr 24
                 val rr = ((p shr 16) and 255) + Math.round(255f * intensity)
