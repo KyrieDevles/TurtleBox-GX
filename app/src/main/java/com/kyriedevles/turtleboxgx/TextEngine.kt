@@ -68,7 +68,6 @@ class TextOptions(
     val fontScale: Float = 0f, // manual font size in % of the layout size (0 = automatic fit)
     val flow: Float = 0f, // % of the whole-text reflow toward the narrowest wrap with the same line count (0..100)
     val spacing: Float = 1f, // line spacing multiplier
-    val bulletScale: Float = 135f, // size of the ● bullet in % of the text size (100 = as the font draws it)
 )
 
 /**
@@ -105,15 +104,8 @@ class TextEngine(
     private val text: String = styled.text
     /** Word spacing is measured by the line breaker itself: every space gets bit 4 and is stretched with a ScaleXSpan. */
     private val wsOn = opt.wordSpace > 0f && opt.wordSpace != 100f
-    /** The ● bullet is drawn larger (bit 8), like the printed cards. */
-    private val bulletOn = opt.bulletScale > 0f && opt.bulletScale != 100f && text.indexOf('●') >= 0
-    private val useStyle = styled.hasStyle || wsOn || bulletOn
-    private val styles: IntArray = if (wsOn || bulletOn) styled.styles.copyOf().also { a ->
-        for (i in a.indices) {
-            if (wsOn && text[i] == ' ') a[i] = a[i] or 4
-            if (bulletOn && text[i] == '●') a[i] = a[i] or 8
-        }
-    } else styled.styles
+    private val useStyle = styled.hasStyle || wsOn
+    private val styles: IntArray = if (wsOn) styled.styles.copyOf().also { a -> for (i in a.indices) if (text[i] == ' ') a[i] = a[i] or 4 } else styled.styles
     /** What the line breaker measures: the plain string when there is no markup (unchanged behaviour), else a string with style spans. */
     private val source: CharSequence = if (useStyle) styledSource() else text
     private val baseSize = paint.textSize
@@ -157,7 +149,6 @@ class TextEngine(
             while (b < styles.size && styles[b] == styles[a]) b++
             if ((styles[a] and 3) != 0) s.setSpan(StyleSpan(spanStyle(styles[a])), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             if ((styles[a] and 4) != 0) s.setSpan(android.text.style.ScaleXSpan(opt.wordSpace / 100f), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            if ((styles[a] and 8) != 0) s.setSpan(android.text.style.RelativeSizeSpan(opt.bulletScale / 100f), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             a = b
         }
         return s
@@ -169,7 +160,6 @@ class TextEngine(
         val p = TextPaint(paint)
         if ((style and 3) != 0) StyleSpan(spanStyle(style)).updateDrawState(p)
         if ((style and 4) != 0) p.textScaleX *= opt.wordSpace / 100f
-        if ((style and 8) != 0) p.textSize *= opt.bulletScale / 100f
         return p
     }
 
