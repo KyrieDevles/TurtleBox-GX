@@ -129,6 +129,7 @@ class NameStyleEditor(
             setPadding(0, dp(2), 0, dp(2))
         }
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+        var cur: LinearLayout = body
         val before = state.values[key]
         val beforeUser = state.values[userKey]
 
@@ -150,7 +151,7 @@ class NameStyleEditor(
             head.addView(label(name), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             val val_ = TextView(activity).apply { text = fmtN(start, int); setTextColor(pink); typeface = Typeface.DEFAULT_BOLD }
             head.addView(val_)
-            body.addView(head)
+            cur.addView(head)
             val steps = 200
             val bar = SeekBar(activity).apply {
                 max = steps
@@ -170,29 +171,13 @@ class NameStyleEditor(
                 override fun onStartTrackingTouch(s: SeekBar?) {}
                 override fun onStopTrackingTouch(s: SeekBar?) {}
             })
-            body.addView(bar)
-        }
-
-        fun header(name: String, k: String) {
-            val cb = android.widget.Switch(activity).apply {
-                text = name
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                isChecked = st.v[k] == "1"
-                val checked = intArrayOf(android.R.attr.state_checked)
-                thumbTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.WHITE, Color.parseColor("#c98aae")))
-                trackTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#4a1a35")))
-                background = GradientDrawable().apply { setColor(Color.parseColor("#14101a")); cornerRadius = dp(10).toFloat() }
-                setPadding(dp(8), dp(4), dp(8), dp(4))
-                setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
-            }
-            body.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            cur.addView(bar)
         }
 
         fun colorPicker(title: String?, k: String, def: String, full: Boolean) {
-            if (title != null) body.addView(label(title))
+            if (title != null) cur.addView(label(title))
             val cp = ColorPickerView(activity, parseHex(st.v[k] ?: def), full) { col -> setV(k, hex(col)) }
-            body.addView(cp)
+            cur.addView(cp)
         }
 
         fun pad(range: Int, kx: String, ky: String) {
@@ -230,11 +215,10 @@ class NameStyleEditor(
             field("X", kx) { }
             field("Y", ky) { }
             row.addView(side, LinearLayout.LayoutParams(0, dp(196), 1f))
-            body.addView(label("Position"))
-            body.addView(row)
+            cur.addView(row)
         }
 
-        fun dial(title: String, k: String, def: Int, parent: LinearLayout = body, size: Int = 150) {
+        fun dial(title: String, k: String, def: Int, parent: LinearLayout = cur, size: Int = 150) {
             parent.addView(label(title))
             val d = DialView(activity) { a -> setV(k, a.toString()) }
             d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
@@ -344,6 +328,23 @@ class NameStyleEditor(
             })
             body.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
             return c
+        }
+
+        fun header(name: String, k: String, note: String? = null) {
+            val c = card(null)
+            val cb = android.widget.Switch(activity).apply {
+                text = name
+                setTextColor(Color.WHITE)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                isChecked = st.v[k] == "1"
+                val checked = intArrayOf(android.R.attr.state_checked)
+                thumbTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.WHITE, Color.parseColor("#c98aae")))
+                trackTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#4a1a35")))
+                setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
+            }
+            c.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            if (note != null) c.addView(TextView(activity).apply { text = note; setTextColor(Color.parseColor("#b98aa5")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setPadding(0, dp(6), 0, 0) })
         }
 
         fun gradientUi() {
@@ -516,18 +517,18 @@ class NameStyleEditor(
 
         fun sectionBody() {
             when (section) {
-                "Color" -> colorPicker("Text Color", "fill", "#000000", true)
+                "Color" -> { cur = card("Text colour"); colorPicker(null, "fill", "#000000", true) }
                 "Shadow" -> {
                     header("Has Shadow?", "shadow")
-                    pad(15, "shx", "shy")
-                    slider("Blur:", "shblur", 0f, 20f, 0f)
-                    colorPicker("Color", "shcolor", "#000000", false)
+                    cur = card("Position"); pad(15, "shx", "shy")
+                    cur = card("Softness"); slider("Blur", "shblur", 0f, 20f, 0f)
+                    cur = card("Shadow colour"); colorPicker(null, "shcolor", "#000000", false)
                 }
                 "Outline" -> {
                     header("Has Outline?", "outline")
-                    pad(10, "olx", "oly")
-                    slider("Thickness:", "olw", 0f, 30f, 0f)
-                    colorPicker("Color", "olcolor", "#000000", false)
+                    cur = card("Position"); pad(10, "olx", "oly")
+                    cur = card("Size"); slider("Thickness", "olw", 0f, 30f, 0f)
+                    cur = card("Outline colour"); colorPicker(null, "olcolor", "#000000", false)
                 }
                 "Gradient" -> gradientUi()
                 "Pattern" -> {
@@ -557,13 +558,13 @@ class NameStyleEditor(
                     }
                 }
                 "Emboss" -> {
-                    header("Use Emboss?", "emboss")
-                    body.addView(label("Emboss effect will override some text features. Change the color in the Color section."))
-                    slider("Thickness", "ethick", 0f, 10f, 0f)
-                    slider("Pitch", "epitch", 0f, 90f, 90f, true)
-                    dial("Yaw", "eyaw", 90)
+                    header("Use Emboss?", "emboss", "Emboss overrides some text features. Change the colour in the Colour tab.")
+                    cur = card("Depth"); slider("Thickness", "ethick", 0f, 10f, 0f)
+                    cur = card("Light"); slider("Pitch", "epitch", 0f, 90f, 90f, true)
+                    cur = card("Light direction"); dial("Yaw", "eyaw", 90, cur, 130)
                 }
             }
+            cur = body
         }
 
         lateinit var rebuild: () -> Unit
