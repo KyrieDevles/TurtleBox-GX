@@ -64,6 +64,7 @@ class TextOptions(
     val vScale: Float = 100f, // vertical scale % of the whole block
     val baselineShift: Float = 0f, // px, positive raises the text
     val wordSpace: Float = 100f, // % of the normal space width
+    val leadingPx: Float = 0f, // fixed line-to-line distance in px (0 = automatic, from the font)
     val fontScale: Float = 0f, // manual font size in % of the layout size (0 = automatic fit)
     val flow: Float = 0f, // % of the whole-text reflow toward the narrowest wrap with the same line count (0..100)
     val spacing: Float = 1f, // line spacing multiplier
@@ -101,9 +102,12 @@ class TextEngine(
     private var effWidth = boxWidth
     private val styled = parseMarkup(rawText)
     private val text: String = styled.text
-    private val styles: IntArray = styled.styles
+    /** Word spacing is measured by the line breaker itself: every space gets bit 4 and is stretched with a ScaleXSpan. */
+    private val wsOn = opt.wordSpace > 0f && opt.wordSpace != 100f
+    private val useStyle = styled.hasStyle || wsOn
+    private val styles: IntArray = if (wsOn) styled.styles.copyOf().also { a -> for (i in a.indices) if (text[i] == ' ') a[i] = a[i] or 4 } else styled.styles
     /** What the line breaker measures: the plain string when there is no markup (unchanged behaviour), else a string with style spans. */
-    private val source: CharSequence = if (styled.hasStyle) styledSource() else text
+    private val source: CharSequence = if (useStyle) styledSource() else text
     private val baseSize = paint.textSize
     private var layout: StaticLayout? = null
     private var lineWidthLimit = width.toFloat()
@@ -130,10 +134,11 @@ class TextEngine(
         return h
     }
 
-    private fun spanStyle(v: Int): Int = when (v) {
+    private fun spanStyle(v: Int): Int = when (v and 3) {
         1 -> Typeface.BOLD
         2 -> Typeface.ITALIC
-        else -> Typeface.BOLD_ITALIC
+        3 -> Typeface.BOLD_ITALIC
+        else -> Typeface.NORMAL
     }
 
     private fun styledSource(): CharSequence {
@@ -142,7 +147,8 @@ class TextEngine(
         while (a < styles.size) {
             var b = a + 1
             while (b < styles.size && styles[b] == styles[a]) b++
-            if (styles[a] != 0) s.setSpan(StyleSpan(spanStyle(styles[a])), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if ((styles[a] and 3) != 0) s.setSpan(StyleSpan(spanStyle(styles[a])), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if ((styles[a] and 4) != 0) s.setSpan(android.text.style.ScaleXSpan(opt.wordSpace / 100f), a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             a = b
         }
         return s
@@ -152,7 +158,8 @@ class TextEngine(
     private fun paintFor(style: Int): TextPaint {
         if (style == 0) return paint
         val p = TextPaint(paint)
-        StyleSpan(spanStyle(style)).updateDrawState(p)
+        if ((style and 3) != 0) StyleSpan(spanStyle(style)).updateDrawState(p)
+        if ((style and 4) != 0) p.textScaleX *= opt.wordSpace / 100f
         return p
     }
 
@@ -171,7 +178,7 @@ class TextEngine(
     /** Exact width of text[from, to) with every stretch measured in its own style. */
     private fun rangeWidth(from: Int, to: Int): Float {
         if (to <= from) return 0f
-        if (!styled.hasStyle) return exactWidth(paint, text.substring(from, to))
+        if (!useStyle) return exactWidth(paint, text.substring(from, to))
         var w = 0f
         runs(from, to) { a, b, s -> w += exactWidth(paintFor(s), text.substring(a, b)) }
         return w
@@ -180,7 +187,7 @@ class TextEngine(
     /** Width used to place a word inside a justified line (measureText, as the wrapping sees it). */
     private fun prefixWidth(from: Int, to: Int): Float {
         if (to <= from) return 0f
-        if (!styled.hasStyle) return paint.measureText(text, from, to)
+        if (!useStyle) return paint.measureText(text, from, to)
         var w = 0f
         runs(from, to) { a, b, s -> w += paintFor(s).measureText(text, a, b) }
         return w
@@ -188,7 +195,7 @@ class TextEngine(
 
     private fun drawRange(c: Canvas, from: Int, to: Int, x: Float, baseline: Float) {
         if (to <= from) return
-        if (!styled.hasStyle) {
+        if (!useStyle) {
             c.drawText(text, from, to, x, baseline, paint)
             return
         }
@@ -200,11 +207,21 @@ class TextEngine(
         }
     }
 
+    /** Line height multiplier: the Spacing option, or whatever makes every line exactly [TextOptions.leadingPx] tall. */
+    private fun lineMult(): Float {
+        if (opt.leadingPx > 0f) {
+            val fm = paint.fontMetrics
+            val h = fm.descent - fm.ascent
+            if (h > 0f) return opt.leadingPx / h
+        }
+        return opt.spacing
+    }
+
     private fun build(w: Int): StaticLayout =
         StaticLayout.Builder.obtain(source, 0, source.length, paint, w.coerceAtLeast(1))
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, opt.spacing)
-            .setIncludePad(true)
+            .setLineSpacing(0f, lineMult())
+            .setIncludePad(opt.leadingPx <= 0f)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE)
             .build()
@@ -410,18 +427,7 @@ class TextEngine(
                     spread = maxOf(0f, (w - nw) / gaps)
                 }
             }
-            var xoff = 0f
-            if (!justified && opt.wordSpace > 0f && opt.wordSpace != 100f && gaps > 0) {
-                // Word spacing: extra (or less) room at every space, the line is then aligned as a whole.
-                spread = (opt.wordSpace / 100f - 1f) * spaceW
-                val lineW = lw + spread * gaps
-                xoff = when (h) {
-                    2 -> w - lineW
-                    1 -> (w - lineW) / 2f
-                    else -> 0f
-                }
-                justified = true
-            }
+            val xoff = 0f
             if (!justified) {
                 val x = left + when (h) {
                     2 -> w - lw

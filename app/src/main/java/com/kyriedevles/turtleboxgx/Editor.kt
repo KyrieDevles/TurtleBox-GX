@@ -406,6 +406,22 @@ class Editor(
                 setSelectAllOnFocus(true)
             }
             head.addView(num, LinearLayout.LayoutParams(dp(90), dp(40)))
+            val one = Button(activity).apply {
+                text = "↺"
+                setAllCaps(false)
+                setTextColor(pink)
+                setPadding(0, 0, 0, 0)
+                minWidth = 0
+                minimumWidth = 0
+                background = GradientDrawable().apply {
+                    setColor(Color.BLACK)
+                    setStroke(dp(2), hot)
+                    cornerRadius = dp(10).toFloat()
+                }
+                contentDescription = "Reset this option"
+                setOnClickListener { num.setText(fmt(f.default?.toFloatOrNull() ?: 100f)) }
+            }
+            head.addView(one, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(6) })
             box.addView(head)
             val bar = SeekBar(activity).apply {
                 max = (hi - lo) * 10
@@ -529,7 +545,8 @@ class Editor(
             n.startsWith("maxsize") -> 50 to 120
             n.startsWith("minsize") -> 0 to 100
             n.startsWith("fontscale") -> 0 to 200
-            n.startsWith("tracking") -> -100 to 300
+            n.startsWith("tracking") -> -1000 to 1000
+            n.startsWith("leadingpx") -> 0 to 100
             n.startsWith("leading") -> 50 to 200
             n.startsWith("hscale") || n.startsWith("vscale") -> 30 to 200
             n.startsWith("baseline") -> -50 to 50

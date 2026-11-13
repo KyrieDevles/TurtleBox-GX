@@ -173,6 +173,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             vScale = num("vscale").takeIf { it > 0f } ?: 100f,
             baselineShift = num("baseline"),
             wordSpace = num("wordspace").takeIf { it > 0f } ?: 100f,
+            leadingPx = num("leadingpx"),
             spacing = spacing,
         )
         var body = indentText(text, num("indent"))
