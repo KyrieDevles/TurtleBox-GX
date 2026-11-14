@@ -136,6 +136,17 @@ class CardView(context: Context) : View(context) {
             invalidate()
         }
     var onTapCard: ((Float, Float) -> Unit)? = null
+    var insetBottom = 0
+        set(v) {
+            field = v
+            invalidate()
+        }
+    var editor: LayerEditor? = null
+        set(v) {
+            field = v
+            v?.redraw = { invalidate() }
+            invalidate()
+        }
 
     private val dest = RectF()
     private val bgPaint = Paint()
@@ -170,16 +181,22 @@ class CardView(context: Context) : View(context) {
             return
         }
         val pad = 14f * resources.displayMetrics.density
-        val k = minOf((width - 2 * pad) / b.width, (height - 2 * pad) / b.height)
+        val k = minOf((width - 2 * pad) / b.width, (height - insetBottom - 2 * pad) / b.height)
         val w = b.width * k
         val h = b.height * k
-        dest.set((width - w) / 2f, (height - h) / 2f, (width + w) / 2f, (height + h) / 2f)
+        dest.set((width - w) / 2f, (height - insetBottom - h) / 2f, (width + w) / 2f, (height - insetBottom + h) / 2f)
         c.drawRoundRect(dest, 6f, 6f, glow)
         c.drawBitmap(b, null, dest, bmpPaint)
         c.drawRoundRect(dest, 6f, 6f, edge)
+        editor?.draw(c, dest, resources.displayMetrics.density)
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        editor?.let { e ->
+            if (bitmap != null) {
+                return e.touch(ev, dest, resources.displayMetrics.density)
+            }
+        }
         if (ev.action == MotionEvent.ACTION_UP && bitmap != null && dest.contains(ev.x, ev.y)) {
             onTapCard?.invoke((ev.x - dest.left) / dest.width(), (ev.y - dest.top) / dest.height())
         }

@@ -15,7 +15,10 @@ import android.text.TextPaint
  */
 class Hit(val click: String, val rect: RectF)
 
-class Renderer(private val layout: Layout, private val ctx: Ctx, private val assets: Assets) {
+class Renderer(private val layout: Layout, private val ctx: Ctx, private val assets: Assets, private val values: Map<String, String> = emptyMap()) {
+    /** A layer that is being edited on screen is left out here; the screen draws it live instead. */
+    var hideLayerId: String? = null
+
     var drawn = 0
         private set
 
@@ -38,7 +41,10 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         c.drawColor(Color.WHITE)
         c.scale(scale, scale)
         val sorted = layout.elements.sortedWith(compareBy<Element> { it.index }.thenBy { it.order })
+        val layers = ImageLayers.read(values).filter { it.vis && it.id != hideLayerId }.sortedBy { it.z }
+        var li = 0
         for (e in sorted) {
+            while (li < layers.size && layers[li].z < e.index) drawLayer(c, layers[li++])
             val vis = e.visible
             if (vis != null && !Expr.eval(vis, ctx)) continue
             try {
@@ -47,7 +53,20 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
                 assets.missing.add("${e.kind} element failed: ${ex.javaClass.simpleName}")
             }
         }
+        while (li < layers.size) drawLayer(c, layers[li++])
         return bmp
+    }
+
+    private fun drawLayer(c: Canvas, l: Layer) {
+        val bmp = assets.bitmap(l.file) ?: return
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt() }
+        c.save()
+        c.translate(l.cx, l.cy)
+        c.rotate(l.rot)
+        c.scale(if (l.mx) -1f else 1f, if (l.fy) -1f else 1f)
+        c.drawBitmap(bmp, null, RectF(-l.w / 2f, -l.h / 2f, l.w / 2f, l.h / 2f), paint)
+        c.restore()
+        drawn++
     }
 
     /** Small "Card Name" samples of name styles (for the Name Style panel), drawn with the layout's name font and colour. */

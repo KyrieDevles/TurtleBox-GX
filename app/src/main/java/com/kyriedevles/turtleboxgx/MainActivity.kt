@@ -54,6 +54,10 @@ class MainActivity : Activity() {
     private var state: CardState? = null
     private var hits: List<Hit> = emptyList()
     private var pendingImageKey: String? = null
+    private var layersPanel: LayersPanel? = null
+    private var editWindow: LayerEditWindow? = null
+    private var editingLayerId: String? = null
+    private var pendingLayerReplace: String? = null
     private var lastBmp: Bitmap? = null
     private var fullStatus = ""
 
@@ -333,17 +337,18 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(16), dp(8), dp(16), dp(6))
         }
-        listOf("Effect text" to "cardtextmenu", "Name" to "cardname", "Stats" to "atkdef", "Frame" to "cardbg").forEach { (name, key) ->
+        listOf("Effect text" to "cardtextmenu", "Name" to "cardname", "Stats" to "atkdef", "Frame" to "cardbg", "Layers" to "@layers").forEach { (name, key) ->
             val chip = TextView(this).apply {
                 text = name
                 gravity = Gravity.CENTER
                 setTextColor(Hot.muted)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 typeface = Typeface.DEFAULT_BOLD
+                maxLines = 1
                 background = Hot.outline(dp(12).toFloat(), dp(2), Hot.line)
-                setOnClickListener { openEditor(key) }
+                setOnClickListener { if (key == "@layers") openLayers() else openEditor(key) }
             }
-            chips.addView(chip, LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+            chips.addView(chip, LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
         }
         page.addView(chips)
         return page
@@ -376,6 +381,115 @@ class MainActivity : Activity() {
             },
         )
         d.show()
+    }
+
+    // ---- image layers ----
+
+    private fun openLayers() {
+        val l = layout
+        val st = state
+        if (l == null || st == null) return toast("Choose a layout folder first.")
+        val panel = LayersPanel(
+            this, l, st,
+            onChanged = { renderState(st) },
+            pickImage = { replaceId ->
+                pendingLayerReplace = replaceId
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_LAYER)
+            },
+            startEdit = { layer, all -> beginLayerEdit(layer, all) },
+        )
+        layersPanel = panel
+        panel.show()
+    }
+
+    /** Adds a layer (or replaces the picture of [replaceId]) from PNG bytes, fitted to the whole card. */
+    private fun storeLayer(png: ByteArray, replaceId: String?) {
+        val l = layout ?: return
+        val st = state ?: return
+        val all = ImageLayers.read(st.values)
+        val (bw, bh) = ImageLayers.size(png)
+        val existing = all.firstOrNull { it.id == replaceId }
+        if (existing != null) {
+            st.files[existing.file] = png
+            ImageLayers.fit(existing, bw, bh, l.width, l.height)
+        } else {
+            val id = ImageLayers.newId()
+            val top = maxOf(l.elements.maxOfOrNull { it.index } ?: 0f, all.maxOfOrNull { it.z } ?: 0f)
+            val layer = Layer(id, "Layer ${all.size + 1}", top + 1f)
+            ImageLayers.fit(layer, bw, bh, l.width, l.height)
+            st.files[layer.file] = png
+            all.add(layer)
+        }
+        ImageLayers.write(st.values, all)
+        renderState(st)
+        layersPanel?.refresh()
+    }
+
+    private fun handleLayerImage(uri: Uri) {
+        val l = layout ?: return
+        val replaceId = pendingLayerReplace
+        try {
+            val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 2000) sample *= 2
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+                ?: throw IllegalArgumentException("That file is not an image.")
+            Cropper.show(this, bmp, bytes, bounds.outWidth, l.width / l.height, onCrop = { cropped ->
+                val out = java.io.ByteArrayOutputStream()
+                cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
+                storeLayer(out.toByteArray(), replaceId)
+            }, onWhole = { original ->
+                storeLayer(if (original) fullPng(bytes) else shrinkToPng(bytes), replaceId)
+            })
+        } catch (e: Throwable) {
+            setStatus("Could not use that image: ${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    private fun beginLayerEdit(layer: Layer, all: List<Layer>) {
+        val l = layout ?: return
+        val st = state ?: return
+        val bytes = st.files[layer.file] ?: return toast("That layer has no picture.")
+        val bmp = try {
+            val (bw, bh) = ImageLayers.size(bytes)
+            var sample = 1
+            while (maxOf(bw, bh) / (sample * 2) >= 2048) sample *= 2
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+        } catch (e: Throwable) {
+            null
+        } ?: return toast("Could not open that picture.")
+        editingLayerId = layer.id
+        val ed = LayerEditor(layer, bmp, l.width, l.height)
+        showTab(0)
+        renderState(st)
+        cardView.editor = ed
+        val win = LayerEditWindow(
+            this, ed, layer.name,
+            save = {
+                val cur = ImageLayers.read(st.values)
+                cur.firstOrNull { it.id == layer.id }?.let { c ->
+                    c.cx = layer.cx; c.cy = layer.cy; c.w = layer.w; c.h = layer.h; c.rot = layer.rot; c.mx = layer.mx; c.fy = layer.fy
+                }
+                ImageLayers.write(st.values, cur)
+            },
+            onTop = { topY ->
+                val loc = IntArray(2)
+                cardView.getLocationOnScreen(loc)
+                cardView.insetBottom = maxOf(0, loc[1] + cardView.height - topY)
+            },
+            onDone = {
+                cardView.editor = null
+                cardView.insetBottom = 0
+                editingLayerId = null
+                editWindow = null
+                renderState(st)
+                openLayers()
+            },
+        )
+        editWindow = win
+        win.show()
     }
 
     private fun openEditor(click: String) {
@@ -769,6 +883,7 @@ class MainActivity : Activity() {
                 prefs.edit().putString("setsTree", uri.toString()).apply()
                 scanSetsFolder()
             }
+            REQ_LAYER -> handleLayerImage(uri)
             REQ_IMAGE -> {
                 val key = pendingImageKey ?: return
                 val l = layout ?: return
@@ -982,7 +1097,8 @@ class MainActivity : Activity() {
             try {
                 val ctx = Ctx(l, st.values)
                 assets = Assets(z, st.files, cacheDir)
-                val r = Renderer(l, ctx, assets)
+                val r = Renderer(l, ctx, assets, st.values)
+                r.hideLayerId = editingLayerId
                 bmp = r.render(2f)
                 val ms = SystemClock.elapsedRealtime() - t0
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
@@ -1025,6 +1141,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val DEV_FOLDER = "TurtleBox dev"
+        private const val REQ_LAYER = 1007
         private const val REQ_SETS_TREE = 1006
         private const val REQ_TREE = 1001
         private const val REQ_SET = 1002
