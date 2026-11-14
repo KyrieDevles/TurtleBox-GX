@@ -683,9 +683,23 @@ class MainActivity : Activity() {
         if (sfSaved != null) fr.addView(pill("Rescan", false) { scanSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folderCard.addView(fr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         box.addView(folderCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        box.addView(label("Recent sets", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+        val list = recents()
+        if (list.isEmpty()) {
+            box.addView(label("Sets you open or save appear here.", 14f, Hot.dim), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+        }
+        list.forEach { (u, name) ->
+            val r = label(name.removeSuffix(".msoe-set"), 15f, Color.WHITE, bold = true).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                background = Hot.outline(dp(14).toFloat(), dp(2), Hot.line)
+                setPadding(dp(16), 0, dp(16), 0)
+                setOnClickListener { loadSet(Uri.parse(u)) }
+            }
+            box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(8) })
+        }
+
         val root = setRoot
         if (root != null && root.total > 0) {
-            box.addView(label("In this folder", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
             fun addSet(f: DocumentFile, indent: Int) {
                 val on = curSet == f.uri
                 val r = label((f.name ?: "set").removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
@@ -716,24 +730,16 @@ class MainActivity : Activity() {
                     }
                 }
             }
-            root.files.forEach { addSet(it, 0) }
-            addNode(root, 0)
+            if (root.children.isNotEmpty()) {
+                box.addView(label("Folders", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+                addNode(root, 0)
+            }
+            if (root.files.isNotEmpty()) {
+                box.addView(label("Sets without a folder", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+                root.files.forEach { addSet(it, 0) }
+            }
         }
 
-        box.addView(label("Recent sets", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
-        val list = recents()
-        if (list.isEmpty()) {
-            box.addView(label("Sets you open or save appear here.", 14f, Hot.dim), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
-        }
-        list.forEach { (u, name) ->
-            val r = label(name.removeSuffix(".msoe-set"), 15f, Color.WHITE, bold = true).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                background = Hot.outline(dp(14).toFloat(), dp(2), Hot.line)
-                setPadding(dp(16), 0, dp(16), 0)
-                setOnClickListener { loadSet(Uri.parse(u)) }
-            }
-            box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(8) })
-        }
     }
 
     // ---- files ----
