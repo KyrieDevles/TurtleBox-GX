@@ -103,6 +103,15 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val crashFile = File(filesDir, "crash.txt")
+        val prevHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                crashFile.writeText("Thread ${t.name}\n" + android.util.Log.getStackTraceString(e).take(6000))
+            } catch (x: Throwable) {
+            }
+            prevHandler?.uncaughtException(t, e)
+        }
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
@@ -139,6 +148,15 @@ class MainActivity : Activity() {
         refreshLayoutsPage()
         refreshSetsPage()
 
+        if (crashFile.exists()) {
+            val report = try { crashFile.readText() } catch (e: Exception) { "" }
+            crashFile.delete()
+            if (report.isNotBlank()) {
+                val tv = label(report, 11f, Color.WHITE).apply { typeface = Typeface.MONOSPACE; setTextIsSelectable(true); setPadding(dp(16), dp(12), dp(16), dp(12)) }
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("The app crashed last time")
+                    .setView(ScrollView(this).apply { addView(tv) }).setPositiveButton("Close", null).show()
+            }
+        }
         val saved = prefs.getString("tree", null)
         if (saved != null) {
             val uri = Uri.parse(saved)
@@ -178,14 +196,26 @@ class MainActivity : Activity() {
                 tmp.writeBytes(bytes)
                 tmp.renameTo(autoFile)
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
         }
     }
 
-    private fun readAutosave(): CardSet? = try {
-        if (autoFile.exists()) CardSet.read(autoFile.readBytes()) else null
-    } catch (e: Exception) {
-        null
+    /** Restores the autosaved card. If the app died while doing this last time, the autosave is dropped instead. */
+    private fun readAutosave(): CardSet? {
+        if (prefs.getBoolean("restoring", false)) {
+            prefs.edit().putBoolean("restoring", false).commit()
+            autoFile.delete()
+            return null
+        }
+        if (!autoFile.exists()) return null
+        prefs.edit().putBoolean("restoring", true).commit()
+        return try {
+            CardSet.read(autoFile.readBytes())
+        } catch (e: Throwable) {
+            autoFile.delete()
+            prefs.edit().putBoolean("restoring", false).commit()
+            null
+        }
     }
 
     /** Every few seconds: did the XML change? Reload it. Otherwise just refresh the "edited … ago" text. */
@@ -968,6 +998,7 @@ class MainActivity : Activity() {
                     lastBmp = bmp
                     cardView.bitmap = bmp
                     hits = newHits
+                    prefs.edit().putBoolean("restoring", false).apply()
                 }
                 thread { autosave() }
             }
