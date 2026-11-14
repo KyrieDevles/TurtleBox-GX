@@ -58,7 +58,8 @@ class CardSet(val values: Map<String, String>, val files: Map<String, ByteArray>
  * Names are matched exactly, then ignoring upper/lower case. Names that are not found are remembered in [missing].
  */
 class Assets(private val layoutZip: File?, private val setFiles: Map<String, ByteArray>, private val cacheDir: File) {
-    private val zip: ZipFile? = layoutZip?.let { ZipFile(it) }
+    private val zip: ZipFile? = layoutZip?.takeIf { it.isFile }?.let { ZipFile(it) }
+    private val dirIndex = HashMap<String, File>()
     private val zipIndex = HashMap<String, String>()
     private val setIndex = HashMap<String, String>()
     private val fonts = HashMap<String, Typeface?>()
@@ -72,6 +73,9 @@ class Assets(private val layoutZip: File?, private val setFiles: Map<String, Byt
             }
         }
         setFiles.keys.forEach { setIndex[it.lowercase()] = it }
+        layoutZip?.takeIf { it.isDirectory }?.let { root ->
+            root.walkTopDown().filter { it.isFile }.forEach { f -> dirIndex[f.relativeTo(root).path.replace('\\', '/').lowercase()] = f }
+        }
     }
 
     private fun clean(name: String): String = name.trim().replace('\\', '/').removePrefix("./").trimStart('/')
@@ -81,6 +85,7 @@ class Assets(private val layoutZip: File?, private val setFiles: Map<String, Byt
         if (name.isEmpty()) return null
         setFiles[name]?.let { return it }
         setIndex[name.lowercase()]?.let { return setFiles[it] }
+        dirIndex[name.lowercase()]?.let { return it.readBytes() }
         val z = zip ?: return null
         val actual = zipIndex[name.lowercase()] ?: return null
         val entry = z.getEntry(actual) ?: return null

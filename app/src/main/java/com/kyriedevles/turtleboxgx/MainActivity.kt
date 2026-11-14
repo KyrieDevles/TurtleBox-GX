@@ -207,19 +207,24 @@ class MainActivity : Activity() {
     private fun buildTopBar(): View = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(20), 0, dp(8), 0)
-        addView(label("TurtleBox", 20f, Hot.pink, bold = true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        fun icon(kind: String, desc: String, action: (View) -> Unit) {
-            val v = HotIcon(this@MainActivity, kind).apply {
-                contentDescription = desc
-                setOnClickListener { action(it) }
+        setPadding(dp(20), 0, dp(4), 0)
+        val title = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
+        title.addView(label("TurtleBox", 20f, Hot.pink, bold = true).apply { includeFontPadding = false })
+        title.addView(label("v${versionName()}", 11f, Hot.dim).apply { includeFontPadding = false; setPadding(0, dp(2), 0, 0) })
+        addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        fun action(kind: String, name: String, act: () -> Unit) {
+            val col = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setOnClickListener { act() }
             }
-            addView(v, LinearLayout.LayoutParams(dp(44), dp(44)).apply { setMargins(dp(2), 0, 0, 0) })
+            col.addView(HotIcon(this@MainActivity, kind).apply { contentDescription = name }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(2) })
+            col.addView(label(name, 12f, Hot.inactive).apply { gravity = Gravity.CENTER; includeFontPadding = false }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(col, LinearLayout.LayoutParams(dp(68), ViewGroup.LayoutParams.MATCH_PARENT))
         }
-        icon("save", "Save card set") { saveSet() }
-        icon("eye", "Preview") { showPreview() }
-        icon("image", "Save card image") { saveImage() }
-        icon("more", "More") { showMore(it) }
+        action("save", "Save") { saveSet() }
+        action("eye", "Preview") { showPreview() }
+        action("image", "Image") { saveImage() }
     }
 
     private fun buildBottomBar(): View {
@@ -255,35 +260,6 @@ class MainActivity : Activity() {
         }
         if (i == 1) refreshLayoutsPage()
         if (i == 2) refreshSetsPage()
-    }
-
-    private fun showMore(anchor: View) {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Hot.outline(dp(14).toFloat(), dp(2), Hot.pinkDeep)
-            setPadding(0, dp(6), 0, dp(6))
-        }
-        val pop = PopupWindow(box, dp(220), ViewGroup.LayoutParams.WRAP_CONTENT, true)
-        fun item(text: String, action: () -> Unit) {
-            box.addView(
-                label(text, 15f, Color.WHITE).apply {
-                    setPadding(dp(18), 0, dp(18), 0)
-                    gravity = Gravity.CENTER_VERTICAL
-                    setOnClickListener {
-                        pop.dismiss()
-                        action()
-                    }
-                },
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)),
-            )
-        }
-        item("Open card set") { pickSet() }
-        item("Draw default card") { if (layout == null) toast("Choose a layout folder first.") else renderCard(null) }
-        item("Choose layout folder") { pickFolder() }
-        item("Version ${versionName()}") { }
-        pop.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        pop.elevation = dp(8).toFloat()
-        pop.showAsDropDown(anchor, -dp(176), 0)
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -516,7 +492,7 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(pill("Open set", true) { pickSet() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         row.addView(pill("Save set", false) { saveSet() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
-        row.addView(pill("New card", false) { if (layout == null) toast("Choose a layout folder first.") else renderCard(null) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
+        row.addView(pill("New card", false) { if (layout == null) toast("Choose a layout folder first.") else renderCard(null, true) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         head.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         box.addView(head)
 
@@ -556,8 +532,39 @@ class MainActivity : Activity() {
     private fun cardFileName(): String =
         (state?.values?.get("cardname") ?: "card").replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifEmpty { "card" }
 
+    private var curSet: Uri? = prefs.getString("curset", null)?.let { Uri.parse(it) }
+    private var curSetName: String = prefs.getString("cursetname", "") ?: ""
+
+    private fun setCurSet(uri: Uri?, name: String = "") {
+        curSet = uri
+        curSetName = name
+        prefs.edit().putString("curset", uri?.toString()).putString("cursetname", name).apply()
+    }
+
     private fun saveSet() {
         if (state == null) return toast("No card to save yet.")
+        val cur = curSet
+        if (cur == null) return saveSetAsNew()
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Save card set")
+            .setMessage("Replace “${curSetName.removeSuffix(".msoe-set")}”, or keep it and save this card as a new set?")
+            .setPositiveButton("Overwrite") { _, _ -> overwriteSet(cur) }
+            .setNeutralButton("Save as new") { _, _ -> saveSetAsNew() }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun overwriteSet(uri: Uri) {
+        val l = layout ?: return
+        val st = state ?: return
+        try {
+            contentResolver.openOutputStream(uri, "wt")!!.use { it.write(SetWriter.build(l, st)) }
+            toast("Saved ${curSetName.removeSuffix(".msoe-set")}.")
+        } catch (e: Exception) {
+            toast("Could not overwrite that file. Choose where to save instead.")
+            saveSetAsNew()
+        }
+    }
+
+    private fun saveSetAsNew() {
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
             .setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE, "${cardFileName()}.msoe-set")
         startActivityForResult(intent, REQ_SAVE)
@@ -614,7 +621,7 @@ class MainActivity : Activity() {
 
     private fun pickSet() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         startActivityForResult(intent, REQ_SET)
     }
 
@@ -626,7 +633,7 @@ class MainActivity : Activity() {
             try {
                 val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
                 val set = CardSet.read(bytes)
-                runOnUiThread { addRecent(uri, displayName(uri)) }
+                runOnUiThread { addRecent(uri, displayName(uri)); setCurSet(uri, displayName(uri)) }
                 renderCard(set)
             } catch (e: Exception) {
                 runOnUiThread { setStatus("Could not read that card set: ${e.javaClass.simpleName}: ${e.message}") }
@@ -695,6 +702,7 @@ class MainActivity : Activity() {
                     } catch (e: Exception) {
                     }
                     addRecent(uri, displayName(uri))
+                    setCurSet(uri, displayName(uri))
                     toast("Saved ${st.values["cardname"] ?: "card"}.")
                 } catch (e: Exception) {
                     setStatus("Could not save: ${e.javaClass.simpleName}: ${e.message}")
@@ -711,12 +719,46 @@ class MainActivity : Activity() {
             }
             REQ_SET -> {
                 try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 } catch (e: Exception) {
+                    try {
+                        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (e2: Exception) {
+                    }
                 }
                 loadSet(uri)
             }
         }
+    }
+
+    /** Mirrors an unzipped assets folder into app storage, copying only files whose size or date changed. Returns the file count. */
+    private fun syncDevFolder(src: DocumentFile, target: File): Int {
+        target.mkdirs()
+        val manifestFile = File(filesDir, "devassets.manifest")
+        val old = HashMap<String, String>()
+        if (manifestFile.exists()) manifestFile.readLines().forEach { l -> if (l.contains('\t')) old[l.substringBefore('\t')] = l.substringAfter('\t') }
+        val now = LinkedHashMap<String, String>()
+        fun walk(d: DocumentFile, rel: String) {
+            for (f in d.listFiles()) {
+                val n = f.name ?: continue
+                val path = if (rel.isEmpty()) n else "$rel/$n"
+                if (f.isDirectory) {
+                    walk(f, path)
+                } else if (f.isFile) {
+                    val stamp = "${f.length()}:${f.lastModified()}"
+                    now[path] = stamp
+                    val out = File(target, path)
+                    if (!out.exists() || old[path] != stamp) {
+                        out.parentFile?.mkdirs()
+                        contentResolver.openInputStream(f.uri)?.use { i -> out.outputStream().use { i.copyTo(it) } }
+                    }
+                }
+            }
+        }
+        walk(src, "")
+        for (path in old.keys) if (path !in now) File(target, path).delete()
+        manifestFile.writeText(now.entries.joinToString("\n") { "${it.key}\t${it.value}" })
+        return now.size
     }
 
     /** Reads the folder: finds the layout XML and the assets ZIP, loads them, and keeps the last good layout on error. */
@@ -765,7 +807,16 @@ class MainActivity : Activity() {
                             xmlError = ParseInfo(e.line, e.message ?: "problem", ctx)
                         }
                     }
-                    if (zip == null) {
+                    val dev = if (dir.name.equals(DEV_FOLDER, true)) dir else files.firstOrNull { it.isDirectory && it.name.equals(DEV_FOLDER, true) }
+                    if (dev != null) {
+                        runOnUiThread { setStatus("Syncing $DEV_FOLDER…") }
+                        val target = File(filesDir, "devassets")
+                        val n = syncDevFolder(dev, target)
+                        zipFile = target
+                        zipName = "$DEV_FOLDER (unzipped)"
+                        zipOk = true
+                        zipInfo = "Dev assets · $n files, read from the folder"
+                    } else if (zip == null) {
                         zipName = ""
                         zipOk = false
                     } else {
@@ -797,7 +848,8 @@ class MainActivity : Activity() {
     }
 
     /** Starts editing a card (a saved set, or null for the layout's defaults) and draws it. */
-    private fun renderCard(set: CardSet?) {
+    private fun renderCard(set: CardSet?, newCard: Boolean = false) {
+        if (newCard) setCurSet(null)
         val st = CardState.from(set)
         state = st
         runOnUiThread { refreshSetsPage() }
@@ -858,6 +910,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val DEV_FOLDER = "TurtleBox dev"
         private const val REQ_TREE = 1001
         private const val REQ_SET = 1002
         private const val REQ_IMAGE = 1003
