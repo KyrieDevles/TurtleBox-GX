@@ -295,6 +295,12 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
                             var shy = 0f
                             if (hsx != 0) { nw = max(8f, hsx * tlx + l0.w / 2f); shx = hsx * (nw - l0.w) / 2f }
                             if (hsy != 0) { nh = max(8f, hsy * tly + l0.h / 2f); shy = hsy * (nh - l0.h) / 2f }
+                            if (lock && mode == Mode.EDGE) {
+                                // Lock keeps the ratio: dragging an edge scales both sides, the opposite edge stays put.
+                                val sc = if (hsx != 0) nw / l0.w else nh / l0.h
+                                nw = l0.w * sc
+                                nh = l0.h * sc
+                            }
                             val a = rad(l0.rot)
                             val cs = cos(a).toFloat()
                             val sn = sin(a).toFloat()
