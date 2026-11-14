@@ -101,7 +101,9 @@ class LayersPanel(
 
     fun refresh() {
         if (dlg == null) return
+        list.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         list.removeAllViews()
+        list.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         val ls = layers()
         // Rows: layers and the layout's own elements, front (highest index) first.
         class Row(val z: Float, val layer: Layer?, val name: String)
@@ -172,10 +174,10 @@ class LayersPanel(
                     val cur = layers()
                     cur.firstOrNull { it.id == l.id }?.z = v
                     save(cur)
-                    refresh()
+                    list.post { refresh() }
                 }
             }
-            setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_DONE) { apply(); true } else false }
+            setOnEditorActionListener { v, a, _ -> if (a == EditorInfo.IME_ACTION_DONE) { apply(); v.clearFocus(); true } else false }
             setOnFocusChangeListener { _, f -> if (!f) apply() }
         }
         head.addView(zBox, LinearLayout.LayoutParams(activity.dpx(58), activity.dpx(34)))
