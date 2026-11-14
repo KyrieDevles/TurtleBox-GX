@@ -185,9 +185,7 @@ class CardView(context: Context) : View(context) {
         val w = b.width * k
         val h = b.height * k
         dest.set((width - w) / 2f, (height - insetBottom - h) / 2f, (width + w) / 2f, (height - insetBottom + h) / 2f)
-        c.drawRoundRect(dest, 6f, 6f, glow)
         c.drawBitmap(b, null, dest, bmpPaint)
-        c.drawRoundRect(dest, 6f, 6f, edge)
         editor?.draw(c, dest, resources.displayMetrics.density)
     }
 
