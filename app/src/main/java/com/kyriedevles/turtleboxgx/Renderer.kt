@@ -19,6 +19,10 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** A layer that is being edited on screen is left out here; the screen draws it live instead. */
     var hideLayerId: String? = null
 
+    /** While a layer is edited: part 1 draws only what is behind index [splitZ], part 2 (on a transparent background) only what is in front of it. */
+    var splitZ: Float = 0f
+    var part: Int = 0
+
     var drawn = 0
         private set
 
@@ -38,10 +42,10 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             Bitmap.Config.ARGB_8888,
         )
         val c = Canvas(bmp)
-        c.drawColor(Color.WHITE)
+        if (part != 2) c.drawColor(Color.WHITE)
         c.scale(scale, scale)
-        val sorted = layout.elements.sortedWith(compareBy<Element> { it.index }.thenBy { it.order })
-        val layers = ImageLayers.read(values).filter { it.vis && it.id != hideLayerId }.sortedBy { it.z }
+        val sorted = layout.elements.filter { part == 0 || (part == 1) == (it.index <= splitZ) }.sortedWith(compareBy<Element> { it.index }.thenBy { it.order })
+        val layers = ImageLayers.read(values).filter { it.vis && it.id != hideLayerId && (part == 0 || (part == 1) == (it.z <= splitZ)) }.sortedBy { it.z }
         var li = 0
         for (e in sorted) {
             while (li < layers.size && layers[li].z < e.index) drawLayer(c, layers[li++])

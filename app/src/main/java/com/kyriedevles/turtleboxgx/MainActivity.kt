@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private var layersPanel: LayersPanel? = null
     private var editWindow: LayerEditWindow? = null
     private var editingLayerId: String? = null
+    @Volatile private var editAbove: Bitmap? = null
     private var pendingLayerReplace: String? = null
     private var lastBmp: Bitmap? = null
     private var fullStatus = ""
@@ -1099,7 +1100,19 @@ class MainActivity : Activity() {
                 assets = Assets(z, st.files, cacheDir)
                 val r = Renderer(l, ctx, assets, st.values)
                 r.hideLayerId = editingLayerId
+                var aboveBmp: Bitmap? = null
+                val editing = editingLayerId?.let { id -> ImageLayers.read(st.values).firstOrNull { it.id == id } }
+                if (editing != null) {
+                    r.splitZ = editing.z
+                    r.part = 1
+                    val r2 = Renderer(l, ctx, assets, st.values)
+                    r2.hideLayerId = editingLayerId
+                    r2.splitZ = editing.z
+                    r2.part = 2
+                    aboveBmp = r2.render(2f)
+                }
                 bmp = r.render(2f)
+                editAbove = aboveBmp
                 val ms = SystemClock.elapsedRealtime() - t0
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
                 val real = assets.missing.filter { !isBlankOnPurpose(it) }
@@ -1124,6 +1137,8 @@ class MainActivity : Activity() {
                 if (bmp != null) {
                     lastBmp = bmp
                     cardView.bitmap = bmp
+                    cardView.editor?.above = editAbove
+                    cardView.invalidate()
                     hits = newHits
                     prefs.edit().putBoolean("restoring", false).apply()
                 }

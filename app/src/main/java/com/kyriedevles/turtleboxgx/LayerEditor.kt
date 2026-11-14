@@ -28,6 +28,9 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
     var onBegin: (() -> Unit)? = null
     var redraw: (() -> Unit)? = null
 
+    /** What the layout draws in front of this layer, so it stays visible while editing. */
+    var above: Bitmap? = null
+
     fun changed() {
         redraw?.invoke()
         onChange?.invoke()
@@ -87,6 +90,7 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
         imgP.alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt()
         c.drawBitmap(bmp, null, RectF(-l.w * k / 2f, -l.h * k / 2f, l.w * k / 2f, l.h * k / 2f), imgP)
         c.restore()
+        above?.let { c.drawBitmap(it, null, dest, null) }
         if (grid) {
             val step = cardW / 40f
             line.strokeWidth = 1f
