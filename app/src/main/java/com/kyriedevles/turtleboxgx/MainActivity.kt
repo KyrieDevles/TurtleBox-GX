@@ -255,11 +255,20 @@ class MainActivity : Activity() {
             }
             col.addView(HotIcon(this@MainActivity, kind).apply { contentDescription = name }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(2) })
             col.addView(label(name, 12f, Hot.inactive).apply { gravity = Gravity.CENTER; includeFontPadding = false }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(col, LinearLayout.LayoutParams(dp(68), ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(col, LinearLayout.LayoutParams(dp(60), ViewGroup.LayoutParams.MATCH_PARENT))
         }
+        action("clear", "Clear") { clearCard() }
         action("save", "Save") { saveSet() }
         action("eye", "Preview") { showPreview() }
         action("image", "Image") { saveImage() }
+    }
+
+    private fun clearCard() {
+        if (layout == null) return toast("Choose a layout folder first.")
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Clear card?")
+            .setMessage("This resets the card to the layout's defaults. Anything not saved to a set is lost.")
+            .setPositiveButton("Clear") { _, _ -> renderCard(null, true) }
+            .setNegativeButton("Cancel", null).show()
     }
 
     private fun buildBottomBar(): View {

@@ -70,6 +70,13 @@ class HotIcon(context: Context, private val kind: String) : View(context) {
                 addCircle(9f, 10f, 1.5f, Path.Direction.CW)
                 moveTo(21f, 16f); lineTo(16f, 11f); lineTo(7f, 20f)
             }
+            "clear" -> {
+                moveTo(5f, 7f); lineTo(19f, 7f)
+                moveTo(9f, 7f); lineTo(9f, 4f); lineTo(15f, 4f); lineTo(15f, 7f)
+                moveTo(7f, 7f); lineTo(8f, 21f); lineTo(16f, 21f); lineTo(17f, 7f)
+                moveTo(10f, 11f); lineTo(10f, 17f)
+                moveTo(14f, 11f); lineTo(14f, 17f)
+            }
             "card" -> {
                 addRoundRect(RectF(5f, 3f, 19f, 21f), 2f, 2f, Path.Direction.CW)
                 moveTo(9f, 8f); lineTo(15f, 8f)
