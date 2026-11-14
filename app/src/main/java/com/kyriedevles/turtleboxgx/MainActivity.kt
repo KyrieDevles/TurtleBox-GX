@@ -112,6 +112,8 @@ class MainActivity : Activity() {
             }
             prevHandler?.uncaughtException(t, e)
         }
+        curSet = prefs.getString("curset", null)?.let { Uri.parse(it) }
+        curSetName = prefs.getString("cursetname", "") ?: ""
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
 
@@ -622,8 +624,8 @@ class MainActivity : Activity() {
     private fun cardFileName(): String =
         (state?.values?.get("cardname") ?: "card").replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifEmpty { "card" }
 
-    private var curSet: Uri? = prefs.getString("curset", null)?.let { Uri.parse(it) }
-    private var curSetName: String = prefs.getString("cursetname", "") ?: ""
+    private var curSet: Uri? = null
+    private var curSetName: String = ""
 
     private fun setCurSet(uri: Uri?, name: String = "") {
         curSet = uri
