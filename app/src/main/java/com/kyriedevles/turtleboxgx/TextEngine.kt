@@ -125,12 +125,18 @@ class TextEngine(
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .build()
 
+    /** The materials line has its own size: a manual font size or tracking set for the body text does not carry over to it. */
+    private fun matBase(): Float = if (opt.fontScale > 0f) baseSize else paint.textSize
+
     private fun materialsHeight(): Float {
         if (materials.isEmpty()) return 0f
         val bodySize = paint.textSize
-        paint.textSize = bodySize * materialsPct / 100f
+        val bodyLetter = paint.letterSpacing
+        paint.letterSpacing = 0f
+        paint.textSize = matBase() * materialsPct / 100f
         val h = buildMaterials().height.toFloat() * materialsLinePct / 100f
         paint.textSize = bodySize
+        paint.letterSpacing = bodyLetter
         return h
     }
 
@@ -351,8 +357,10 @@ class TextEngine(
             // Same font size as the text, but its own squeeze: natural width unless it is too long for one line.
             val bodyScale = paint.textScaleX
             val bodySize = paint.textSize
+            val bodyLetter = paint.letterSpacing
+            paint.letterSpacing = 0f
             paint.textScaleX = 1f
-            paint.textSize = bodySize * materialsPct / 100f
+            paint.textSize = matBase() * materialsPct / 100f
             val natural = exactWidth(paint, materials)
             // The width setting stretches or squeezes it; it never goes past the box, so a long line still fits on one line.
             matScale = if (natural > 0f) minOf(materialsWidthPct / 100f, width / natural).coerceAtLeast(0.3f) else 1f
@@ -361,6 +369,7 @@ class TextEngine(
             matH = ml.height.toFloat() * materialsLinePct / 100f
             paint.textSize = bodySize
             paint.textScaleX = bodyScale
+            paint.letterSpacing = bodyLetter
         }
         return sl.height.toFloat() + matH
     }
@@ -368,8 +377,10 @@ class TextEngine(
     private fun drawMaterials(c: Canvas, left: Float, top: Float, h: Int, ml: StaticLayout) {
         val bodyScale = paint.textScaleX
         val bodySize = paint.textSize
+        val bodyLetter = paint.letterSpacing
+        paint.letterSpacing = 0f
         paint.textScaleX = matScale
-        paint.textSize = bodySize * materialsPct / 100f
+        paint.textSize = matBase() * materialsPct / 100f
         val mw = exactWidth(paint, materials)
         val x = left + when (h) {
             2 -> width - mw
@@ -379,6 +390,7 @@ class TextEngine(
         c.drawText(materials, x, top + ml.getLineBaseline(0), paint)
         paint.textSize = bodySize
         paint.textScaleX = bodyScale
+        paint.letterSpacing = bodyLetter
     }
 
     /** Draws the laid-out text with its top at [top]. [h] is 0 left, 1 centre, 2 right. */
