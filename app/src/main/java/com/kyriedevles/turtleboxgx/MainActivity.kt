@@ -77,6 +77,21 @@ class MainActivity : Activity() {
     private var scanning = false
     private var setsFolderName = ""
     private var setFiles: List<DocumentFile> = emptyList()
+    private var setRoot: SetNode? = null
+    private val openSetFolders = HashSet<String>()
+
+    /** A folder inside the sets folder: its own sets and the folders below it. */
+    private class SetNode(val name: String, val path: String, val files: List<DocumentFile>, val children: List<SetNode>) {
+        val total: Int get() = files.size + children.sumOf { it.total }
+    }
+
+    private fun scanNode(dir: DocumentFile, path: String, depth: Int): SetNode {
+        val all = dir.listFiles()
+        val files = all.filter { it.isFile && it.name?.endsWith(".msoe-set", true) == true }.sortedBy { (it.name ?: "").lowercase() }
+        val kids = if (depth >= 5) emptyList() else all.filter { it.isDirectory }.sortedBy { (it.name ?: "").lowercase() }
+            .map { scanNode(it, path + "/" + (it.name ?: ""), depth + 1) }.filter { it.total > 0 }
+        return SetNode(dir.name ?: "", path, files, kids)
+    }
     private var setsScanning = false
 
     private class ParseInfo(val line: Int, val message: String, val context: String)
@@ -662,15 +677,16 @@ class MainActivity : Activity() {
         }
         folderCard.addView(label("Sets folder", 13f, Hot.muted))
         val sfSaved = prefs.getString("setsTree", null)
-        folderCard.addView(label(if (sfSaved == null) "None chosen yet" else "$setsFolderName · ${setFiles.size} sets", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+        folderCard.addView(label(if (sfSaved == null) "None chosen yet" else "$setsFolderName · ${setRoot?.total ?: 0} sets", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
         val fr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fr.addView(pill(if (sfSaved == null) "Choose folder" else "Change", true) { pickSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         if (sfSaved != null) fr.addView(pill("Rescan", false) { scanSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folderCard.addView(fr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         box.addView(folderCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
-        if (setFiles.isNotEmpty()) {
+        val root = setRoot
+        if (root != null && root.total > 0) {
             box.addView(label("In this folder", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
-            for (f in setFiles) {
+            fun addSet(f: DocumentFile, indent: Int) {
                 val on = curSet == f.uri
                 val r = label((f.name ?: "set").removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER_VERTICAL
@@ -680,8 +696,28 @@ class MainActivity : Activity() {
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     setOnClickListener { addRecent(f.uri, f.name ?: "set"); loadSet(f.uri) }
                 }
-                box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) })
+                box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8); leftMargin = dp(14 * indent) })
             }
+            fun addNode(n: SetNode, indent: Int) {
+                for (k in n.children) {
+                    val isOpen = openSetFolders.contains(k.path)
+                    val h = label((if (isOpen) "▾  " else "▸  ") + k.name + "  ·  ${k.total}", 15f, Hot.pinkLight, bold = true).apply {
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = Hot.outline(dp(14).toFloat(), dp(2), if (isOpen) Hot.pinkDeep else Hot.line)
+                        setPadding(dp(16), 0, dp(16), 0)
+                        setSingleLine(true)
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        setOnClickListener { if (isOpen) openSetFolders.remove(k.path) else openSetFolders.add(k.path); refreshSetsPage() }
+                    }
+                    box.addView(h, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8); leftMargin = dp(14 * indent) })
+                    if (isOpen) {
+                        k.files.forEach { addSet(it, indent + 1) }
+                        addNode(k, indent + 1)
+                    }
+                }
+            }
+            root.files.forEach { addSet(it, 0) }
+            addNode(root, 0)
         }
 
         box.addView(label("Recent sets", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
@@ -726,8 +762,8 @@ class MainActivity : Activity() {
                 val dir = DocumentFile.fromTreeUri(this, Uri.parse(saved))
                 if (dir != null && dir.isDirectory) {
                     setsFolderName = dir.name ?: ""
-                    setFiles = dir.listFiles().filter { it.isFile && it.name?.endsWith(".msoe-set", true) == true }
-                        .sortedBy { (it.name ?: "").lowercase() }
+                    setRoot = scanNode(dir, "", 0)
+                    setFiles = setRoot?.files ?: emptyList()
                 }
             } catch (e: Exception) {
             }
