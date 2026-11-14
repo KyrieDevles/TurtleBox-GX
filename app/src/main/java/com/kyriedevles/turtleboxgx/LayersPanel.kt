@@ -92,7 +92,10 @@ class LayersPanel(
 
     private fun elementRows(): List<Pair<String, Float>> {
         val seen = LinkedHashSet<Pair<String, Float>>()
+        val ctx = Ctx(layout, st.values)
         for (e in layout.elements) {
+            val vis = e.visible
+            if (vis != null && !try { Expr.eval(vis, ctx) } catch (x: Exception) { true }) continue
             val click = e.attrs["click"]
             val menu = click?.let { layout.datas[it]?.desc?.takeIf { d -> d.isNotBlank() } ?: it }
             val what = if (e.kind == "image") {
@@ -137,7 +140,7 @@ class LayersPanel(
         }
         list.addView(activity.tv("BACK", 11f, Color.parseColor("#b98aa5"), true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(8) })
         list.addView(
-            activity.tv("Dashed rows are the layout's own elements and their index from the XML. Give a layer a number to put it in front of or behind them. Higher is in front.", 11f, DIM),
+            activity.tv("Dashed rows are the layout's own elements that are showing on this card, with their index from the XML. Give a layer a number to put it in front of or behind them. Higher is in front.", 11f, DIM),
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(4) },
         )
     }
