@@ -132,7 +132,7 @@ class MainActivity : Activity() {
         root.addView(buildBottomBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)))
         setContentView(root)
 
-        showTab(0)
+        showTab(savedInstanceState?.getInt("tab") ?: 0)
         refreshLayoutsPage()
         refreshSetsPage()
 
@@ -152,6 +152,37 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(poll)
+        autosave()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt("tab", tab)
+        autosave()
+    }
+
+    private val autoFile by lazy { File(filesDir, "autosave.msoe-set") }
+    private val autoLock = Any()
+
+    /** Keeps the card being edited on disk so rotating or closing the app never loses it. */
+    private fun autosave() {
+        val l = layout ?: return
+        val st = state ?: return
+        try {
+            synchronized(autoLock) {
+                val bytes = SetWriter.build(l, st)
+                val tmp = File(filesDir, "autosave.tmp")
+                tmp.writeBytes(bytes)
+                tmp.renameTo(autoFile)
+            }
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun readAutosave(): CardSet? = try {
+        if (autoFile.exists()) CardSet.read(autoFile.readBytes()) else null
+    } catch (e: Exception) {
+        null
     }
 
     /** Every few seconds: did the XML change? Reload it. Otherwise just refresh the "edited … ago" text. */
@@ -759,7 +790,7 @@ class MainActivity : Activity() {
                 refreshLayoutsPage()
                 if (loaded) {
                     val st = state
-                    if (st != null) renderState(st) else if (zipOk) renderCard(null)
+                    if (st != null) renderState(st) else if (zipOk) renderCard(readAutosave())
                 }
             }
         }
@@ -814,6 +845,7 @@ class MainActivity : Activity() {
                     cardView.bitmap = bmp
                     hits = newHits
                 }
+                thread { autosave() }
             }
         }
     }
