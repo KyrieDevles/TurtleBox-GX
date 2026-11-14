@@ -103,7 +103,7 @@ class LayersPanel(
             } else {
                 "text" + (e.text.replace(Regex("\\s+"), " ").trim().take(14).takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
             }
-            val name = listOfNotNull(menu, what).distinct().joinToString(" · ").ifBlank { e.attrs["id"] ?: e.kind }
+            val name = e.label ?: listOfNotNull(menu, what).distinct().joinToString(" · ").ifBlank { e.attrs["id"] ?: e.kind }
             seen.add(name to e.index)
         }
         return seen.toList()

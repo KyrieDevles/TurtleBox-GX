@@ -24,6 +24,9 @@ class Element(val kind: String, val attrs: Map<String, String>, val order: Int) 
     val fonts = ArrayList<Cond<FontSpec>>()
     val options = HashMap<String, String>()
     var visible: String? = null
+
+    /** The XML comment written just before this element (e.g. `<!-- artwork frame -->`), used as its name in lists. */
+    var label: String? = null
     var text: String = ""
     val index: Float get() = attrs["index"]?.toFloatOrNull() ?: 0f
 }
@@ -115,6 +118,27 @@ object LayoutParser {
             }
         } catch (e: org.xmlpull.v1.XmlPullParserException) {
             throw ParseError(e.message ?: "XML error", p.lineNumber, p.columnNumber)
+        }
+        try {
+            val start = xml.indexOf("<layout")
+            if (start >= 0) {
+                val labels = ArrayList<String?>()
+                var last: String? = null
+                for (m in Regex("<!--(.*?)-->|<(/?[A-Za-z][A-Za-z0-9]*)", RegexOption.DOT_MATCHES_ALL).findAll(xml, start)) {
+                    val com = m.groups[1]?.value
+                    val tag = m.groups[2]?.value
+                    if (com != null) {
+                        last = com.replace(Regex("\\s+"), " ").trim().ifBlank { null }
+                    } else if (tag == "image" || tag == "text") {
+                        labels.add(last)
+                        last = null
+                    } else {
+                        last = null
+                    }
+                }
+                for ((i, e) in elements.withIndex()) e.label = labels.getOrNull(i)
+            }
+        } catch (e: Exception) {
         }
         return Layout(width, height, datas, bools, elements, styleInfo)
     }
