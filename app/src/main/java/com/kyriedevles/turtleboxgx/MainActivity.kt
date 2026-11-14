@@ -70,6 +70,9 @@ class MainActivity : Activity() {
     private var zipInfo = ""
     private var zipOk = false
     private var scanning = false
+    private var setsFolderName = ""
+    private var setFiles: List<DocumentFile> = emptyList()
+    private var setsScanning = false
 
     private class ParseInfo(val line: Int, val message: String, val context: String)
 
@@ -259,7 +262,7 @@ class MainActivity : Activity() {
             t.typeface = if (n == i) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         }
         if (i == 1) refreshLayoutsPage()
-        if (i == 2) refreshSetsPage()
+        if (i == 2) { refreshSetsPage(); scanSetsFolder() }
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -496,6 +499,35 @@ class MainActivity : Activity() {
         head.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         box.addView(head)
 
+        val folderCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Hot.outline(dp(16).toFloat(), dp(2), Hot.line)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        folderCard.addView(label("Sets folder", 13f, Hot.muted))
+        val sfSaved = prefs.getString("setsTree", null)
+        folderCard.addView(label(if (sfSaved == null) "None chosen yet" else "$setsFolderName · ${setFiles.size} sets", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+        val fr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fr.addView(pill(if (sfSaved == null) "Choose folder" else "Change", true) { pickSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
+        if (sfSaved != null) fr.addView(pill("Rescan", false) { scanSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
+        folderCard.addView(fr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        box.addView(folderCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        if (setFiles.isNotEmpty()) {
+            box.addView(label("In this folder", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+            for (f in setFiles) {
+                val on = curSet == f.uri
+                val r = label((f.name ?: "set").removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = Hot.outline(dp(14).toFloat(), dp(2), if (on) Hot.pinkDeep else Hot.line)
+                    setPadding(dp(16), 0, dp(16), 0)
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    setOnClickListener { addRecent(f.uri, f.name ?: "set"); loadSet(f.uri) }
+                }
+                box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) })
+            }
+        }
+
         box.addView(label("Recent sets", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
         val list = recents()
         if (list.isEmpty()) {
@@ -518,6 +550,34 @@ class MainActivity : Activity() {
         packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
     } catch (e: Exception) {
         "?"
+    }
+
+    private fun pickSetsFolder() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+        )
+        startActivityForResult(intent, REQ_SETS_TREE)
+    }
+
+    /** Lists the .msoe-set files in the chosen sets folder (names only; nothing is opened or drawn). */
+    private fun scanSetsFolder() {
+        val saved = prefs.getString("setsTree", null) ?: return
+        if (setsScanning) return
+        setsScanning = true
+        thread {
+            try {
+                val dir = DocumentFile.fromTreeUri(this, Uri.parse(saved))
+                if (dir != null && dir.isDirectory) {
+                    setsFolderName = dir.name ?: ""
+                    setFiles = dir.listFiles().filter { it.isFile && it.name?.endsWith(".msoe-set", true) == true }
+                        .sortedBy { (it.name ?: "").lowercase() }
+                }
+            } catch (e: Exception) {
+            }
+            setsScanning = false
+            runOnUiThread { refreshSetsPage() }
+        }
     }
 
     private fun pickFolder() {
@@ -655,6 +715,18 @@ class MainActivity : Activity() {
                 }
                 prefs.edit().putString("tree", uri.toString()).apply()
                 scan(uri)
+            }
+            REQ_SETS_TREE -> {
+                try {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                } catch (e: Exception) {
+                    try {
+                        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (e2: Exception) {
+                    }
+                }
+                prefs.edit().putString("setsTree", uri.toString()).apply()
+                scanSetsFolder()
             }
             REQ_IMAGE -> {
                 val key = pendingImageKey ?: return
@@ -911,6 +983,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val DEV_FOLDER = "TurtleBox dev"
+        private const val REQ_SETS_TREE = 1006
         private const val REQ_TREE = 1001
         private const val REQ_SET = 1002
         private const val REQ_IMAGE = 1003

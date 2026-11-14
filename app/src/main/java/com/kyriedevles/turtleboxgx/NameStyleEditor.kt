@@ -2,6 +2,7 @@ package com.kyriedevles.turtleboxgx
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.Dialog
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
@@ -17,7 +18,9 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.Window
 import android.view.WindowManager
+import android.widget.Toast
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
@@ -669,6 +672,176 @@ class NameStyleEditor(
         }
         reviseRef = { rebuild() }
 
+        fun manage() {
+            val dlg = Dialog(activity)
+            dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+            var showMine = true
+            val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+            fun pillBtn(t: String, c: Int, click: () -> Unit) = TextView(activity).apply {
+                text = t
+                gravity = Gravity.CENTER
+                setTextColor(c)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), c); cornerRadius = dp(10).toFloat() }
+                setOnClickListener { click() }
+            }
+            fun changed() { onChanged(); rebuild() }
+            lateinit var fill: () -> Unit
+            fun move(names: List<String>, i: Int, d: Int) {
+                val j = i + d
+                if (j < 0 || j >= names.size) return
+                val order = names.toMutableList()
+                val t = order[i]; order[i] = order[j]; order[j] = t
+                val m = userPresets()
+                saveUserPresets(LinkedHashMap<String, String>().also { out -> order.forEach { n -> m[n]?.let { out[n] = it } } })
+                changed(); fill()
+            }
+            fun rename(old: String) {
+                val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); setText(old); setSelection(old.length) }
+                AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert).setTitle("Rename preset").setView(input)
+                    .setPositiveButton("Rename") { _, _ ->
+                        val n = input.text.toString().trim().replace('\t', ' ').replace('\n', ' ')
+                        val m = userPresets()
+                        if (n.isEmpty() || n == old) return@setPositiveButton
+                        if (m.containsKey(n) || layout.datas["namepresets"]?.items?.any { it.first == n } == true) {
+                            Toast.makeText(activity, "That name is already used.", Toast.LENGTH_SHORT).show()
+                            return@setPositiveButton
+                        }
+                        val out = LinkedHashMap<String, String>()
+                        for ((k, v) in m) out[if (k == old) n else k] = v
+                        saveUserPresets(out)
+                        if (st.preset == old) st.preset = n
+                        commit(); changed(); fill()
+                    }.setNegativeButton("Cancel", null).show()
+            }
+            fun delete(n: String) {
+                AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert).setTitle("Delete “$n”?")
+                    .setPositiveButton("Delete") { _, _ ->
+                        val m = userPresets(); m.remove(n); saveUserPresets(m)
+                        changed(); fill()
+                    }.setNegativeButton("Cancel", null).show()
+            }
+            fill = {
+                list.removeAllViews()
+                val mine = userPresets().keys.toList()
+                val names = if (showMine) mine else (layout.datas["namepresets"]?.items?.map { it.first } ?: emptyList())
+                if (names.isEmpty()) list.addView(label(if (showMine) "No saved presets yet. In Custom, tap Save preset." else "This layout has no built-in presets."))
+                val views = ArrayList<ImageView>()
+                for ((i, n) in names.withIndex()) {
+                    val row = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(8), dp(6), dp(8), dp(6))
+                        background = GradientDrawable().apply { setColor(Color.parseColor("#0f0a14")); setStroke(dp(1), Color.parseColor("#2c1226")); cornerRadius = dp(14).toFloat() }
+                    }
+                    if (showMine) {
+                        val ud = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                        ud.addView(pillBtn("▲", pink) { move(mine, i, -1) }, LinearLayout.LayoutParams(dp(30), dp(24)))
+                        ud.addView(pillBtn("▼", pink) { move(mine, i, 1) }, LinearLayout.LayoutParams(dp(30), dp(24)).apply { topMargin = dp(3) })
+                        row.addView(ud, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) })
+                    }
+                    val iv = ImageView(activity).apply {
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        background = GradientDrawable().apply { setColor(Color.parseColor("#8a8a90")); cornerRadius = dp(8).toFloat() }
+                    }
+                    views.add(iv)
+                    row.addView(iv, LinearLayout.LayoutParams(dp(86), dp(42)))
+                    row.addView(TextView(activity).apply {
+                        text = n
+                        setTextColor(Color.WHITE)
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                        setSingleLine(true)
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        setPadding(dp(10), 0, dp(6), 0)
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    if (showMine) {
+                        row.addView(pillBtn("Rename", pink) { rename(n) }, LinearLayout.LayoutParams(dp(66), dp(34)))
+                        row.addView(pillBtn("Delete", Color.parseColor("#ff4d6d")) { delete(n) }, LinearLayout.LayoutParams(dp(58), dp(34)).apply { leftMargin = dp(6) })
+                    }
+                    list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+                }
+                val pv = previewer
+                if (pv != null && names.isNotEmpty()) {
+                    val maps = names.map { withFill(presetValues(it)) }
+                    Thread {
+                        val bms = try { pv.invoke(maps) } catch (e: Throwable) { emptyList() }
+                        activity.runOnUiThread { for ((n, b) in bms.withIndex()) if (n < views.size) views[n].setImageBitmap(b) }
+                    }.start()
+                }
+            }
+            val seg = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(2), dp(2), dp(2), dp(2))
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(12).toFloat() }
+            }
+            val segBtns = ArrayList<TextView>()
+            fun paintSeg() {
+                for ((i, t) in segBtns.withIndex()) {
+                    val on = (i == 1) == showMine
+                    t.setTextColor(if (on) Color.BLACK else soft)
+                    t.background = GradientDrawable().apply { setColor(if (on) hot else Color.BLACK); cornerRadius = dp(10).toFloat() }
+                }
+            }
+            for ((i, nm) in listOf("Built-in (view only)", "Mine").withIndex()) {
+                val t = TextView(activity).apply {
+                    text = nm
+                    gravity = Gravity.CENTER
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setOnClickListener { showMine = i == 1; paintSeg(); fill() }
+                }
+                segBtns.add(t)
+                seg.addView(t, LinearLayout.LayoutParams(0, dp(30), 1f))
+            }
+            paintSeg()
+            val title = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            title.addView(TextView(activity).apply { text = "Manage presets"; setTextColor(Color.parseColor("#ff4da6")); typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            title.addView(TextView(activity).apply { text = "DONE"; setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setPadding(dp(10), dp(8), dp(10), dp(8)); setOnClickListener { dlg.dismiss() } })
+            val io = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+            io.addView(pillBtn("Import (paste)", pink) {
+                val cm = activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val txt = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(activity)?.toString() ?: ""
+                val m = userPresets()
+                var n = 0
+                for (line in txt.split('\n')) {
+                    val i = line.indexOf('\t')
+                    if (i > 0 && line.substring(i + 1).contains('=')) { m[line.substring(0, i)] = line.substring(i + 1); n++ }
+                }
+                if (n > 0) { saveUserPresets(m); changed(); showMine = true; paintSeg(); fill() }
+                Toast.makeText(activity, if (n > 0) "Imported $n presets." else "Copy exported presets first, then tap Import.", Toast.LENGTH_SHORT).show()
+            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { rightMargin = dp(4) })
+            io.addView(pillBtn("Export all (copy)", pink) {
+                val m = userPresets()
+                if (m.isEmpty()) {
+                    Toast.makeText(activity, "No saved presets to export.", Toast.LENGTH_SHORT).show()
+                } else {
+                    val cm = activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("presets", m.entries.joinToString("\n") { it.key + "\t" + it.value }))
+                    Toast.makeText(activity, "Copied ${m.size} presets. Paste them anywhere to keep or share.", Toast.LENGTH_LONG).show()
+                }
+            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(4) })
+            val sv = ScrollView(activity).apply { addView(list) }
+            val root = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(12), dp(14), dp(14))
+                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(18).toFloat() }
+            }
+            root.addView(title)
+            root.addView(seg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(10) })
+            root.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            root.addView(io, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            dlg.setContentView(root)
+            dlg.window?.apply {
+                setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                val dm = activity.resources.displayMetrics
+                setLayout((dm.widthPixels * 0.94f).toInt(), (dm.heightPixels * 0.8f).toInt())
+            }
+            fill()
+            dlg.show()
+        }
+
         rebuild = {
             body.removeAllViews()
             chipButtons.clear()
@@ -685,6 +858,15 @@ class NameStyleEditor(
                         st.preset = names[n]
                         commit()
                     }
+                    body.addView(TextView(activity).apply {
+                        text = "Manage presets"
+                        gravity = Gravity.CENTER
+                        setTextColor(pink)
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                        background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(11).toFloat() }
+                        setOnClickListener { manage() }
+                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(8) })
                 }
                 "custom" -> {
                     tabRow.removeAllViews()
@@ -696,7 +878,7 @@ class NameStyleEditor(
                     sectionBody()
                     val mine = userPresets()
                     if (mine.isNotEmpty()) {
-                        body.addView(label("Your presets (tap to load, long-press to delete)"))
+                        body.addView(label("Your presets (tap to load)"))
                         val flow2 = FlowLayout(activity, dp(6))
                         for (n in mine.keys.toList()) {
                             val c = chip(n, false) {
@@ -704,12 +886,10 @@ class NameStyleEditor(
                                 commit()
                                 rebuild()
                             }
-                            c.setOnLongClickListener {
-                                val m = userPresets(); m.remove(n); saveUserPresets(m); rebuild(); true
-                            }
                             flow2.addView(c)
                         }
                         body.addView(flow2)
+                        body.addView(chip("Manage presets", false) { manage() }.apply { layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } })
                     }
                 }
             }
