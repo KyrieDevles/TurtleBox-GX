@@ -23,6 +23,8 @@ import javax.xml.transform.stream.StreamResult
  *  - root attributes `width` / `height` change the card size.
  *  - `is_<name>` is forced to true while the template is active.
  * An element is found by its `id` attribute, or by the XML comment written just above it (lower-cased, spaces become `-`).
+ * Several elements under the same comment are `name`, `name#2`, `name#3`, …; any element can also be addressed as `#N`
+ * (its position among the layout's images and texts, starting at 0), which is fragile if the base is reordered.
  */
 object Templates {
     class Info(val name: String, val label: String, val xml: String)
@@ -66,13 +68,22 @@ object Templates {
         // Targets: id attribute, or the comment above the element.
         val targets = LinkedHashMap<String, Element>()
         var comment: String? = null
+        var elementNo = 0
+        val labelCount = HashMap<String, Int>()
         var n: Node? = layoutEl.firstChild
         while (n != null) {
             when {
                 n.nodeType == Node.COMMENT_NODE -> comment = slug(n.nodeValue ?: "").ifBlank { null }
                 n is Element && (n.tagName == "image" || n.tagName == "text") -> {
                     val id = n.getAttribute("id").ifBlank { comment }
-                    if (id != null && !targets.containsKey(id)) targets[id] = n
+                    if (id != null) {
+                        val k = (labelCount[id] ?: 0) + 1
+                        labelCount[id] = k
+                        // The first element with a label is `label`, the next ones `label#2`, `label#3`, …
+                        targets[if (k == 1) id else "$id#$k"] = n
+                    }
+                    targets["#$elementNo"] = n
+                    elementNo++
                     comment = null
                 }
                 n is Element -> comment = null
