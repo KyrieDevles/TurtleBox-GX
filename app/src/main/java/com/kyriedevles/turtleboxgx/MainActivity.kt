@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -76,18 +77,45 @@ class MainActivity : Activity() {
     private var zipOk = false
     private var scanning = false
     private var setsFolderName = ""
-    private var setFiles: List<DocumentFile> = emptyList()
+    private var setFiles: List<SetFile> = emptyList()
     private var setRoot: SetNode? = null
     private val openSetFolders = HashSet<String>()
 
     /** A folder inside the sets folder: its own sets and the folders below it. */
-    private class SetNode(val name: String, val path: String, val files: List<DocumentFile>, val children: List<SetNode>) {
+    private class SetFile(val uri: Uri, val name: String)
+
+    private class SetNode(val name: String, val path: String, val files: List<SetFile>, val children: List<SetNode>) {
         val total: Int get() = files.size + children.sumOf { it.total }
     }
 
+    /** One query per folder (id, name, type together) instead of one per file, which is far faster on Android's file provider. */
+    private fun scanFast(tree: Uri, docId: String, name: String, path: String, depth: Int): SetNode {
+        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
+        val files = ArrayList<SetFile>()
+        val dirs = ArrayList<Pair<String, String>>()
+        val cur = contentResolver.query(
+            childrenUri,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE),
+            null, null, null,
+        ) ?: throw IllegalStateException("no cursor")
+        cur.use {
+            while (it.moveToNext()) {
+                val id = it.getString(0) ?: continue
+                val n = it.getString(1) ?: continue
+                if (it.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) dirs.add(id to n)
+                else if (n.endsWith(".msoe-set", true)) files.add(SetFile(DocumentsContract.buildDocumentUriUsingTree(tree, id), n))
+            }
+        }
+        files.sortBy { it.name.lowercase() }
+        val kids = if (depth >= 5) emptyList() else dirs.sortedBy { it.second.lowercase() }
+            .map { scanFast(tree, it.first, it.second, path + "/" + it.second, depth + 1) }.filter { it.total > 0 }
+        return SetNode(name, path, files, kids)
+    }
+
+    /** Slow but universal fallback through DocumentFile. */
     private fun scanNode(dir: DocumentFile, path: String, depth: Int): SetNode {
         val all = dir.listFiles()
-        val files = all.filter { it.isFile && it.name?.endsWith(".msoe-set", true) == true }.sortedBy { (it.name ?: "").lowercase() }
+        val files = all.filter { it.isFile && it.name?.endsWith(".msoe-set", true) == true }.map { SetFile(it.uri, it.name ?: "set") }.sortedBy { it.name.lowercase() }
         val kids = if (depth >= 5) emptyList() else all.filter { it.isDirectory }.sortedBy { (it.name ?: "").lowercase() }
             .map { scanNode(it, path + "/" + (it.name ?: ""), depth + 1) }.filter { it.total > 0 }
         return SetNode(dir.name ?: "", path, files, kids)
@@ -700,15 +728,15 @@ class MainActivity : Activity() {
 
         val root = setRoot
         if (root != null && root.total > 0) {
-            fun addSet(f: DocumentFile, indent: Int) {
+            fun addSet(f: SetFile, indent: Int) {
                 val on = curSet == f.uri
-                val r = label((f.name ?: "set").removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
+                val r = label(f.name.removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER_VERTICAL
                     background = Hot.outline(dp(14).toFloat(), dp(2), if (on) Hot.pinkDeep else Hot.line)
                     setPadding(dp(16), 0, dp(16), 0)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                    setOnClickListener { addRecent(f.uri, f.name ?: "set"); loadSet(f.uri) }
+                    setOnClickListener { addRecent(f.uri, f.name); loadSet(f.uri) }
                 }
                 box.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8); leftMargin = dp(14 * indent) })
             }
@@ -768,7 +796,12 @@ class MainActivity : Activity() {
                 val dir = DocumentFile.fromTreeUri(this, Uri.parse(saved))
                 if (dir != null && dir.isDirectory) {
                     setsFolderName = dir.name ?: ""
-                    setRoot = scanNode(dir, "", 0)
+                    val treeUri = Uri.parse(saved)
+                    setRoot = try {
+                        scanFast(treeUri, DocumentsContract.getTreeDocumentId(treeUri), dir.name ?: "", "", 0)
+                    } catch (e: Exception) {
+                        scanNode(dir, "", 0)
+                    }
                     setFiles = setRoot?.files ?: emptyList()
                 }
             } catch (e: Exception) {
