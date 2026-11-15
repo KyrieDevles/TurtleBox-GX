@@ -21,6 +21,7 @@ import javax.xml.transform.stream.StreamResult
  *  - `<hide target="id"/>`: the element is never visible.
  *  - `<add>`: new `<image>`/`<text>` elements (added to the layout) and `<data>`/`<bool>` entries (added to the base).
  *  - `<hide-data name="x"/>`: removes the field from every settings menu that lists it; `<default name="x" value="y"/>`: changes a data's default.
+ *  - `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y).
  *  - root attributes `width` / `height` change the card size.
  *  - `is_<name>` is forced to true while the template is active.
  * An element is found by its `id` attribute, or by the XML comment written just above it (lower-cased, spaces become `-`).
@@ -154,6 +155,22 @@ object Templates {
                         }
                     }
                     if (!found) notes.add("template ${t.name}: no menu field '$name' to hide")
+                }
+                "add-item" -> {
+                    // Adds an option to an existing menu (multi_select) while the template is active.
+                    val menuName = c.getAttribute("menu")
+                    val v = c.getAttribute("value")
+                    val m = kids(root).firstOrNull { it.tagName == "data" && it.getAttribute("name") == menuName }
+                    if (m == null || v.isBlank()) {
+                        notes.add("template ${t.name}: no menu '$menuName' for add-item")
+                    } else if (kids(m).none { it.tagName == "item" && it.getAttribute("value") == v }) {
+                        val item = doc.createElement("item")
+                        item.setAttribute("name", v)
+                        item.setAttribute("value", v)
+                        val before = c.getAttribute("before")
+                        val ref = if (before.isBlank()) null else kids(m).firstOrNull { it.tagName == "item" && it.getAttribute("value") == before }
+                        if (ref != null) m.insertBefore(item, ref) else m.appendChild(item)
+                    }
                 }
                 "default" -> {
                     val d = kids(root).firstOrNull { it.tagName == "data" && it.getAttribute("name") == c.getAttribute("name") }
