@@ -418,6 +418,7 @@ class Editor(
                 }
                 setPadding(dp(8), dp(4), dp(8), dp(4))
                 setSelectAllOnFocus(true)
+                imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
             }
             head.addView(num, LinearLayout.LayoutParams(dp(90), dp(40)))
             val one = Button(activity).apply {
@@ -473,6 +474,13 @@ class Editor(
                     apply(v)
                 }
             })
+            num.setOnEditorActionListener { v, act, _ ->
+                if (act == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    (v.text?.toString()?.toFloatOrNull())?.let { apply(it); handler.removeCallbacksAndMessages(null); pending = false; onChanged() }
+                    v.clearFocus()
+                    true
+                } else false
+            }
             resetters.add {
                 val d = (f.default?.toFloatOrNull() ?: 100f)
                 num.setText(fmt(d))
@@ -494,10 +502,8 @@ class Editor(
             .create()
         dlg.setOnDismissListener {
             handler.removeCallbacksAndMessages(null)
-            if (!finished) {
-                for ((k, v) in before) state.values[k] = v
-                onChanged()
-            }
+            // Closing any way other than Cancel keeps what was typed or dragged.
+            if (!finished) onChanged()
             after()
         }
         dlg.show()
