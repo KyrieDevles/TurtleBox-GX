@@ -272,7 +272,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        handler.postDelayed(poll, 2500)
+        handler.postDelayed(poll, 300)
     }
 
     override fun onPause() {
@@ -323,18 +323,26 @@ class MainActivity : Activity() {
         }
     }
 
+    private var watchedStamp: String? = null
+
+    /** Size and edit time of the layout XML and of every template file, so any edit is noticed. */
+    private fun watchStamp(x: Uri): String? = try {
+        val d = DocumentFile.fromSingleUri(this, x)
+        val sb = StringBuilder("${d?.lastModified()}:${d?.length()}")
+        templatesDoc?.listFiles()?.forEach { t -> if (t.isFile) sb.append('|').append(t.name).append(':').append(t.lastModified()).append(':').append(t.length()) }
+        if ((d?.lastModified() ?: 0L) == 0L) null else sb.toString()
+    } catch (e: Exception) {
+        null
+    }
+
     /** Every few seconds: did the XML change? Reload it. Otherwise just refresh the "edited … ago" text. */
     private val poll = object : Runnable {
         override fun run() {
             val x = xmlUri
             val f = folderUri
             if (x != null && f != null && !scanning) {
-                val modified = try {
-                    DocumentFile.fromSingleUri(this@MainActivity, x)?.lastModified() ?: 0L
-                } catch (e: Exception) {
-                    0L
-                }
-                if (modified != 0L && modified != xmlModified) scan(f) else if (tab == 1) refreshLayoutsPage()
+                val stamp = watchStamp(x)
+                if (stamp != null && stamp != watchedStamp) scan(f) else if (tab == 1) refreshLayoutsPage()
             }
             handler.postDelayed(this, 2500)
         }
@@ -1182,6 +1190,7 @@ class MainActivity : Activity() {
                             }.sortedBy { it.first.lowercase() }.toMap(LinkedHashMap())
                         if (selectedTemplate.isNotBlank() && !templates.containsKey(selectedTemplate)) selectedTemplate = ""
                         syncTemplateAssets(selectedTemplate)
+                        watchedStamp = watchStamp(xml.uri)
                         try {
                             val l = buildLayout(text)
                             layout = l
