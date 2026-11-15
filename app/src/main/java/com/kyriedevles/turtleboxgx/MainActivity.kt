@@ -51,6 +51,46 @@ class MainActivity : Activity() {
     private var tab = 0
 
     private var layout: Layout? = null
+    private var baseXml = ""
+    private var templates: Map<String, Templates.Info> = emptyMap()
+    private var selectedTemplate = ""
+    private var templateNotes: List<String> = emptyList()
+    private var mergedXml: String? = null
+
+    /** The base layout with the selected template patched in (or the base alone). */
+    private fun buildLayout(base: String): Layout {
+        val t = templates[selectedTemplate]
+        if (t == null) {
+            templateNotes = emptyList()
+            mergedXml = null
+            return LayoutParser.parse(base)
+        }
+        val r = try {
+            Templates.apply(base, t)
+        } catch (e: Exception) {
+            Templates.Result(base, listOf("template ${t.name}: ${e.javaClass.simpleName}: ${e.message}"))
+        }
+        templateNotes = r.notes
+        mergedXml = r.xml
+        return LayoutParser.parse(r.xml)
+    }
+
+    private fun selectTemplate(name: String) {
+        selectedTemplate = name
+        prefs.edit().putString("template", name).apply()
+        state?.let { if (name.isBlank()) it.values.remove("template") else it.values["template"] = name }
+        thread {
+            try {
+                layout = buildLayout(baseXml)
+            } catch (e: LayoutParser.ParseError) {
+                runOnUiThread { toast("Template problem: ${e.message}") }
+            }
+            runOnUiThread {
+                refreshLayoutsPage()
+                state?.let { renderState(it) }
+            }
+        }
+    }
     private var zipFile: File? = null
     private var state: CardState? = null
     private var hits: List<Hit> = emptyList()
@@ -161,6 +201,7 @@ class MainActivity : Activity() {
             prevHandler?.uncaughtException(t, e)
         }
         curSet = prefs.getString("curset", null)?.let { Uri.parse(it) }
+        selectedTemplate = prefs.getString("template", "") ?: ""
         curSetName = prefs.getString("cursetname", "") ?: ""
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
@@ -601,6 +642,24 @@ class MainActivity : Activity() {
         buttons.addView(pill("Reload", false) { folderUri?.let { scan(it) } ?: toast("Choose a folder first.") }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folder.addView(buttons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         add(folder)
+
+        if (templates.isNotEmpty()) {
+            val tcard = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Hot.outline(dp(16).toFloat(), dp(2), Hot.line)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+            }
+            tcard.addView(label("Template", 13f, Hot.muted))
+            tcard.addView(label(templates[selectedTemplate]?.label ?: "Default (base layout)", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+            tcard.addView(pill("Change", false) {
+                val names = listOf("") + templates.keys
+                val labels = (listOf("Default (base layout)") + templates.values.map { it.label }).toTypedArray()
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Template")
+                    .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
+                    .setNegativeButton("Cancel", null).show()
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
+            add(tcard, 12)
+        }
 
         add(label("Files in use", 13f, Hot.muted), 18)
         if (xmlName.isNotBlank() || xmlError != null) {
@@ -1094,8 +1153,21 @@ class MainActivity : Activity() {
                         xmlName = xml.name ?: "layout.xml"
                         xmlModified = xml.lastModified()
                         val text = contentResolver.openInputStream(xml.uri)!!.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        baseXml = text
+                        val tdir = files.firstOrNull { it.isDirectory && it.name.equals("templates", true) }
+                        templates = if (tdir == null) emptyMap() else tdir.listFiles()
+                            .filter { it.isFile && it.name?.endsWith(".xml", true) == true }
+                            .mapNotNull { f ->
+                                try {
+                                    val n = (f.name ?: return@mapNotNull null).removeSuffix(".xml").removeSuffix(".XML")
+                                    n to Templates.info(n, contentResolver.openInputStream(f.uri)!!.bufferedReader(Charsets.UTF_8).use { it.readText() })
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }.sortedBy { it.first.lowercase() }.toMap(LinkedHashMap())
+                        if (selectedTemplate.isNotBlank() && !templates.containsKey(selectedTemplate)) selectedTemplate = ""
                         try {
-                            val l = LayoutParser.parse(text)
+                            val l = buildLayout(text)
                             layout = l
                             xmlError = null
                             xmlLoadedAt = System.currentTimeMillis()
@@ -1103,7 +1175,7 @@ class MainActivity : Activity() {
                             xmlNote = "${l.width.toInt()}×${l.height.toInt()} · ${l.datas.size} options · $images images"
                             loaded = true
                         } catch (e: LayoutParser.ParseError) {
-                            val lines = text.lines()
+                            val lines = (mergedXml ?: text).lines()
                             val from = maxOf(1, e.line - 2)
                             val ctx = (from..minOf(lines.size, e.line)).joinToString("\n") { n ->
                                 "${n.toString().padEnd(5)}${lines[n - 1].trim().take(60)}"
@@ -1155,6 +1227,20 @@ class MainActivity : Activity() {
     private fun renderCard(set: CardSet?, newCard: Boolean = false) {
         if (newCard) setCurSet(null)
         val st = CardState.from(set)
+        if (set != null) {
+            val wanted = st.values["template"] ?: ""
+            if (wanted != selectedTemplate && (wanted.isBlank() || templates.containsKey(wanted))) {
+                selectedTemplate = wanted
+                prefs.edit().putString("template", wanted).apply()
+                try {
+                    layout = buildLayout(baseXml)
+                } catch (e: LayoutParser.ParseError) {
+                }
+                runOnUiThread { refreshLayoutsPage() }
+            }
+        } else if (selectedTemplate.isNotBlank()) {
+            st.values["template"] = selectedTemplate
+        }
         state = st
         runOnUiThread { refreshSetsPage() }
         renderState(st)
@@ -1192,6 +1278,8 @@ class MainActivity : Activity() {
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
                 val real = assets.missing.filter { !isBlankOnPurpose(it) }
                 msg.append(st.values["cardname"] ?: "Card").append(" · ${r.drawn} elements in $ms ms")
+                if (selectedTemplate.isNotBlank()) msg.append(" · template: $selectedTemplate")
+                templateNotes.forEach { n -> msg.append("\n").append(n) }
                 if (real.isNotEmpty()) msg.append(" · ${real.size} not found (tap for details)")
                 msg.append("\n")
                 newHits = r.hits
