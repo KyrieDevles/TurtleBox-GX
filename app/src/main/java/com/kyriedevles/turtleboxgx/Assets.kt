@@ -57,9 +57,16 @@ class CardSet(val values: Map<String, String>, val files: Map<String, ByteArray>
  * Finds images and fonts: first in the card set (its own artwork), then in the layout zip.
  * Names are matched exactly, then ignoring upper/lower case. Names that are not found are remembered in [missing].
  */
-class Assets(private val layoutZip: File?, private val setFiles: Map<String, ByteArray>, private val cacheDir: File) {
+class Assets(
+    private val layoutZip: File?,
+    private val setFiles: Map<String, ByteArray>,
+    private val cacheDir: File,
+    private val templateName: String? = null,
+    private val templateDir: File? = null,
+) {
     private val zip: ZipFile? = layoutZip?.takeIf { it.isFile }?.let { ZipFile(it) }
     private val dirIndex = HashMap<String, File>()
+    private val tplIndex = HashMap<String, File>()
     private val zipIndex = HashMap<String, String>()
     private val setIndex = HashMap<String, String>()
     private val fonts = HashMap<String, Typeface?>()
@@ -73,6 +80,9 @@ class Assets(private val layoutZip: File?, private val setFiles: Map<String, Byt
             }
         }
         setFiles.keys.forEach { setIndex[it.lowercase()] = it }
+        templateDir?.takeIf { it.isDirectory }?.let { root ->
+            root.walkTopDown().filter { it.isFile }.forEach { f -> tplIndex[f.relativeTo(root).path.replace('\\', '/').lowercase()] = f }
+        }
         layoutZip?.takeIf { it.isDirectory }?.let { root ->
             root.walkTopDown().filter { it.isFile }.forEach { f -> dirIndex[f.relativeTo(root).path.replace('\\', '/').lowercase()] = f }
         }
@@ -85,6 +95,14 @@ class Assets(private val layoutZip: File?, private val setFiles: Map<String, Byt
         if (name.isEmpty()) return null
         setFiles[name]?.let { return it }
         setIndex[name.lowercase()]?.let { return setFiles[it] }
+        if (templateName != null) {
+            // A template's own pictures win: templates/<name>/<path> (in the layout folder, the dev folder or the zip), then the normal place.
+            val key = name.lowercase()
+            tplIndex[key]?.let { return it.readBytes() }
+            val inner = "templates/${templateName.lowercase()}/$key"
+            dirIndex[inner]?.let { return it.readBytes() }
+            zip?.let { zz -> zipIndex[inner]?.let { a -> zz.getEntry(a)?.let { e -> return zz.getInputStream(e).use { it.readBytes() } } } }
+        }
         dirIndex[name.lowercase()]?.let { return it.readBytes() }
         val z = zip ?: return null
         val actual = zipIndex[name.lowercase()] ?: return null

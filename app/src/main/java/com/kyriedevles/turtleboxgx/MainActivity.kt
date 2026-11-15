@@ -56,6 +56,19 @@ class MainActivity : Activity() {
     private var selectedTemplate = ""
     private var templateNotes: List<String> = emptyList()
     private var mergedXml: String? = null
+    private var templatesDoc: DocumentFile? = null
+
+    private fun templateAssetDir(): File? = selectedTemplate.takeIf { it.isNotBlank() }?.let { File(filesDir, "tpl/$it") }
+
+    /** Copies templates/<name>/ (the template's own pictures) into app storage, only what changed. */
+    private fun syncTemplateAssets(name: String) {
+        if (name.isBlank()) return
+        try {
+            val dir = templatesDoc?.listFiles()?.firstOrNull { it.isDirectory && it.name.equals(name, true) } ?: return
+            syncDevFolder(dir, File(filesDir, "tpl/$name"), "tpl-$name.manifest")
+        } catch (e: Exception) {
+        }
+    }
 
     /** The base layout with the selected template patched in (or the base alone). */
     private fun buildLayout(base: String): Layout {
@@ -80,6 +93,7 @@ class MainActivity : Activity() {
         prefs.edit().putString("template", name).apply()
         state?.let { if (name.isBlank()) it.values.remove("template") else it.values["template"] = name }
         thread {
+            syncTemplateAssets(name)
             try {
                 layout = buildLayout(baseXml)
             } catch (e: LayoutParser.ParseError) {
@@ -595,7 +609,7 @@ class MainActivity : Activity() {
                 )
             },
             namePreview = { maps ->
-                val a = Assets(zipFile, st.files, cacheDir)
+                val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                 try {
                     Renderer(l, Ctx(l, st.values), a).previewName(maps, 360, 110)
                 } finally {
@@ -1095,9 +1109,9 @@ class MainActivity : Activity() {
     }
 
     /** Mirrors an unzipped assets folder into app storage, copying only files whose size or date changed. Returns the file count. */
-    private fun syncDevFolder(src: DocumentFile, target: File): Int {
+    private fun syncDevFolder(src: DocumentFile, target: File, manifest: String = "devassets.manifest"): Int {
         target.mkdirs()
-        val manifestFile = File(filesDir, "devassets.manifest")
+        val manifestFile = File(filesDir, manifest)
         val old = HashMap<String, String>()
         if (manifestFile.exists()) manifestFile.readLines().forEach { l -> if (l.contains('\t')) old[l.substringBefore('\t')] = l.substringAfter('\t') }
         val now = LinkedHashMap<String, String>()
@@ -1155,6 +1169,7 @@ class MainActivity : Activity() {
                         val text = contentResolver.openInputStream(xml.uri)!!.bufferedReader(Charsets.UTF_8).use { it.readText() }
                         baseXml = text
                         val tdir = files.firstOrNull { it.isDirectory && it.name.equals("templates", true) }
+                        templatesDoc = tdir
                         templates = if (tdir == null) emptyMap() else tdir.listFiles()
                             .filter { it.isFile && it.name?.endsWith(".xml", true) == true }
                             .mapNotNull { f ->
@@ -1166,6 +1181,7 @@ class MainActivity : Activity() {
                                 }
                             }.sortedBy { it.first.lowercase() }.toMap(LinkedHashMap())
                         if (selectedTemplate.isNotBlank() && !templates.containsKey(selectedTemplate)) selectedTemplate = ""
+                        syncTemplateAssets(selectedTemplate)
                         try {
                             val l = buildLayout(text)
                             layout = l
@@ -1232,6 +1248,7 @@ class MainActivity : Activity() {
             if (wanted != selectedTemplate && (wanted.isBlank() || templates.containsKey(wanted))) {
                 selectedTemplate = wanted
                 prefs.edit().putString("template", wanted).apply()
+                syncTemplateAssets(wanted)
                 try {
                     layout = buildLayout(baseXml)
                 } catch (e: LayoutParser.ParseError) {
@@ -1258,7 +1275,7 @@ class MainActivity : Activity() {
             var newHits: List<Hit> = emptyList()
             try {
                 val ctx = Ctx(l, st.values)
-                assets = Assets(z, st.files, cacheDir)
+                assets = Assets(z, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                 val r = Renderer(l, ctx, assets, st.values)
                 r.hideLayerId = editingLayerId
                 var aboveBmp: Bitmap? = null

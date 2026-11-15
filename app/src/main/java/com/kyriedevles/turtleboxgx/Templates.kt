@@ -20,6 +20,7 @@ import javax.xml.transform.stream.StreamResult
  *    Other attributes on `<patch>` (e.g. `index`) are set on the element.
  *  - `<hide target="id"/>`: the element is never visible.
  *  - `<add>`: new `<image>`/`<text>` elements (added to the layout) and `<data>`/`<bool>` entries (added to the base).
+ *  - `<hide-data name="x"/>` removes option x from the menus; `<default name="x" value="v"/>` changes its default.
  *  - root attributes `width` / `height` change the card size.
  *  - `is_<name>` is forced to true while the template is active.
  * An element is found by its `id` attribute, or by the XML comment written just above it (lower-cased, spaces become `-`).
@@ -141,6 +142,22 @@ object Templates {
                     } else {
                         layoutEl.appendChild(copy)
                     }
+                }
+                "hide-data" -> {
+                    // The option disappears from the menus (its default still applies).
+                    val nm = c.getAttribute("name")
+                    var found = false
+                    for (d in kids(root).filter { it.tagName == "data" }) {
+                        for (item in kids(d).filter { it.tagName == "item" && it.getAttribute("value") == nm }) {
+                            d.removeChild(item)
+                            found = true
+                        }
+                    }
+                    if (!found) notes.add("template ${t.name}: no menu entry '$nm' to hide")
+                }
+                "default" -> {
+                    val d = kids(root).firstOrNull { it.tagName == "data" && it.getAttribute("name") == c.getAttribute("name") }
+                    if (d == null) notes.add("template ${t.name}: no option '${c.getAttribute("name")}' for default") else d.setAttribute("default", c.getAttribute("value"))
                 }
                 else -> notes.add("template ${t.name}: unknown <${c.tagName}> ignored")
             }
