@@ -20,7 +20,6 @@ import javax.xml.transform.stream.StreamResult
  *    Other attributes on `<patch>` (e.g. `index`) are set on the element.
  *  - `<hide target="id"/>`: the element is never visible.
  *  - `<add>`: new `<image>`/`<text>` elements (added to the layout) and `<data>`/`<bool>` entries (added to the base).
- *  - `<hide-data name="x"/>` removes option x from the menus; `<default name="x" value="v"/>` changes its default.
  *  - `<hide-data name="x"/>`: removes the field from every settings menu that lists it; `<default name="x" value="y"/>`: changes a data's default.
  *  - root attributes `width` / `height` change the card size.
  *  - `is_<name>` is forced to true while the template is active.
@@ -145,22 +144,6 @@ object Templates {
                     }
                 }
                 "hide-data" -> {
-                    // The option disappears from the menus (its default still applies).
-                    val nm = c.getAttribute("name")
-                    var found = false
-                    for (d in kids(root).filter { it.tagName == "data" }) {
-                        for (item in kids(d).filter { it.tagName == "item" && it.getAttribute("value") == nm }) {
-                            d.removeChild(item)
-                            found = true
-                        }
-                    }
-                    if (!found) notes.add("template ${t.name}: no menu entry '$nm' to hide")
-                }
-                "default" -> {
-                    val d = kids(root).firstOrNull { it.tagName == "data" && it.getAttribute("name") == c.getAttribute("name") }
-                    if (d == null) notes.add("template ${t.name}: no option '${c.getAttribute("name")}' for default") else d.setAttribute("default", c.getAttribute("value"))
-                }
-                "hide-data" -> {
                     // Removes the field from every settings menu (multi_select) that lists it. The data itself stays defined.
                     val name = c.getAttribute("name")
                     var found = false
@@ -179,7 +162,6 @@ object Templates {
                 else -> notes.add("template ${t.name}: unknown <${c.tagName}> ignored")
             }
         }
-        tdoc.hashCode()
         val tf = TransformerFactory.newInstance().newTransformer()
         tf.setOutputProperty(OutputKeys.ENCODING, "UTF-8")
         tf.setOutputProperty(OutputKeys.INDENT, "no")
