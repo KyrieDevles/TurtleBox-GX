@@ -96,14 +96,7 @@ class LayersPanel(
         for (e in layout.elements) {
             val vis = e.visible
             if (vis != null && !try { Expr.eval(vis, ctx) } catch (x: Exception) { true }) continue
-            val click = e.attrs["click"]
-            val menu = click?.let { layout.datas[it]?.desc?.takeIf { d -> d.isNotBlank() } ?: it }
-            val what = if (e.kind == "image") {
-                e.srcs.firstOrNull()?.value?.substringAfterLast('/')?.substringBeforeLast('.')?.takeIf { it.isNotBlank() }
-            } else {
-                "text" + (e.text.replace(Regex("\\s+"), " ").trim().take(14).takeIf { it.isNotBlank() }?.let { ": $it" } ?: "")
-            }
-            val name = e.label ?: listOfNotNull(menu, what).distinct().joinToString(" · ").ifBlank { e.attrs["id"] ?: e.kind }
+            val name = e.label ?: e.attrs["id"]?.takeIf { it.isNotBlank() } ?: e.kind
             seen.add(name to e.index)
         }
         return seen.toList()
