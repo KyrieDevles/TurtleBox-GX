@@ -124,14 +124,25 @@ object LayoutParser {
             if (start >= 0) {
                 val labels = ArrayList<String?>()
                 var last: String? = null
-                for (m in Regex("<!--(.*?)-->|<(/?[A-Za-z][A-Za-z0-9]*)", RegexOption.DOT_MATCHES_ALL).findAll(xml, start)) {
+                var depth = 0
+                // Only top-level <image>/<text> tags are elements; a <text> inside a <text> element is its content tag.
+                for (m in Regex("<!--(.*?)-->|<(/?)([A-Za-z][A-Za-z0-9]*)[^>]*?(/?)>", RegexOption.DOT_MATCHES_ALL).findAll(xml, start)) {
                     val com = m.groups[1]?.value
-                    val tag = m.groups[2]?.value
+                    val closing = m.groups[2]?.value == "/"
+                    val tag = m.groups[3]?.value
+                    val selfClosed = m.groups[4]?.value == "/"
                     if (com != null) {
                         last = com.replace(Regex("\\s+"), " ").trim().ifBlank { null }
                     } else if (tag == "image" || tag == "text") {
-                        labels.add(last)
-                        last = null
+                        if (closing) {
+                            depth--
+                        } else {
+                            if (depth == 0) {
+                                labels.add(last)
+                                last = null
+                            }
+                            if (!selfClosed) depth++
+                        }
                     } else {
                         last = null
                     }
