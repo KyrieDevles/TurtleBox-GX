@@ -67,6 +67,8 @@ class Assets(
     private val zip: ZipFile? = layoutZip?.takeIf { it.isFile }?.let { ZipFile(it) }
     private val dirIndex = HashMap<String, File>()
     private val tplIndex = HashMap<String, File>()
+    private val tplZip: ZipFile? = templateDir?.let { File(it.parentFile, it.name + ".zip") }?.takeIf { it.isFile }?.let { try { ZipFile(it) } catch (e: Exception) { null } }
+    private val tplZipIndex = HashMap<String, String>()
     private val zipIndex = HashMap<String, String>()
     private val setIndex = HashMap<String, String>()
     private val fonts = HashMap<String, Typeface?>()
@@ -80,6 +82,12 @@ class Assets(
             }
         }
         setFiles.keys.forEach { setIndex[it.lowercase()] = it }
+        tplZip?.entries()?.let { en ->
+            while (en.hasMoreElements()) {
+                val e = en.nextElement()
+                if (!e.isDirectory) tplZipIndex[e.name.lowercase()] = e.name
+            }
+        }
         templateDir?.takeIf { it.isDirectory }?.let { root ->
             root.walkTopDown().filter { it.isFile }.forEach { f -> tplIndex[f.relativeTo(root).path.replace('\\', '/').lowercase()] = f }
         }
@@ -99,6 +107,7 @@ class Assets(
             // A template's own pictures win: templates/<name>/<path> (in the layout folder, the dev folder or the zip), then the normal place.
             val key = name.lowercase()
             tplIndex[key]?.let { return it.readBytes() }
+            tplZip?.let { zz -> tplZipIndex[key]?.let { a -> zz.getEntry(a)?.let { e -> return zz.getInputStream(e).use { it.readBytes() } } } }
             val inner = "templates/${templateName.lowercase()}/$key"
             dirIndex[inner]?.let { return it.readBytes() }
             zip?.let { zz -> zipIndex[inner]?.let { a -> zz.getEntry(a)?.let { e -> return zz.getInputStream(e).use { it.readBytes() } } } }
@@ -143,6 +152,7 @@ class Assets(
 
     fun close() {
         try {
+            tplZip?.close()
             zip?.close()
         } catch (e: Exception) {
         }

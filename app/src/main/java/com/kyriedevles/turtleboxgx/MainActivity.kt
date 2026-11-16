@@ -64,8 +64,23 @@ class MainActivity : Activity() {
     private fun syncTemplateAssets(name: String) {
         if (name.isBlank()) return
         try {
-            val dir = templatesDoc?.listFiles()?.firstOrNull { it.isDirectory && it.name.equals(name, true) } ?: return
-            syncDevFolder(dir, File(filesDir, "tpl/$name"), "tpl-$name.manifest")
+            val kids = templatesDoc?.listFiles() ?: return
+            // templates/<name>/ : loose pictures
+            kids.firstOrNull { it.isDirectory && it.name.equals(name, true) }?.let { syncDevFolder(it, File(filesDir, "tpl/$name"), "tpl-$name.manifest") }
+            // templates/<name>.zip : the same pictures in one zip
+            val zf = File(filesDir, "tpl/$name.zip")
+            val z = kids.firstOrNull { it.isFile && it.name.equals("$name.zip", true) }
+            if (z == null) {
+                zf.delete()
+            } else {
+                val stamp = "${z.length()}:${z.lastModified()}"
+                val sf = File(filesDir, "tpl/$name.zip.stamp")
+                if (!zf.exists() || !sf.exists() || sf.readText() != stamp) {
+                    zf.parentFile?.mkdirs()
+                    contentResolver.openInputStream(z.uri)?.use { i -> zf.outputStream().use { i.copyTo(it) } }
+                    sf.writeText(stamp)
+                }
+            }
         } catch (e: Exception) {
         }
     }
