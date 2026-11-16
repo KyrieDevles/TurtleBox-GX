@@ -65,20 +65,27 @@ class MainActivity : Activity() {
         if (name.isBlank()) return
         try {
             val kids = templatesDoc?.listFiles() ?: return
-            // templates/<name>/ : loose pictures
-            kids.firstOrNull { it.isDirectory && it.name.equals(name, true) }?.let { syncDevFolder(it, File(filesDir, "tpl/$name"), "tpl-$name.manifest") }
-            // templates/<name>.zip : the same pictures in one zip
+            // One source only: templates/<name>/ (loose files) if it exists, else templates/<name>.zip.
+            val dir = File(filesDir, "tpl/$name")
             val zf = File(filesDir, "tpl/$name.zip")
+            val sf = File(filesDir, "tpl/$name.zip.stamp")
+            val folder = kids.firstOrNull { it.isDirectory && it.name.equals(name, true) }
             val z = kids.firstOrNull { it.isFile && it.name.equals("$name.zip", true) }
-            if (z == null) {
-                zf.delete()
+            if (folder != null) {
+                syncDevFolder(folder, dir, "tpl-$name.manifest")
+                zf.delete(); sf.delete()
             } else {
-                val stamp = "${z.length()}:${z.lastModified()}"
-                val sf = File(filesDir, "tpl/$name.zip.stamp")
-                if (!zf.exists() || !sf.exists() || sf.readText() != stamp) {
-                    zf.parentFile?.mkdirs()
-                    contentResolver.openInputStream(z.uri)?.use { i -> zf.outputStream().use { i.copyTo(it) } }
-                    sf.writeText(stamp)
+                dir.deleteRecursively()
+                File(filesDir, "tpl-$name.manifest").delete()
+                if (z == null) {
+                    zf.delete(); sf.delete()
+                } else {
+                    val stamp = "${z.length()}:${z.lastModified()}"
+                    if (!zf.exists() || !sf.exists() || sf.readText() != stamp) {
+                        zf.parentFile?.mkdirs()
+                        contentResolver.openInputStream(z.uri)?.use { i -> zf.outputStream().use { it2 -> i.copyTo(it2) } }
+                        sf.writeText(stamp)
+                    }
                 }
             }
         } catch (e: Exception) {
