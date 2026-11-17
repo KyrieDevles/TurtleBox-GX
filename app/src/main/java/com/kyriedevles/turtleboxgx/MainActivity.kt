@@ -50,6 +50,9 @@ class MainActivity : Activity() {
     private lateinit var dockInner: LinearLayout
     private var dockPage: LinearLayout? = null
     private var dockSig = ""
+    private var dockStructSig = ""
+    private class TileRef(val menu: String, val status: TextView, val dot: View, val box: View, val label: String)
+    private var tileRefs: List<TileRef> = emptyList()
     private var dockScroll = 0
     private val dockExpanded get() = prefs.getBoolean("dock_open", false)
     private lateinit var layoutsBox: LinearLayout
@@ -541,7 +544,7 @@ class MainActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
-    private fun tileView(t: Tile, status: String?, changed: Boolean): View {
+    private fun tileView(t: Tile, status: String?, changed: Boolean, icons: Assets?, refs: MutableList<TileRef>): View {
         val box = FrameLayout(this)
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -553,19 +556,31 @@ class MainActivity : Activity() {
                 if (t.fromTemplate) setStroke(dp(2), c, dp(6).toFloat(), dp(4).toFloat()) else setStroke(dp(2), c)
             }
         }
-        col.addView(HotIcon(this, t.icon), LinearLayout.LayoutParams(dp(24), dp(24)))
+        val icon = HotIcon(this, t.icon)
+        // An icon with a dot in its name is a picture file (png, webp, jpg) from the card, template or layout assets.
+        if (t.icon.contains('.')) icon.bitmap = try { icons?.bitmap(t.icon) } catch (e: Exception) { null }
+        col.addView(icon, LinearLayout.LayoutParams(dp(24), dp(24)))
         col.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         col.addView(label(t.label, 13f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        if (status != null) col.addView(label(status, 11f, Hot.dim).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        val st = label(status ?: "", 11f, Hot.dim).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; visibility = if (status == null) View.GONE else View.VISIBLE }
+        col.addView(st)
         box.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        if (changed) {
-            val dot = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Hot.pink) } }
-            box.addView(dot, FrameLayout.LayoutParams(dp(8), dp(8), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(9), dp(9), 0) })
+        val dot = View(this).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Hot.pink) }
+            visibility = if (changed) View.VISIBLE else View.GONE
         }
-        box.contentDescription = t.label + (if (status != null) ", $status" else "") + if (changed) ", changed" else ""
+        box.addView(dot, FrameLayout.LayoutParams(dp(8), dp(8), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(9), dp(9), 0) })
         box.isClickable = true
         box.setOnClickListener { if (t.menu == "@layers") openLayers() else openEditor(t.menu) }
+        refs.add(TileRef(t.menu, st, dot, box, t.label))
+        applyTileText(refs.last(), status, changed)
         return box
+    }
+
+    private fun applyTileText(r: TileRef, status: String?, changed: Boolean) {
+        if (status == null) r.status.visibility = View.GONE else { r.status.text = status; r.status.visibility = View.VISIBLE }
+        r.dot.visibility = if (changed) View.VISIBLE else View.GONE
+        r.box.contentDescription = r.label + (if (status != null) ", $status" else "") + if (changed) ", changed" else ""
     }
 
     /** Rebuilds the dock when its tiles, their status, or open/closed changed. */
@@ -575,9 +590,22 @@ class MainActivity : Activity() {
         val expanded = dockExpanded
         val info = tiles.map { Triple(it, tileStatus(it), menuChanged(it.menu)) }
         val tlabel = if (templates.isEmpty()) "" else (templates[selectedTemplate]?.label ?: "Default")
-        val sig = expanded.toString() + "|" + tlabel + "|" + info.joinToString(";") { "${it.first.menu}/${it.first.label}/${it.first.icon}/${it.second}/${it.third}/${it.first.fromTemplate}" }
+        val struct = expanded.toString() + "|" + tlabel + "|" + selectedTemplate + "|" + info.joinToString(";") { "${it.first.menu}/${it.first.label}/${it.first.icon}/${it.first.fromTemplate}" }
+        val sig = struct + "#" + info.joinToString(";") { "${it.second}/${it.third}" }
         if (!force && sig == dockSig) return
         dockSig = sig
+        // Only text or dots changed: update the tiles where they are, so nothing blinks.
+        if (!force && struct == dockStructSig && tileRefs.size == info.size) {
+            for ((k, r) in tileRefs.withIndex()) applyTileText(r, info[k].second, info[k].third)
+            return
+        }
+        dockStructSig = struct
+        val refs = ArrayList<TileRef>()
+        val icons: Assets? = if (info.any { it.first.icon.contains('.') }) {
+            try { Assets(zipFile, state?.files ?: emptyMap(), cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir()) } catch (e: Exception) { null }
+        } else {
+            null
+        }
         val keepScroll = dockScroll
         (statusLine.parent as? ViewGroup)?.removeView(statusLine)
         dockInner.removeAllViews()
@@ -667,7 +695,7 @@ class MainActivity : Activity() {
                     android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
                     android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
                 ).apply { width = 0; height = dp(96); setMargins(dp(4), dp(4), dp(4), dp(4)) }
-                grid.addView(tileView(t, status, changed), lp)
+                grid.addView(tileView(t, status, changed, icons, refs), lp)
             }
             val sv = object : ScrollView(this) {
                 override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = t }
@@ -681,7 +709,7 @@ class MainActivity : Activity() {
                 setPadding(dp(14), 0, dp(14), 0)
             }
             for ((t, status, changed) in info) {
-                row.addView(tileView(t, status, changed), LinearLayout.LayoutParams(dp(92), dp(96)).apply { rightMargin = dp(8) })
+                row.addView(tileView(t, status, changed, icons, refs), LinearLayout.LayoutParams(dp(92), dp(96)).apply { rightMargin = dp(8) })
             }
             val hs = object : HorizontalScrollView(this) {
                 override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = l }
@@ -691,6 +719,8 @@ class MainActivity : Activity() {
             dockInner.addView(hs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             hs.post { hs.scrollTo(keepScroll, 0) }
         }
+        tileRefs = refs
+        try { icons?.close() } catch (e: Exception) { }
         statusLine.setPadding(dp(16), dp(8), dp(16), dp(10))
         dockInner.addView(statusLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }

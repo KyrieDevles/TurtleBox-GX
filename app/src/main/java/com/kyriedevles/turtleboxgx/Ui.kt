@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -145,7 +147,32 @@ class HotIcon(context: Context, private val kind: String) : View(context) {
 
     private val shape by lazy { path() }
 
+    /** A picture icon (PNG etc.). Only its transparency is used: it is tinted with the pink gradient. */
+    var bitmap: Bitmap? = null
+        set(v) {
+            field = v
+            invalidate()
+        }
+    private val tint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val tintOver = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN) }
+
     override fun onDraw(c: Canvas) {
+        val bmp = bitmap
+        if (bmp != null) {
+            val side = minOf(width, height).toFloat()
+            val dst = RectF((width - side) / 2f, (height - side) / 2f, (width + side) / 2f, (height + side) / 2f)
+            val layer = c.saveLayer(dst, null)
+            c.drawBitmap(bmp, null, dst, tint)
+            tintOver.shader = if (gradient) {
+                LinearGradient(dst.left, dst.top, dst.right, dst.bottom, intArrayOf(Hot.pinkLight, Hot.pinkDeep, Hot.pinkEdge), null, Shader.TileMode.CLAMP)
+            } else {
+                null
+            }
+            tintOver.color = Hot.inactive
+            c.drawRect(dst, tintOver)
+            c.restoreToCount(layer)
+            return
+        }
         val s = minOf(minOf(width, height) / 24f, resources.displayMetrics.density)
         c.save()
         c.translate((width - 24f * s) / 2f, (height - 24f * s) / 2f)
