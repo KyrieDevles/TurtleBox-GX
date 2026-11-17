@@ -87,12 +87,59 @@ class HotIcon(context: Context, private val kind: String) : View(context) {
                 moveTo(4f, 12f); lineTo(20f, 12f)
                 moveTo(4f, 17f); lineTo(14f, 17f)
             }
+            "text" -> {
+                moveTo(4f, 6f); lineTo(20f, 6f)
+                moveTo(4f, 11f); lineTo(20f, 11f)
+                moveTo(4f, 16f); lineTo(14f, 16f)
+            }
+            "name" -> {
+                moveTo(5f, 19f); lineTo(12f, 5f); lineTo(19f, 19f)
+                moveTo(8f, 14f); lineTo(16f, 14f)
+            }
+            "stats" -> {
+                moveTo(12f, 3f); lineTo(20f, 6f); lineTo(20f, 12f)
+                cubicTo(20f, 17f, 16f, 20f, 12f, 21f)
+                cubicTo(8f, 20f, 4f, 17f, 4f, 12f)
+                lineTo(4f, 6f); close()
+            }
+            "frame" -> {
+                addRoundRect(RectF(4f, 4f, 20f, 20f), 2f, 2f, Path.Direction.CW)
+                addRoundRect(RectF(8f, 8f, 16f, 16f), 1f, 1f, Path.Direction.CW)
+            }
+            "layers" -> {
+                moveTo(12f, 3f); lineTo(21f, 8f); lineTo(12f, 13f); lineTo(3f, 8f); close()
+                moveTo(3f, 12f); lineTo(12f, 17f); lineTo(21f, 12f)
+                moveTo(3f, 16f); lineTo(12f, 21f); lineTo(21f, 16f)
+            }
+            "star" -> {
+                moveTo(12f, 3f); lineTo(14.6f, 8.6f); lineTo(20.6f, 9.3f); lineTo(16.1f, 13.4f)
+                lineTo(17.3f, 19.4f); lineTo(12f, 16.4f); lineTo(6.7f, 19.4f); lineTo(7.9f, 13.4f)
+                lineTo(3.4f, 9.3f); lineTo(9.4f, 8.6f); close()
+            }
+            "link" -> {
+                moveTo(7f, 17f); lineTo(17f, 7f)
+                moveTo(9f, 7f); lineTo(17f, 7f); lineTo(17f, 15f)
+            }
+            "plus" -> {
+                moveTo(12f, 5f); lineTo(12f, 19f)
+                moveTo(5f, 12f); lineTo(19f, 12f)
+            }
+            "tag" -> {
+                addRoundRect(RectF(3f, 8f, 21f, 16f), 2f, 2f, Path.Direction.CW)
+            }
+            "up" -> {
+                moveTo(6f, 15f); lineTo(12f, 9f); lineTo(18f, 15f)
+            }
+            "down" -> {
+                moveTo(6f, 9f); lineTo(12f, 15f); lineTo(18f, 9f)
+            }
             "sets" -> {
                 addRoundRect(RectF(3f, 3f, 11f, 11f), 1f, 1f, Path.Direction.CW)
                 addRoundRect(RectF(13f, 3f, 21f, 11f), 1f, 1f, Path.Direction.CW)
                 addRoundRect(RectF(3f, 13f, 11f, 21f), 1f, 1f, Path.Direction.CW)
                 addRoundRect(RectF(13f, 13f, 21f, 21f), 1f, 1f, Path.Direction.CW)
             }
+            else -> addCircle(12f, 12f, 6f, Path.Direction.CW)
         }
     }
 

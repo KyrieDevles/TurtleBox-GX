@@ -31,6 +31,9 @@ class Element(val kind: String, val attrs: Map<String, String>, val order: Int) 
     val index: Float get() = attrs["index"]?.toFloatOrNull() ?: 0f
 }
 
+/** One tile of the Card page's edit dock: opens the menu `menu` (or `@layers`). `status` may hold {{names}}. */
+class Tile(val menu: String, val label: String, val icon: String, val status: String?, val fromTemplate: Boolean)
+
 class Layout(
     val width: Float,
     val height: Float,
@@ -38,6 +41,7 @@ class Layout(
     val bools: Map<String, String>,
     val elements: List<Element>,
     val styleInfo: Map<String, String>,
+    val tiles: List<Tile> = emptyList(),
 )
 
 object LayoutParser {
@@ -52,6 +56,7 @@ object LayoutParser {
         val bools = LinkedHashMap<String, String>()
         val elements = ArrayList<Element>()
         val styleInfo = LinkedHashMap<String, String>()
+        val tiles = ArrayList<Tile>()
         var curData: DataDef? = null
         var inStyleInfo = false
         var inLayout = false
@@ -94,6 +99,20 @@ object LayoutParser {
                             val name = p.getAttributeValue(null, "name")
                             val value = p.getAttributeValue(null, "value")
                             if (name != null && value != null) bools[name] = value
+                        }
+                        n == "tile" && !inLayout -> {
+                            val menu = p.getAttributeValue(null, "menu")
+                            if (menu != null) {
+                                tiles.add(
+                                    Tile(
+                                        menu,
+                                        p.getAttributeValue(null, "label") ?: menu,
+                                        p.getAttributeValue(null, "icon") ?: "dot",
+                                        p.getAttributeValue(null, "status"),
+                                        p.getAttributeValue(null, "tpl") == "1",
+                                    ),
+                                )
+                            }
                         }
                         n == "layout" -> inLayout = true
                         inLayout && (n == "image" || n == "text") -> {
@@ -151,7 +170,7 @@ object LayoutParser {
             }
         } catch (e: Exception) {
         }
-        return Layout(width, height, datas, bools, elements, styleInfo)
+        return Layout(width, height, datas, bools, elements, styleInfo, tiles)
     }
 
     private fun attrsOf(p: XmlPullParser): Map<String, String> {

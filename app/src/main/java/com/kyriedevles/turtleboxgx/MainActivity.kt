@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.os.Bundle
@@ -18,9 +19,11 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
@@ -43,6 +46,12 @@ class MainActivity : Activity() {
 
     private lateinit var cardView: CardView
     private lateinit var statusLine: TextView
+    private lateinit var dockOuter: LinearLayout
+    private lateinit var dockInner: LinearLayout
+    private var dockPage: LinearLayout? = null
+    private var dockSig = ""
+    private var dockScroll = 0
+    private val dockExpanded get() = prefs.getBoolean("dock_open", false)
     private lateinit var layoutsBox: LinearLayout
     private lateinit var setsBox: LinearLayout
     private lateinit var pages: List<View>
@@ -461,27 +470,225 @@ class MainActivity : Activity() {
             ellipsize = android.text.TextUtils.TruncateAt.END
             setOnClickListener { showDetails() }
         }
-        page.addView(statusLine)
-
-        val chips = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(16), dp(8), dp(16), dp(6))
+        // The edit dock: a row of tiles that opens into a grid.
+        dockOuter = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Hot.gradient(dp(20).toFloat())
+            setPadding(dp(2), dp(2), dp(2), dp(2))
         }
-        listOf("Effect text" to "cardtextmenu", "Name" to "cardname", "Stats" to "atkdef", "Frame" to "cardbg", "Layers" to "@layers").forEach { (name, key) ->
-            val chip = TextView(this).apply {
-                text = name
-                gravity = Gravity.CENTER
-                setTextColor(Hot.muted)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                typeface = Typeface.DEFAULT_BOLD
-                maxLines = 1
-                background = Hot.outline(dp(12).toFloat(), dp(2), Hot.line)
-                setOnClickListener { if (key == "@layers") openLayers() else openEditor(key) }
-            }
-            chips.addView(chip, LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        dockInner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Hot.outline(dp(18).toFloat(), 0, Color.BLACK)
         }
-        page.addView(chips)
+        dockOuter.addView(dockInner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        page.addView(dockOuter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(6), 0, dp(6), dp(6)) })
+        dockPage = page
+        refreshDock(true)
         return page
+    }
+
+    // ---- edit dock ----
+
+    private fun dockTiles(): List<Tile> {
+        val t = layout?.tiles ?: emptyList()
+        val base = if (t.isEmpty()) {
+            listOf(
+                Tile("cardtextmenu", "Effect text", "text", null, false), Tile("cardname", "Name", "name", null, false),
+                Tile("atkdef", "Stats", "stats", null, false), Tile("cardbg", "Frame", "frame", null, false),
+            )
+        } else {
+            t
+        }
+        return if (base.none { it.menu == "@layers" }) base + Tile("@layers", "Layers", "layers", null, false) else base
+    }
+
+    /** True when something in the menu differs from its default (shown as a dot on the tile). */
+    private fun menuChanged(menu: String, seen: MutableSet<String> = HashSet()): Boolean {
+        val l = layout ?: return false
+        val st = state ?: return false
+        if (menu == "@layers") return ImageLayers.read(st.values).isNotEmpty()
+        if (!seen.add(menu)) return false
+        val d = l.datas[menu] ?: return false
+        if (d.type == "multi_select") return d.items.any { (_, v) -> menuChanged(v, seen) }
+        val cur = st.values[menu] ?: return false
+        return cur != (d.default ?: "")
+    }
+
+    private fun tileStatus(t: Tile): String? {
+        val l = layout
+        val st = state
+        if (t.menu == "@layers") {
+            if (st == null) return null
+            val n = ImageLayers.read(st.values).size
+            return if (n == 0) "none" else if (n == 1) "1 image" else "$n images"
+        }
+        val raw = t.status ?: return null
+        if (l == null || st == null) return null
+        val out = Ctx(l, st.values).sub(raw).trim()
+        return if (out.isBlank() || out.contains("{{")) null else out
+    }
+
+    private fun toggleDock(open: Boolean) {
+        prefs.edit().putBoolean("dock_open", open).apply()
+        refreshDock(true)
+    }
+
+    private fun showTemplateDialog() {
+        val names = listOf("") + templates.keys
+        val labels = (listOf("Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Template")
+            .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun tileView(t: Tile, status: String?, changed: Boolean): View {
+        val box = FrameLayout(this)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#12081a"))
+                cornerRadius = dp(14).toFloat()
+                val c = Color.parseColor("#4a1f38")
+                if (t.fromTemplate) setStroke(dp(2), c, dp(6).toFloat(), dp(4).toFloat()) else setStroke(dp(2), c)
+            }
+        }
+        col.addView(HotIcon(this, t.icon), LinearLayout.LayoutParams(dp(24), dp(24)))
+        col.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
+        col.addView(label(t.label, 13f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (status != null) col.addView(label(status, 11f, Hot.dim).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        box.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        if (changed) {
+            val dot = View(this).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Hot.pink) } }
+            box.addView(dot, FrameLayout.LayoutParams(dp(8), dp(8), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(9), dp(9), 0) })
+        }
+        box.contentDescription = t.label + (if (status != null) ", $status" else "") + if (changed) ", changed" else ""
+        box.isClickable = true
+        box.setOnClickListener { if (t.menu == "@layers") openLayers() else openEditor(t.menu) }
+        return box
+    }
+
+    /** Rebuilds the dock when its tiles, their status, or open/closed changed. */
+    private fun refreshDock(force: Boolean = false) {
+        if (!::dockInner.isInitialized) return
+        val tiles = dockTiles()
+        val expanded = dockExpanded
+        val info = tiles.map { Triple(it, tileStatus(it), menuChanged(it.menu)) }
+        val tlabel = if (templates.isEmpty()) "" else (templates[selectedTemplate]?.label ?: "Default")
+        val sig = expanded.toString() + "|" + tlabel + "|" + info.joinToString(";") { "${it.first.menu}/${it.first.label}/${it.first.icon}/${it.second}/${it.third}/${it.first.fromTemplate}" }
+        if (!force && sig == dockSig) return
+        dockSig = sig
+        val keepScroll = dockScroll
+        (statusLine.parent as? ViewGroup)?.removeView(statusLine)
+        dockInner.removeAllViews()
+
+        // Size: the closed dock is as tall as its content; open, it takes most of the screen under a smaller card.
+        val inner = dockInner.layoutParams as LinearLayout.LayoutParams
+        val outer = dockOuter.layoutParams as LinearLayout.LayoutParams
+        val cardLp = cardView.layoutParams as LinearLayout.LayoutParams
+        if (expanded) {
+            outer.height = 0; outer.weight = 1.25f; cardLp.weight = 0.8f
+        } else {
+            outer.height = ViewGroup.LayoutParams.WRAP_CONTENT; outer.weight = 0f; cardLp.weight = 1f
+        }
+        dockOuter.layoutParams = outer
+        cardView.layoutParams = cardLp
+        inner.height = if (expanded) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT
+        dockInner.layoutParams = inner
+
+        // Handle: tap, or drag up / down.
+        val handleRow = FrameLayout(this)
+        handleRow.addView(
+            View(this).apply { background = Hot.gradient(dp(3).toFloat(), true) },
+            FrameLayout.LayoutParams(dp(44), dp(5), Gravity.CENTER),
+        )
+        handleRow.contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
+        var downY = 0f
+        handleRow.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { downY = e.rawY; true }
+                MotionEvent.ACTION_UP -> {
+                    val dy = e.rawY - downY
+                    when {
+                        dy < -dp(36) -> toggleDock(true)
+                        dy > dp(36) -> toggleDock(false)
+                        Math.abs(dy) < dp(10) -> { v.performClick(); toggleDock(!expanded) }
+                    }
+                    true
+                }
+                else -> true
+            }
+        }
+        dockInner.addView(handleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)))
+
+        // Header: title, template, chevron.
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, dp(10), dp(8))
+        }
+        header.addView(label(if (expanded) "Edit · ${tiles.size} sections" else "Edit", 15f, Hot.pink, bold = true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (templates.isNotEmpty()) {
+            val pillv = TextView(this).apply {
+                text = tlabel
+                gravity = Gravity.CENTER
+                setPadding(dp(12), 0, dp(12), 0)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Hot.muted)
+                maxLines = 1
+                background = Hot.outline(dp(16).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
+                setOnClickListener { showTemplateDialog() }
+            }
+            header.addView(pillv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { rightMargin = dp(8) })
+        }
+        val chev = FrameLayout(this).apply {
+            background = Hot.outline(dp(16).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
+            contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
+            isClickable = true
+            setOnClickListener { toggleDock(!expanded) }
+        }
+        chev.addView(HotIcon(this, if (expanded) "down" else "up").apply { gradient = false }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+        header.addView(chev, LinearLayout.LayoutParams(dp(36), dp(32)))
+        dockInner.addView(header)
+
+        if (expanded) {
+            val cols = maxOf(3, (resources.displayMetrics.widthPixels / resources.displayMetrics.density / 130f).toInt())
+            val grid = android.widget.GridLayout(this).apply {
+                columnCount = cols
+                setPadding(dp(10), 0, dp(10), dp(10))
+            }
+            for ((t, status, changed) in info) {
+                val lp = android.widget.GridLayout.LayoutParams(
+                    android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
+                    android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
+                ).apply { width = 0; height = dp(96); setMargins(dp(4), dp(4), dp(4), dp(4)) }
+                grid.addView(tileView(t, status, changed), lp)
+            }
+            val sv = object : ScrollView(this) {
+                override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = t }
+            }
+            sv.addView(grid)
+            dockInner.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            sv.post { sv.scrollTo(0, keepScroll) }
+        } else {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(dp(14), 0, dp(14), 0)
+            }
+            for ((t, status, changed) in info) {
+                row.addView(tileView(t, status, changed), LinearLayout.LayoutParams(dp(92), dp(96)).apply { rightMargin = dp(8) })
+            }
+            val hs = object : HorizontalScrollView(this) {
+                override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = l }
+            }
+            hs.isHorizontalScrollBarEnabled = false
+            hs.addView(row)
+            dockInner.addView(hs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            hs.post { hs.scrollTo(keepScroll, 0) }
+        }
+        statusLine.setPadding(dp(16), dp(8), dp(16), dp(10))
+        dockInner.addView(statusLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
     private fun setStatus(s: String) {
@@ -701,11 +908,7 @@ class MainActivity : Activity() {
                 if (meta.isNotBlank()) tcard.addView(label(meta, 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
             }
             tcard.addView(pill("Change", false) {
-                val names = listOf("") + templates.keys
-                val labels = (listOf("Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
-                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Template")
-                    .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
-                    .setNegativeButton("Cancel", null).show()
+                showTemplateDialog()
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
             add(tcard, 12)
         }
@@ -1355,6 +1558,7 @@ class MainActivity : Activity() {
             }
             runOnUiThread {
                 setStatus(msg.toString())
+                refreshDock()
                 if (bmp != null) {
                     lastBmp = bmp
                     cardView.bitmap = bmp

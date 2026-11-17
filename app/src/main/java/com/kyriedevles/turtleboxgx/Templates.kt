@@ -24,6 +24,7 @@ import javax.xml.transform.stream.StreamResult
  *  - `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y); `name="Label"` sets the text shown.
  *  - `<patch>` children may carry mode="prepend" / "append" to add entries above/below the existing ones instead of replacing them.
  *  - `<set>` holds `<data>`/`<bool>` that replace a same-named one in the base (or add it).
+ *  - `<add-tile menu label icon status before/>` / `<hide-tile menu/>` change the Card page's edit dock tiles.
  *  - root attributes `width` / `height` change the card size; `description`, `author`, `version` show in the picker; `requires="a b"` warns if the layout lacks those names.
  *  - `is_<name>` is forced to true while the template is active.
  * An element is found by its `id` attribute, or by the XML comment written just above it (lower-cased, spaces become `-`).
@@ -183,6 +184,37 @@ object Templates {
                         }
                     }
                     if (!found) notes.add("template ${t.name}: no menu field '$name' to hide")
+                }
+                "add-tile", "hide-tile" -> {
+                    // The Card page's edit dock. <tiles> is created with the five default tiles if the base has none.
+                    var tiles = kids(root).firstOrNull { it.tagName == "tiles" }
+                    if (tiles == null) {
+                        tiles = doc.createElement("tiles")
+                        for ((m, l, i) in listOf(
+                            Triple("cardtextmenu", "Effect text", "text"), Triple("cardname", "Name", "name"),
+                            Triple("atkdef", "Stats", "stats"), Triple("cardbg", "Frame", "frame"),
+                        )) {
+                            val e = doc.createElement("tile")
+                            e.setAttribute("menu", m); e.setAttribute("label", l); e.setAttribute("icon", i)
+                            tiles.appendChild(e)
+                        }
+                        root.insertBefore(tiles, layoutEl)
+                    }
+                    val menu = c.getAttribute("menu")
+                    if (c.tagName == "hide-tile") {
+                        val old = kids(tiles).firstOrNull { it.getAttribute("menu") == menu }
+                        if (old == null) notes.add("template ${t.name}: no tile '$menu' to hide") else tiles.removeChild(old)
+                    } else if (kids(tiles).none { it.getAttribute("menu") == menu }) {
+                        val e = doc.createElement("tile")
+                        e.setAttribute("menu", menu)
+                        e.setAttribute("label", c.getAttribute("label").ifBlank { menu })
+                        e.setAttribute("icon", c.getAttribute("icon").ifBlank { "dot" })
+                        if (c.hasAttribute("status")) e.setAttribute("status", c.getAttribute("status"))
+                        e.setAttribute("tpl", "1")
+                        val before = c.getAttribute("before")
+                        val ref = if (before.isBlank()) null else kids(tiles).firstOrNull { it.getAttribute("menu") == before }
+                        if (ref != null) tiles.insertBefore(e, ref) else tiles.appendChild(e)
+                    }
                 }
                 "add-item" -> {
                     // Adds an option to an existing menu (multi_select) while the template is active.
