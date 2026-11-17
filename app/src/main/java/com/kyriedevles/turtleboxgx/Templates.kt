@@ -187,9 +187,8 @@ object Templates {
                 }
                 "add-tile", "hide-tile" -> {
                     // The Card page's edit dock. <tiles> is created with the five default tiles if the base has none.
-                    var tiles = kids(root).firstOrNull { it.tagName == "tiles" }
-                    if (tiles == null) {
-                        tiles = doc.createElement("tiles")
+                    val tiles: Element = kids(root).firstOrNull { it.tagName == "tiles" } ?: run {
+                        val tiles = doc.createElement("tiles")
                         for ((m, l, i) in listOf(
                             Triple("cardtextmenu", "Effect text", "text"), Triple("cardname", "Name", "name"),
                             Triple("atkdef", "Stats", "stats"), Triple("cardbg", "Frame", "frame"),
@@ -199,6 +198,7 @@ object Templates {
                             tiles.appendChild(e)
                         }
                         root.insertBefore(tiles, layoutEl)
+                        tiles
                     }
                     val menu = c.getAttribute("menu")
                     if (c.tagName == "hide-tile") {
