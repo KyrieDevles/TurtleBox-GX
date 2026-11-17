@@ -21,7 +21,7 @@ import javax.xml.transform.stream.StreamResult
  *  - `<hide target="id"/>`: the element is never visible.
  *  - `<add>`: new `<image>`/`<text>` elements (added to the layout) and `<data>`/`<bool>` entries (added to the base).
  *  - `<hide-data name="x"/>`: removes the field from every settings menu that lists it; `<default name="x" value="y"/>`: changes a data's default.
- *  - `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y).
+ *  - `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y); `name="Label"` sets the text shown.
  *  - root attributes `width` / `height` change the card size.
  *  - `is_<name>` is forced to true while the template is active.
  * An element is found by its `id` attribute, or by the XML comment written just above it (lower-cased, spaces become `-`).
@@ -165,7 +165,7 @@ object Templates {
                         notes.add("template ${t.name}: no menu '$menuName' for add-item")
                     } else if (kids(m).none { it.tagName == "item" && it.getAttribute("value") == v }) {
                         val item = doc.createElement("item")
-                        item.setAttribute("name", v)
+                        item.setAttribute("name", c.getAttribute("name").ifBlank { v })
                         item.setAttribute("value", v)
                         val before = c.getAttribute("before")
                         val ref = if (before.isBlank()) null else kids(m).firstOrNull { it.tagName == "item" && it.getAttribute("value") == before }
