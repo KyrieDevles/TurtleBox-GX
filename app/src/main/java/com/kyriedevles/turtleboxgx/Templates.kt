@@ -22,14 +22,16 @@ import javax.xml.transform.stream.StreamResult
  *  - `<add>`: new `<image>`/`<text>` elements (added to the layout) and `<data>`/`<bool>` entries (added to the base).
  *  - `<hide-data name="x"/>`: removes the field from every settings menu that lists it; `<default name="x" value="y"/>`: changes a data's default.
  *  - `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y); `name="Label"` sets the text shown.
- *  - root attributes `width` / `height` change the card size.
+ *  - `<patch>` children may carry mode="prepend" / "append" to add entries above/below the existing ones instead of replacing them.
+ *  - `<set>` holds `<data>`/`<bool>` that replace a same-named one in the base (or add it).
+ *  - root attributes `width` / `height` change the card size; `description`, `author`, `version` show in the picker; `requires="a b"` warns if the layout lacks those names.
  *  - `is_<name>` is forced to true while the template is active.
  * An element is found by its `id` attribute, or by the XML comment written just above it (lower-cased, spaces become `-`).
  * Several elements under the same comment are `name`, `name#2`, `name#3`, …; any element can also be addressed as `#N`
  * (its position among the layout's images and texts, starting at 0), which is fragile if the base is reordered.
  */
 object Templates {
-    class Info(val name: String, val label: String, val xml: String)
+    class Info(val name: String, val label: String, val xml: String, val description: String = "", val author: String = "", val version: String = "")
     class Result(val xml: String, val notes: List<String>)
 
     private fun parse(xml: String): Document {
@@ -38,12 +40,12 @@ object Templates {
     }
 
     fun info(name: String, xml: String): Info {
-        val label = try {
-            parse(xml).documentElement.getAttribute("label").ifBlank { name }
+        return try {
+            val r = parse(xml).documentElement
+            Info(name, r.getAttribute("label").ifBlank { name }, xml, r.getAttribute("description"), r.getAttribute("author"), r.getAttribute("version"))
         } catch (e: Exception) {
-            name
+            Info(name, name, xml)
         }
-        return Info(name, label, xml)
     }
 
     fun slug(s: String) = s.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
@@ -119,10 +121,25 @@ object Templates {
                         if (a.nodeName != "target") el.setAttribute(a.nodeName, a.nodeValue)
                     }
                     val parts = kids(c)
-                    for (tag in parts.map { it.tagName }.distinct()) {
+                    val replacing = parts.filter { !it.hasAttribute("mode") }
+                    val adding = parts.filter { it.hasAttribute("mode") }
+                    // Entries without mode replace all of that tag's entries; entries with mode="prepend" / "append"
+                    // are put above / below the entries the element already has.
+                    for (tag in replacing.map { it.tagName }.distinct()) {
                         kids(el).filter { it.tagName == tag }.forEach { el.removeChild(it) }
                     }
-                    for (p in parts) el.appendChild(doc.importNode(p, true))
+                    for (p in replacing) el.appendChild(doc.importNode(p, true))
+                    for (p in adding) {
+                        val copy = doc.importNode(p, true) as Element
+                        val mode = copy.getAttribute("mode")
+                        copy.removeAttribute("mode")
+                        val same = kids(el).filter { it.tagName == copy.tagName }
+                        when {
+                            same.isEmpty() -> el.appendChild(copy)
+                            mode == "prepend" -> el.insertBefore(copy, same.first())
+                            else -> el.insertBefore(copy, same.last().nextSibling)
+                        }
+                    }
                 }
                 "hide" -> {
                     val el = targets[c.getAttribute("target")]
@@ -142,6 +159,17 @@ object Templates {
                         if (dup) notes.add("template ${t.name}: '${a.getAttribute("name")}' already exists, skipped") else root.insertBefore(copy, layoutEl)
                     } else {
                         layoutEl.appendChild(copy)
+                    }
+                }
+                "set" -> for (a in kids(c)) {
+                    if (a.tagName != "data" && a.tagName != "bool") continue
+                    val copy = doc.importNode(a, true)
+                    val old = kids(root).firstOrNull { it.tagName == a.tagName && it.getAttribute("name") == a.getAttribute("name") }
+                    if (old != null) {
+                        root.replaceChild(copy, old)
+                        notes.add("template ${t.name}: replaced '${a.getAttribute("name")}'")
+                    } else {
+                        root.insertBefore(copy, layoutEl)
                     }
                 }
                 "hide-data" -> {
@@ -183,6 +211,11 @@ object Templates {
         tf.setOutputProperty(OutputKeys.ENCODING, "UTF-8")
         tf.setOutputProperty(OutputKeys.INDENT, "no")
         val sw = StringWriter()
+        // requires="a b c": names the template relies on in the base (or adds itself).
+        troot.getAttribute("requires").split(Regex("[,\\s]+")).filter { it.isNotBlank() }.forEach { need ->
+            val has = kids(root).any { (it.tagName == "data" || it.tagName == "bool") && it.getAttribute("name") == need }
+            if (!has) notes.add("template ${t.name}: needs '$need' but the layout does not define it")
+        }
         tf.transform(DOMSource(doc), StreamResult(sw))
         return Result(sw.toString(), notes)
     }

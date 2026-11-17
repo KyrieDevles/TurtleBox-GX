@@ -696,9 +696,13 @@ class MainActivity : Activity() {
             }
             tcard.addView(label("Template", 13f, Hot.muted))
             tcard.addView(label(templates[selectedTemplate]?.label ?: "Default (base layout)", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+            templates[selectedTemplate]?.let { ti ->
+                val meta = listOf(ti.description, listOf(ti.author, ti.version).filter { it.isNotBlank() }.joinToString(" · ")).filter { it.isNotBlank() }.joinToString("\n")
+                if (meta.isNotBlank()) tcard.addView(label(meta, 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
+            }
             tcard.addView(pill("Change", false) {
                 val names = listOf("") + templates.keys
-                val labels = (listOf("Default (base layout)") + templates.values.map { it.label }).toTypedArray()
+                val labels = (listOf("Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
                 AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Template")
                     .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
                     .setNegativeButton("Cancel", null).show()
