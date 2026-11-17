@@ -283,11 +283,24 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
                             if (hsy != 0) snapDelta(l0.cy + tly, false)?.let { tly += it; guideY = l0.cy + tly }
                         }
                         if (mode == Mode.CORNER && lock) {
-                            val s = max(0.02f, hypot(tlx, tly) / hypot(l0.w / 2f, l0.h / 2f))
-                            l.w = max(8f, l0.w * s)
-                            l.h = max(8f, l0.h * s)
-                            l.cx = l0.cx
-                            l.cy = l0.cy
+                            // Ratio kept, the opposite corner stays where it is: scale by how far the finger is
+                            // along the diagonal measured from that fixed corner.
+                            val dx = hsx * l0.w
+                            val dy = hsy * l0.h
+                            val px = tlx + hsx * l0.w / 2f
+                            val py = tly + hsy * l0.h / 2f
+                            val s = max(max(0.02f, 8f / min(l0.w, l0.h)), (px * dx + py * dy) / (dx * dx + dy * dy))
+                            val nw = l0.w * s
+                            val nh = l0.h * s
+                            val shx = hsx * (nw - l0.w) / 2f
+                            val shy = hsy * (nh - l0.h) / 2f
+                            val a = rad(l0.rot)
+                            val cs = cos(a).toFloat()
+                            val sn = sin(a).toFloat()
+                            l.w = nw
+                            l.h = nh
+                            l.cx = l0.cx + shx * cs - shy * sn
+                            l.cy = l0.cy + shx * sn + shy * cs
                         } else {
                             var nw = l0.w
                             var nh = l0.h

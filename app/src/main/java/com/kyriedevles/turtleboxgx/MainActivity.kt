@@ -55,6 +55,7 @@ class MainActivity : Activity() {
     private var templates: Map<String, Templates.Info> = emptyMap()
     private var selectedTemplate = ""
     private var templateNotes: List<String> = emptyList()
+    private var undefinedNames: List<String> = emptyList()
     private var mergedXml: String? = null
     private var templatesDoc: DocumentFile? = null
 
@@ -98,7 +99,7 @@ class MainActivity : Activity() {
         if (t == null) {
             templateNotes = emptyList()
             mergedXml = null
-            return LayoutParser.parse(base)
+            return LayoutParser.parse(base).also { undefinedNames = NameCheck.undefined(base, it) }
         }
         val r = try {
             Templates.apply(base, t)
@@ -107,7 +108,7 @@ class MainActivity : Activity() {
         }
         templateNotes = r.notes
         mergedXml = r.xml
-        return LayoutParser.parse(r.xml)
+        return LayoutParser.parse(r.xml).also { undefinedNames = NameCheck.undefined(r.xml, it) }
     }
 
     private fun selectTemplate(name: String) {
@@ -1328,6 +1329,11 @@ class MainActivity : Activity() {
                 msg.append(st.values["cardname"] ?: "Card").append(" · ${r.drawn} elements in $ms ms")
                 if (selectedTemplate.isNotBlank()) msg.append(" · template: $selectedTemplate")
                 templateNotes.forEach { n -> msg.append("\n").append(n) }
+                val undef = undefinedNames.filter { !st.values.containsKey(it) }
+                if (undef.isNotEmpty()) {
+                    msg.append("\n${undef.size} name(s) used but never defined: ").append(undef.take(6).joinToString(", "))
+                    if (undef.size > 6) msg.append(" +${undef.size - 6} more")
+                }
                 if (real.isNotEmpty()) msg.append(" · ${real.size} not found (tap for details)")
                 msg.append("\n")
                 newHits = r.hits

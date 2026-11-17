@@ -187,3 +187,25 @@ object Templates {
         return Result(sw.toString(), notes)
     }
 }
+
+
+/** Names a layout uses (in {{name}} or click="name") that nothing defines. */
+object NameCheck {
+    // Names the app itself provides at run time.
+    private val builtin = setOf("template")
+
+    fun undefined(xml: String, layout: Layout): List<String> {
+        val body = xml.replace(Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL), "")
+        val out = LinkedHashSet<String>()
+        for (m in Regex("\\{\\{([^{}]+)\\}\\}").findAll(body)) {
+            val n = m.groupValues[1].trim()
+            if (n.isEmpty() || n in builtin) continue
+            if (!layout.datas.containsKey(n) && !layout.bools.containsKey(n)) out.add(n)
+        }
+        for (m in Regex("click=\"([^\"]+)\"").findAll(body)) {
+            val n = m.groupValues[1].trim()
+            if (n.isNotEmpty() && !layout.datas.containsKey(n)) out.add(n)
+        }
+        return out.toList()
+    }
+}
