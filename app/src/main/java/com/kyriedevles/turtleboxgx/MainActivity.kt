@@ -493,7 +493,7 @@ class MainActivity : Activity() {
         val t = layout?.tiles ?: emptyList()
         val base = if (t.isEmpty()) {
             listOf(
-                Tile("cardtextmenu", "Effect text", "text", null, false), Tile("cardname", "Name", "name", null, false),
+                Tile("cardtextmenu", "Effect text", "text", null, false), Tile("namemenu", "Name", "name", null, false),
                 Tile("atkdef", "Stats", "stats", null, false), Tile("cardbg", "Frame", "frame", null, false),
             )
         } else {
@@ -604,22 +604,25 @@ class MainActivity : Activity() {
         )
         handleRow.contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
         var downY = 0f
-        handleRow.setOnTouchListener { v, e ->
+        val drag = View.OnTouchListener { v, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downY = e.rawY; true }
+                MotionEvent.ACTION_DOWN -> { downY = e.rawY; v.parent?.requestDisallowInterceptTouchEvent(true); true }
+                MotionEvent.ACTION_MOVE -> { v.parent?.requestDisallowInterceptTouchEvent(true); true }
+                MotionEvent.ACTION_CANCEL -> true
                 MotionEvent.ACTION_UP -> {
                     val dy = e.rawY - downY
                     when {
-                        dy < -dp(36) -> toggleDock(true)
-                        dy > dp(36) -> toggleDock(false)
-                        Math.abs(dy) < dp(10) -> { v.performClick(); toggleDock(!expanded) }
+                        dy < -dp(24) -> toggleDock(true)
+                        dy > dp(24) -> toggleDock(false)
+                        Math.abs(dy) < dp(10) -> toggleDock(!expanded)
                     }
                     true
                 }
                 else -> true
             }
         }
-        dockInner.addView(handleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)))
+        handleRow.setOnTouchListener(drag)
+        dockInner.addView(handleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
 
         // Header: title, template, chevron.
         val header = LinearLayout(this).apply {
@@ -650,6 +653,7 @@ class MainActivity : Activity() {
         }
         chev.addView(HotIcon(this, if (expanded) "down" else "up").apply { gradient = false }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
         header.addView(chev, LinearLayout.LayoutParams(dp(36), dp(32)))
+        header.setOnTouchListener(drag)
         dockInner.addView(header)
 
         if (expanded) {
