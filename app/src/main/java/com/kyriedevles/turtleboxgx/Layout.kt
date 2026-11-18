@@ -17,6 +17,17 @@ class DataDef(val name: String, val default: String?, val type: String?, val des
     /** type="togglegrid": number of columns, and an optional cell that switches on when any other cell does. */
     var columns: Int = 0
     var master: String? = null
+
+    /**
+     * The values of a two-state field as (off, on). Off is the default when it is one of the choices, otherwise the
+     * first choice (a default like "off" with a choice whose value is empty still means that empty choice). On is the first other choice.
+     */
+    fun offOn(): Pair<String, String>? {
+        val vals = items.map { it.second }
+        val off = if (default != null && default in vals) default else vals.firstOrNull() ?: return null
+        val on = vals.firstOrNull { it != off } ?: return null
+        return off to on
+    }
 }
 
 /** One `<image>` or `<text>` element of the layout. Children with a `when` attribute are tried in order. */

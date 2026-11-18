@@ -601,8 +601,8 @@ class MainActivity : Activity() {
         if (t.status == null && g != null && g.type == "togglegrid") {
             val cells = g.items.map { it.second }.filter { it.isNotEmpty() && it != g.master }.mapNotNull { l.datas[it] }
             val on = cells.count { c ->
-                val off = c.default ?: c.items.firstOrNull()?.second
-                (st.values[c.name] ?: c.default ?: "") != off
+                val oo = c.offOn()
+                oo != null && (st.values[c.name] ?: c.default ?: "") == oo.second
             }
             return "$on of ${cells.size} on"
         }

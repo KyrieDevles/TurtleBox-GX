@@ -319,13 +319,6 @@ class Editor(
     }
 
 
-    /** The value a two-state field has when it is off (its default) and on (its first other choice). */
-    private fun offOn(f: DataDef): Pair<String, String>? {
-        val off = f.default ?: f.items.firstOrNull()?.second ?: return null
-        val on = f.items.firstOrNull { it.second != off }?.second ?: return null
-        return off to on
-    }
-
     /**
      * type="togglegrid": a grid of on/off buttons, one per item. Each item's value is the name of a two-state field;
      * its name is the text on the button. An item with an empty value is an empty slot. Changes show on the card at
@@ -333,7 +326,7 @@ class Editor(
      */
     private fun openToggleGrid(d: DataDef) {
         val ctx = Ctx(layout, state.values)
-        val cells = d.items.map { (label, v) -> Triple(label, v, find(v)?.let { offOn(it) }) }
+        val cells = d.items.map { (label, v) -> Triple(label, v, find(v)?.offOn()) }
         val before = cells.mapNotNull { (_, v, oo) -> if (oo != null) v to (state.values[v] ?: ctx.value(v)) else null }.toMap()
         val handler = Handler(Looper.getMainLooper())
         var pending = false
@@ -349,7 +342,7 @@ class Editor(
         }
         val views = ArrayList<Pair<TextView, String>>()
         fun isOn(v: String): Boolean {
-            val oo = find(v)?.let { offOn(it) } ?: return false
+            val oo = find(v)?.offOn() ?: return false
             return (state.values[v] ?: ctx.value(v)) == oo.second
         }
         fun paint() {
@@ -379,7 +372,7 @@ class Editor(
                     state.values[v] = if (turnOn) oo.second else oo.first
                     val m = d.master
                     if (turnOn && m != null && m != v) {
-                        find(m)?.let { md -> offOn(md)?.let { state.values[m] = it.second } }
+                        find(m)?.offOn()?.let { state.values[m] = it.second }
                     }
                     paint()
                     live()
