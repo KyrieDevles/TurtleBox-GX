@@ -583,7 +583,7 @@ class MainActivity : Activity() {
         if (menu == "@layers") return ImageLayers.read(st.values).isNotEmpty()
         if (!seen.add(menu)) return false
         val d = l.datas[menu] ?: return false
-        if (d.type == "multi_select") return d.items.any { (_, v) -> menuChanged(v, seen) }
+        if (d.type == "multi_select" || d.type == "togglegrid") return d.items.any { (_, v) -> v.isNotEmpty() && menuChanged(v, seen) }
         val cur = st.values[menu] ?: return false
         return cur != (d.default ?: "")
     }
@@ -596,8 +596,17 @@ class MainActivity : Activity() {
             val n = ImageLayers.read(st.values).size
             return if (n == 0) "none" else if (n == 1) "1 image" else "$n images"
         }
-        val raw = t.status ?: return null
         if (l == null || st == null) return null
+        val g = l.datas[t.menu]
+        if (t.status == null && g != null && g.type == "togglegrid") {
+            val cells = g.items.map { it.second }.filter { it.isNotEmpty() && it != g.master }.mapNotNull { l.datas[it] }
+            val on = cells.count { c ->
+                val off = c.default ?: c.items.firstOrNull()?.second
+                (st.values[c.name] ?: c.default ?: "") != off
+            }
+            return "$on of ${cells.size} on"
+        }
+        val raw = t.status ?: return null
         val out = Ctx(l, st.values).sub(raw).trim()
         return if (out.isBlank() || out.contains("{{")) null else out
     }

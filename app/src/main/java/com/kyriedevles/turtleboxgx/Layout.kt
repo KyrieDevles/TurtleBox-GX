@@ -13,6 +13,10 @@ class DataDef(val name: String, val default: String?, val type: String?, val des
 
     /** Name of a multi_select entry opened by a gear button beside this field (its settings panel). */
     var gear: String? = null
+
+    /** type="togglegrid": number of columns, and an optional cell that switches on when any other cell does. */
+    var columns: Int = 0
+    var master: String? = null
 }
 
 /** One `<image>` or `<text>` element of the layout. Children with a `when` attribute are tried in order. */
@@ -87,6 +91,8 @@ object LayoutParser {
                                     p.getAttributeValue(null, "desc"),
                                 )
                                 d.gear = p.getAttributeValue(null, "gear")
+                                d.columns = p.getAttributeValue(null, "columns")?.toIntOrNull() ?: 0
+                                d.master = p.getAttributeValue(null, "master")
                                 datas[name] = d
                                 curData = if (p.isEmptyElementTag) null else d
                             }

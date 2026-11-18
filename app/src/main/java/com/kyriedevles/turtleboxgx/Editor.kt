@@ -109,6 +109,10 @@ class Editor(
             pickImage(d.name)
             return
         }
+        if (d.type == "togglegrid") {
+            openToggleGrid(d)
+            return
+        }
         val fields = if (d.type == "multi_select") d.items.mapNotNull { find(it.second) } else listOf(d)
         if (fields.isEmpty()) return
 
@@ -311,6 +315,97 @@ class Editor(
         }
         dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        style(dlg)
+    }
+
+
+    /** The value a two-state field has when it is off (its default) and on (its first other choice). */
+    private fun offOn(f: DataDef): Pair<String, String>? {
+        val off = f.default ?: f.items.firstOrNull()?.second ?: return null
+        val on = f.items.firstOrNull { it.second != off }?.second ?: return null
+        return off to on
+    }
+
+    /**
+     * type="togglegrid": a grid of on/off buttons, one per item. Each item's value is the name of a two-state field;
+     * its name is the text on the button. An item with an empty value is an empty slot. Changes show on the card at
+     * once; Cancel puts the old values back.
+     */
+    private fun openToggleGrid(d: DataDef) {
+        val ctx = Ctx(layout, state.values)
+        val cells = d.items.map { (label, v) -> Triple(label, v, find(v)?.let { offOn(it) }) }
+        val before = cells.mapNotNull { (_, v, oo) -> if (oo != null) v to (state.values[v] ?: ctx.value(v)) else null }.toMap()
+        val handler = Handler(Looper.getMainLooper())
+        var pending = false
+        fun live() {
+            if (pending) return
+            pending = true
+            handler.postDelayed({ pending = false; onChanged() }, 90)
+        }
+        val cols = if (d.columns > 0) d.columns else 3
+        val grid = android.widget.GridLayout(activity).apply {
+            columnCount = cols
+            setPadding(dp(14), dp(6), dp(14), dp(6))
+        }
+        val views = ArrayList<Pair<TextView, String>>()
+        fun isOn(v: String): Boolean {
+            val oo = find(v)?.let { offOn(it) } ?: return false
+            return (state.values[v] ?: ctx.value(v)) == oo.second
+        }
+        fun paint() {
+            for ((tv, v) in views) {
+                val on = isOn(v)
+                tv.setTextColor(if (on) pink else Color.parseColor("#e7c3d6"))
+                tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                tv.background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#12081a"))
+                    setStroke(dp(2), if (on) hot else Color.parseColor("#4a1f38"))
+                    cornerRadius = dp(14).toFloat()
+                }
+            }
+        }
+        for ((label, v, oo) in cells) {
+            val tv = TextView(activity).apply {
+                text = label
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, if (label.length <= 2) 28f else 12f)
+                maxLines = 2
+            }
+            if (oo != null) {
+                views.add(tv to v)
+                tv.contentDescription = label
+                tv.setOnClickListener {
+                    val turnOn = !isOn(v)
+                    state.values[v] = if (turnOn) oo.second else oo.first
+                    val m = d.master
+                    if (turnOn && m != null && m != v) {
+                        find(m)?.let { md -> offOn(md)?.let { state.values[m] = it.second } }
+                    }
+                    paint()
+                    live()
+                }
+            }
+            val lp = android.widget.GridLayout.LayoutParams(
+                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
+                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
+            ).apply { width = 0; height = dp(72); setMargins(dp(4), dp(4), dp(4), dp(4)) }
+            grid.addView(tv, lp)
+        }
+        paint()
+        val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(d.desc?.takeIf { it.isNotBlank() } ?: d.name)
+            .setView(ScrollView(activity).apply { addView(grid) })
+            .setPositiveButton("Done") { _, _ -> onChanged() }
+            .setNegativeButton("Cancel") { _, _ ->
+                for ((k, v) in before) state.values[k] = v
+                onChanged()
+            }
+            .create()
+        dlg.show()
+        // Docked at the bottom without dimming, so the card stays visible while arrows change.
+        dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        dlg.window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+        dlg.window?.setGravity(Gravity.BOTTOM)
         style(dlg)
     }
 
