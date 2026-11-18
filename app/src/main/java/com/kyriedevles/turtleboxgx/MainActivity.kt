@@ -51,6 +51,10 @@ class MainActivity : Activity() {
     private var dockPage: LinearLayout? = null
     private var dockSig = ""
     private var dockStructSig = ""
+    private lateinit var dockBody: LinearLayout
+    private lateinit var dockHandle: FrameLayout
+    private var dragHeight = -1
+    private var collapsedH = 0
     private class TileRef(val menu: String, val status: TextView, val dot: View, val box: View, val label: String)
     private var tileRefs: List<TileRef> = emptyList()
     private var dockScroll = 0
@@ -483,6 +487,54 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             background = Hot.outline(dp(18).toFloat(), 0, Color.BLACK)
         }
+        // The handle stays put while the body is rebuilt, so a drag is never interrupted.
+        val handle = FrameLayout(this)
+        handle.addView(
+            View(this).apply { background = Hot.gradient(dp(3).toFloat(), true) },
+            FrameLayout.LayoutParams(dp(44), dp(5), Gravity.CENTER),
+        )
+        var downY = 0f
+        var startH = 0
+        var moving = false
+        var lastH = 0
+        handle.setOnTouchListener { v, e ->
+            val maxH = ((dockPage?.height ?: 0) * 0.62f).toInt()
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downY = e.rawY; moving = false
+                    startH = dockOuter.height
+                    if (!dockExpanded && dragHeight < 0) collapsedH = dockOuter.height
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = e.rawY - downY
+                    if (Math.abs(dy) > dp(6)) moving = true
+                    if (moving) {
+                        val minH = if (collapsedH > 0) collapsedH else dp(200)
+                        val h = (startH - dy).toInt().coerceIn(minH, maxOf(minH, maxH))
+                        lastH = h
+                        dragHeight = h
+                        val open = h > (minH + maxH) / 2
+                        applyDockSize(open)
+                        refreshDock(false, open)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (moving) {
+                        val minH = if (collapsedH > 0) collapsedH else dp(200)
+                        toggleDock(lastH > (minH + maxH) / 2)
+                    } else if (e.actionMasked == MotionEvent.ACTION_UP) {
+                        toggleDock(!dockExpanded)
+                    }
+                    moving = false
+                }
+            }
+            true
+        }
+        dockHandle = handle
+        dockBody = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        dockInner.addView(handle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
+        dockInner.addView(dockBody, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dockOuter.addView(dockInner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         page.addView(dockOuter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(6), 0, dp(6), dp(6)) })
         dockPage = page
@@ -533,6 +585,8 @@ class MainActivity : Activity() {
 
     private fun toggleDock(open: Boolean) {
         prefs.edit().putBoolean("dock_open", open).apply()
+        dragHeight = -1
+        applyDockSize(open)
         refreshDock(true)
     }
 
@@ -584,10 +638,34 @@ class MainActivity : Activity() {
     }
 
     /** Rebuilds the dock when its tiles, their status, or open/closed changed. */
-    private fun refreshDock(force: Boolean = false) {
+    /** Sizes the dock: free height while dragging, otherwise as tall as its tiles (closed) or most of the screen (open). */
+    private fun applyDockSize(expanded: Boolean) {
+        if (!::dockInner.isInitialized) return
+        val outer = dockOuter.layoutParams as LinearLayout.LayoutParams
+        val cardLp = cardView.layoutParams as LinearLayout.LayoutParams
+        val inner = dockInner.layoutParams as LinearLayout.LayoutParams
+        val body = dockBody.layoutParams as LinearLayout.LayoutParams
+        val fill = expanded || dragHeight > 0
+        if (dragHeight > 0) {
+            outer.height = dragHeight; outer.weight = 0f; cardLp.weight = 1f
+        } else if (expanded) {
+            outer.height = 0; outer.weight = 1.25f; cardLp.weight = 0.8f
+        } else {
+            outer.height = ViewGroup.LayoutParams.WRAP_CONTENT; outer.weight = 0f; cardLp.weight = 1f
+        }
+        inner.height = if (fill) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT
+        body.height = if (fill) 0 else ViewGroup.LayoutParams.WRAP_CONTENT
+        body.weight = if (fill) 1f else 0f
+        dockOuter.layoutParams = outer
+        cardView.layoutParams = cardLp
+        dockInner.layoutParams = inner
+        dockBody.layoutParams = body
+    }
+
+    private fun refreshDock(force: Boolean = false, mode: Boolean? = null) {
         if (!::dockInner.isInitialized) return
         val tiles = dockTiles()
-        val expanded = dockExpanded
+        val expanded = mode ?: dockExpanded
         val info = tiles.map { Triple(it, tileStatus(it), menuChanged(it.menu)) }
         val tlabel = if (templates.isEmpty()) "" else (templates[selectedTemplate]?.label ?: "Default")
         val struct = expanded.toString() + "|" + tlabel + "|" + selectedTemplate + "|" + info.joinToString(";") { "${it.first.menu}/${it.first.label}/${it.first.icon}/${it.first.fromTemplate}" }
@@ -608,57 +686,16 @@ class MainActivity : Activity() {
         }
         val keepScroll = dockScroll
         (statusLine.parent as? ViewGroup)?.removeView(statusLine)
-        dockInner.removeAllViews()
+        dockBody.removeAllViews()
+        if (mode == null) applyDockSize(expanded)
+        dockHandle.contentDescription = if (expanded) "Drag or tap to collapse the edit tiles" else "Drag or tap to expand the edit tiles"
 
-        // Size: the closed dock is as tall as its content; open, it takes most of the screen under a smaller card.
-        val inner = dockInner.layoutParams as LinearLayout.LayoutParams
-        val outer = dockOuter.layoutParams as LinearLayout.LayoutParams
-        val cardLp = cardView.layoutParams as LinearLayout.LayoutParams
-        if (expanded) {
-            outer.height = 0; outer.weight = 1.25f; cardLp.weight = 0.8f
-        } else {
-            outer.height = ViewGroup.LayoutParams.WRAP_CONTENT; outer.weight = 0f; cardLp.weight = 1f
-        }
-        dockOuter.layoutParams = outer
-        cardView.layoutParams = cardLp
-        inner.height = if (expanded) ViewGroup.LayoutParams.MATCH_PARENT else ViewGroup.LayoutParams.WRAP_CONTENT
-        dockInner.layoutParams = inner
-
-        // Handle: tap, or drag up / down.
-        val handleRow = FrameLayout(this)
-        handleRow.addView(
-            View(this).apply { background = Hot.gradient(dp(3).toFloat(), true) },
-            FrameLayout.LayoutParams(dp(44), dp(5), Gravity.CENTER),
-        )
-        handleRow.contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
-        var downY = 0f
-        val drag = View.OnTouchListener { v, e ->
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downY = e.rawY; v.parent?.requestDisallowInterceptTouchEvent(true); true }
-                MotionEvent.ACTION_MOVE -> { v.parent?.requestDisallowInterceptTouchEvent(true); true }
-                MotionEvent.ACTION_CANCEL -> true
-                MotionEvent.ACTION_UP -> {
-                    val dy = e.rawY - downY
-                    when {
-                        dy < -dp(24) -> toggleDock(true)
-                        dy > dp(24) -> toggleDock(false)
-                        Math.abs(dy) < dp(10) -> toggleDock(!expanded)
-                    }
-                    true
-                }
-                else -> true
-            }
-        }
-        handleRow.setOnTouchListener(drag)
-        dockInner.addView(handleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
-
-        // Header: title, template, chevron.
+        // Header: template pill on the left, a two-state chevron on the right.
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), 0, dp(10), dp(8))
         }
-        header.addView(label(if (expanded) "Edit · ${tiles.size} sections" else "Edit", 15f, Hot.pink, bold = true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         if (templates.isNotEmpty()) {
             val pillv = TextView(this).apply {
                 text = tlabel
@@ -671,18 +708,18 @@ class MainActivity : Activity() {
                 background = Hot.outline(dp(16).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
                 setOnClickListener { showTemplateDialog() }
             }
-            header.addView(pillv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { rightMargin = dp(8) })
+            header.addView(pillv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
         }
+        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         val chev = FrameLayout(this).apply {
             background = Hot.outline(dp(16).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
             contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
             isClickable = true
-            setOnClickListener { toggleDock(!expanded) }
+            setOnClickListener { toggleDock(!dockExpanded) }
         }
         chev.addView(HotIcon(this, if (expanded) "down" else "up").apply { gradient = false }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
         header.addView(chev, LinearLayout.LayoutParams(dp(36), dp(32)))
-        header.setOnTouchListener(drag)
-        dockInner.addView(header)
+        dockBody.addView(header)
 
         if (expanded) {
             val cols = maxOf(3, (resources.displayMetrics.widthPixels / resources.displayMetrics.density / 130f).toInt())
@@ -701,7 +738,7 @@ class MainActivity : Activity() {
                 override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = t }
             }
             sv.addView(grid)
-            dockInner.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            dockBody.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             sv.post { sv.scrollTo(0, keepScroll) }
         } else {
             val row = LinearLayout(this).apply {
@@ -716,13 +753,13 @@ class MainActivity : Activity() {
             }
             hs.isHorizontalScrollBarEnabled = false
             hs.addView(row)
-            dockInner.addView(hs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            dockBody.addView(hs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             hs.post { hs.scrollTo(keepScroll, 0) }
         }
         tileRefs = refs
         try { icons?.close() } catch (e: Exception) { }
         statusLine.setPadding(dp(16), dp(8), dp(16), dp(10))
-        dockInner.addView(statusLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        dockBody.addView(statusLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
     private fun setStatus(s: String) {
