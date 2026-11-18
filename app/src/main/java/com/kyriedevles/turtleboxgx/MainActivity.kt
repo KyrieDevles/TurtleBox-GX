@@ -53,6 +53,8 @@ class MainActivity : Activity() {
     private var dockStructSig = ""
     private lateinit var dockBody: LinearLayout
     private lateinit var dockHandle: FrameLayout
+    private lateinit var dockPill: TextView
+    private lateinit var dockChev: FrameLayout
     private var dragHeight = -1
     private var collapsedH = 0
     private class TileRef(val menu: String, val status: TextView, val dot: View, val box: View, val label: String)
@@ -493,6 +495,23 @@ class MainActivity : Activity() {
             View(this).apply { background = Hot.gradient(dp(3).toFloat(), true) },
             FrameLayout.LayoutParams(dp(44), dp(5), Gravity.CENTER),
         )
+        dockPill = TextView(this).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(12), 0, dp(12), 0)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Hot.muted)
+            maxLines = 1
+            background = Hot.outline(dp(14).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
+            setOnClickListener { showTemplateDialog() }
+        }
+        handle.addView(dockPill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28), Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin = dp(12) })
+        dockChev = FrameLayout(this).apply {
+            background = Hot.outline(dp(14).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
+            isClickable = true
+            setOnClickListener { toggleDock(!dockExpanded) }
+        }
+        handle.addView(dockChev, FrameLayout.LayoutParams(dp(36), dp(28), Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(12) })
         var downY = 0f
         var startH = 0
         var moving = false
@@ -510,7 +529,7 @@ class MainActivity : Activity() {
                     val dy = e.rawY - downY
                     if (Math.abs(dy) > dp(6)) moving = true
                     if (moving) {
-                        val minH = if (collapsedH > 0) collapsedH else dp(200)
+                        val minH = if (collapsedH > 0) collapsedH else dp(150)
                         val h = (startH - dy).toInt().coerceIn(minH, maxOf(minH, maxH))
                         lastH = h
                         dragHeight = h
@@ -521,7 +540,7 @@ class MainActivity : Activity() {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (moving) {
-                        val minH = if (collapsedH > 0) collapsedH else dp(200)
+                        val minH = if (collapsedH > 0) collapsedH else dp(150)
                         toggleDock(lastH > (minH + maxH) / 2)
                     } else if (e.actionMasked == MotionEvent.ACTION_UP) {
                         toggleDock(!dockExpanded)
@@ -533,7 +552,7 @@ class MainActivity : Activity() {
         }
         dockHandle = handle
         dockBody = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        dockInner.addView(handle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
+        dockInner.addView(handle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
         dockInner.addView(dockBody, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dockOuter.addView(dockInner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         page.addView(dockOuter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(6), 0, dp(6), dp(6)) })
@@ -592,7 +611,7 @@ class MainActivity : Activity() {
 
     private fun showTemplateDialog() {
         val names = listOf("") + templates.keys
-        val labels = (listOf("Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
+        val labels = (listOf(layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Template")
             .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
             .setNegativeButton("Cancel", null).show()
@@ -602,7 +621,7 @@ class MainActivity : Activity() {
         val box = FrameLayout(this)
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            setPadding(dp(10), dp(9), dp(10), dp(9))
             background = GradientDrawable().apply {
                 setColor(Color.parseColor("#12081a"))
                 cornerRadius = dp(14).toFloat()
@@ -667,7 +686,7 @@ class MainActivity : Activity() {
         val tiles = dockTiles()
         val expanded = mode ?: dockExpanded
         val info = tiles.map { Triple(it, tileStatus(it), menuChanged(it.menu)) }
-        val tlabel = if (templates.isEmpty()) "" else (templates[selectedTemplate]?.label ?: "Default")
+        val tlabel = if (templates.isEmpty()) "" else (templates[selectedTemplate]?.label ?: layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default")
         val struct = expanded.toString() + "|" + tlabel + "|" + selectedTemplate + "|" + info.joinToString(";") { "${it.first.menu}/${it.first.label}/${it.first.icon}/${it.first.fromTemplate}" }
         val sig = struct + "#" + info.joinToString(";") { "${it.second}/${it.third}" }
         if (!force && sig == dockSig) return
@@ -690,36 +709,12 @@ class MainActivity : Activity() {
         if (mode == null) applyDockSize(expanded)
         dockHandle.contentDescription = if (expanded) "Drag or tap to collapse the edit tiles" else "Drag or tap to expand the edit tiles"
 
-        // Header: template pill on the left, a two-state chevron on the right.
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(10), dp(8))
-        }
-        if (templates.isNotEmpty()) {
-            val pillv = TextView(this).apply {
-                text = tlabel
-                gravity = Gravity.CENTER
-                setPadding(dp(12), 0, dp(12), 0)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Hot.muted)
-                maxLines = 1
-                background = Hot.outline(dp(16).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
-                setOnClickListener { showTemplateDialog() }
-            }
-            header.addView(pillv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
-        }
-        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        val chev = FrameLayout(this).apply {
-            background = Hot.outline(dp(16).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
-            contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
-            isClickable = true
-            setOnClickListener { toggleDock(!dockExpanded) }
-        }
-        chev.addView(HotIcon(this, if (expanded) "down" else "up").apply { gradient = false }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-        header.addView(chev, LinearLayout.LayoutParams(dp(36), dp(32)))
-        dockBody.addView(header)
+        // Template pill (left) and two-state chevron (right) live in the handle row.
+        dockPill.text = tlabel
+        dockPill.visibility = if (templates.isEmpty()) View.GONE else View.VISIBLE
+        dockChev.removeAllViews()
+        dockChev.contentDescription = if (expanded) "Collapse the edit tiles" else "Expand the edit tiles"
+        dockChev.addView(HotIcon(this, if (expanded) "down" else "up").apply { gradient = false }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
 
         if (expanded) {
             val cols = maxOf(3, (resources.displayMetrics.widthPixels / resources.displayMetrics.density / 130f).toInt())
@@ -731,7 +726,7 @@ class MainActivity : Activity() {
                 val lp = android.widget.GridLayout.LayoutParams(
                     android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
                     android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
-                ).apply { width = 0; height = dp(96); setMargins(dp(4), dp(4), dp(4), dp(4)) }
+                ).apply { width = 0; height = dp(88); setMargins(dp(4), dp(4), dp(4), dp(4)) }
                 grid.addView(tileView(t, status, changed, icons, refs), lp)
             }
             val sv = object : ScrollView(this) {
@@ -746,7 +741,7 @@ class MainActivity : Activity() {
                 setPadding(dp(14), 0, dp(14), 0)
             }
             for ((t, status, changed) in info) {
-                row.addView(tileView(t, status, changed, icons, refs), LinearLayout.LayoutParams(dp(92), dp(96)).apply { rightMargin = dp(8) })
+                row.addView(tileView(t, status, changed, icons, refs), LinearLayout.LayoutParams(dp(92), dp(76)).apply { rightMargin = dp(8) })
             }
             val hs = object : HorizontalScrollView(this) {
                 override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = l }
@@ -758,7 +753,7 @@ class MainActivity : Activity() {
         }
         tileRefs = refs
         try { icons?.close() } catch (e: Exception) { }
-        statusLine.setPadding(dp(16), dp(8), dp(16), dp(10))
+        statusLine.setPadding(dp(16), dp(6), dp(16), dp(8))
         dockBody.addView(statusLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
@@ -973,7 +968,7 @@ class MainActivity : Activity() {
                 setPadding(dp(16), dp(12), dp(16), dp(12))
             }
             tcard.addView(label("Template", 13f, Hot.muted))
-            tcard.addView(label(templates[selectedTemplate]?.label ?: "Default (base layout)", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+            tcard.addView(label(templates[selectedTemplate]?.label ?: layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
             templates[selectedTemplate]?.let { ti ->
                 val meta = listOf(ti.description, listOf(ti.author, ti.version).filter { it.isNotBlank() }.joinToString(" · ")).filter { it.isNotBlank() }.joinToString("\n")
                 if (meta.isNotBlank()) tcard.addView(label(meta, 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
