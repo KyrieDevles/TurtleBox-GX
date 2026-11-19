@@ -607,6 +607,15 @@ class MainActivity : Activity() {
             return "$on of ${cells.size} on"
         }
         val raw = t.status ?: return null
+        // A status that is just one dropdown field shows the choice's name rather than its stored value.
+        Regex("^\\{\\{([^{}]+)\\}\\}$").find(raw.trim())?.let { m ->
+            val d = l.datas[m.groupValues[1]]
+            if (d != null && d.items.isNotEmpty() && d.type != "multi_select" && d.type != "togglegrid") {
+                val v = st.values[d.name] ?: Ctx(l, st.values).value(d.name)
+                val shown = d.items.firstOrNull { it.second == v }?.first ?: v
+                return shown.trim().ifBlank { null }
+            }
+        }
         val out = Ctx(l, st.values).sub(raw).trim()
         return if (out.isBlank() || out.contains("{{")) null else out
     }
@@ -644,7 +653,7 @@ class MainActivity : Activity() {
         col.addView(icon, LinearLayout.LayoutParams(dp(24), dp(24)))
         col.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         col.addView(label(t.label, 13f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        val st = label(status ?: "", 11f, Hot.dim).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; visibility = if (status == null) View.GONE else View.VISIBLE }
+        val st = label(status ?: "", 11f, Hot.dim).apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.MARQUEE; marqueeRepeatLimit = -1; isSelected = true; visibility = if (status == null) View.GONE else View.VISIBLE }
         col.addView(st)
         box.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val dot = View(this).apply {
