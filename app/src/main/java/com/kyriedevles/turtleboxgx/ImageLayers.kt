@@ -23,6 +23,9 @@ class Layer(
 ) {
     fun copy() = Layer(id, name, z, vis, opacity, cx, cy, w, h, rot, mx, fy)
     val file: String get() = ImageLayers.file(id)
+
+    /** The picture as it was before the first erasing, kept so the eraser's Restore brush can bring pixels back. */
+    val origFile: String get() = "layers/$id.orig.png"
 }
 
 /** Layers live in the card's values (key `imglayers`) and their pictures in the card's files (`layers/<id>.png`), so a saved set carries both. */

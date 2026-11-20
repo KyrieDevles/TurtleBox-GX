@@ -263,6 +263,7 @@ class LayersPanel(
         c.name = src.name + " copy"
         c.z = src.z + 1f
         st.files[c.file] = st.files[src.file] ?: return
+        st.files[src.origFile]?.let { st.files[c.origFile] = it }
         cur.add(c)
         open.add(c.id)
         save(cur)
@@ -275,6 +276,7 @@ class LayersPanel(
                 val cur = layers()
                 cur.removeAll { it.id == l.id }
                 st.files.remove(l.file)
+                st.files.remove(l.origFile)
                 save(cur)
                 refresh()
             }.setNegativeButton("Cancel", null).show()
@@ -317,6 +319,9 @@ class LayerEditWindow(
     private val save: () -> Unit,
     private val onTop: (Int) -> Unit,
     private val onDone: () -> Unit,
+    /** The eraser's working picture and the original, same size; null if they can't be opened. */
+    private val eraserSource: () -> Pair<android.graphics.Bitmap, android.graphics.Bitmap>? = { null },
+    private val saveBitmap: (android.graphics.Bitmap) -> Unit = {},
 ) {
     private val undo = ArrayList<Layer>()
     private var dlg: Dialog? = null
@@ -376,9 +381,90 @@ class LayerEditWindow(
                 save()
             }
         }
+        // Eraser tools (shown only while the eraser is on).
+        fun paintTog(v: TextView, on: Boolean) {
+            v.setTextColor(if (on) Color.BLACK else PINK)
+            v.background = if (on) {
+                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(PINK, HOT)).apply { cornerRadius = activity.dpx(10).toFloat() }
+            } else {
+                GradientDrawable().apply { setColor(Color.BLACK); setStroke(activity.dpx(2), PINK); cornerRadius = activity.dpx(10).toFloat() }
+            }
+        }
+        fun slider(name: String, max: Int, start: Int, fmt: (Int) -> String, change: (Int) -> Unit): LinearLayout {
+            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val lab = activity.tv("$name ${fmt(start)}", 11f, SOFT)
+            val sb = android.widget.SeekBar(activity).apply {
+                this.max = max
+                progress = start
+                progressTintList = android.content.res.ColorStateList.valueOf(HOT)
+                thumbTintList = android.content.res.ColorStateList.valueOf(PINK)
+                setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
+                        lab.text = "$name ${fmt(p)}"
+                        change(p)
+                    }
+                    override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
+                    override fun onStopTrackingTouch(s: android.widget.SeekBar?) {}
+                })
+            }
+            row.addView(lab, LinearLayout.LayoutParams(activity.dpx(100), ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(sb, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            return row
+        }
+        val er = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val erRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        val bErase = small("Erase") { }
+        val bRestore = small("Restore") { }
+        val bUndo = small("Undo") { editor.undoErase() }
+        val bRedo = small("Redo") { editor.redoErase() }
+        fun modeUi() { paintTog(bErase, !editor.restore); paintTog(bRestore, editor.restore) }
+        bErase.setOnClickListener { editor.restore = false; modeUi() }
+        bRestore.setOnClickListener { editor.restore = true; modeUi() }
+        modeUi()
+        for (b in listOf(bErase, bRestore, bUndo, bRedo)) erRow.addView(b, LinearLayout.LayoutParams(0, activity.dpx(36), 1f).apply { setMargins(activity.dpx(2), 0, activity.dpx(2), 0) })
+        er.addView(erRow)
+        er.addView(slider("Size", 100, ((editor.brush - 4f) / 1.56f).toInt().coerceIn(0, 100), { "${(4f + it * 1.56f).toInt()}" }) { editor.brush = 4f + it * 1.56f; editor.changed() })
+        er.addView(slider("Hardness", 100, editor.hardness.toInt(), { "$it" }) { editor.hardness = it.toFloat() })
+        er.addView(sw("Brush above finger", editor.aboveFinger) { editor.aboveFinger = it })
+        val eb = small("Eraser") { }
+        lateinit var rootRef: View
+        fun setEraser(on: Boolean) {
+            if (on) {
+                if (!editor.hasWork) {
+                    val src = eraserSource() ?: return
+                    editor.startErasing(src.first, src.second)
+                }
+                editor.eraser = true
+            } else {
+                editor.eraser = false
+                if (editor.dirty) {
+                    saveBitmap(editor.bmp)
+                    editor.dirty = false
+                }
+            }
+            b1.visibility = if (on) View.GONE else View.VISIBLE
+            b2.visibility = if (on) View.GONE else View.VISIBLE
+            er.visibility = if (on) View.VISIBLE else View.GONE
+            paintTog(eb, on)
+            editor.changed()
+            rootRef.postDelayed({
+                val loc = IntArray(2)
+                rootRef.getLocationOnScreen(loc)
+                onTop(loc[1])
+            }, 150)
+        }
+        eb.setOnClickListener { setEraser(!editor.eraser) }
         val foot = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         foot.addView(readout, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        foot.addView(activity.pillBtn("Done", PINK, true) { d.dismiss(); onDone() }, LinearLayout.LayoutParams(activity.dpx(70), activity.dpx(32)))
+        foot.addView(eb, LinearLayout.LayoutParams(activity.dpx(76), activity.dpx(32)).apply { rightMargin = activity.dpx(8) })
+        foot.addView(
+            activity.pillBtn("Done", PINK, true) {
+                if (editor.dirty) { saveBitmap(editor.bmp); editor.dirty = false }
+                d.dismiss()
+                onDone()
+            },
+            LinearLayout.LayoutParams(activity.dpx(70), activity.dpx(32)),
+        )
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(activity.dpx(10), activity.dpx(8), activity.dpx(10), activity.dpx(10))
@@ -387,7 +473,9 @@ class LayerEditWindow(
         root.addView(head)
         root.addView(b1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
         root.addView(b2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(4) })
+        root.addView(er, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
         root.addView(foot, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
+        rootRef = root
         d.setContentView(root)
         upd()
         d.setCancelable(false)

@@ -1,6 +1,11 @@
 package com.kyriedevles.turtleboxgx
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.BlurMaskFilter
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.Shader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -20,7 +25,8 @@ import kotlin.math.sin
  * handle rotates, two fingers pinch to scale and rotate. With [grid] on, a fine grid is drawn and moves snap
  * to the card's edges and centre (and then to grid lines).
  */
-class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH: Float) {
+class LayerEditor(val layer: Layer, bmp0: Bitmap, val cardW: Float, val cardH: Float) {
+    var bmp: Bitmap = bmp0
     var grid = false
     var lock = true
     var onChange: (() -> Unit)? = null
@@ -31,12 +37,123 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
     /** What the layout draws in front of this layer, so it stays visible while editing. */
     var above: Bitmap? = null
 
+    // ---- eraser: the one-finger drag erases (or restores) pixels of the layer's own picture ----
+
+    var eraser = false
+    var restore = false
+    var brush = 35f // diameter in card pixels
+    var hardness = 70f // 0..100
+    var aboveFinger = false
+    var dirty = false
+    var onStroke: (() -> Unit)? = null
+    private var orig: Bitmap? = null
+    private var origShader: BitmapShader? = null
+    private var workCanvas: Canvas? = null
+    private val undoS = ArrayList<Bitmap>()
+    private val redoS = ArrayList<Bitmap>()
+    private var maxSteps = 8
+    private var curX = 0f
+    private var curY = 0f
+    private var lastPx = 0f
+    private var lastPy = 0f
+    val hasWork: Boolean get() = workCanvas != null
+    val canUndo: Boolean get() = undoS.isNotEmpty()
+    val canRedo: Boolean get() = redoS.isNotEmpty()
+    private val srcP = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
+    private val brushP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    /** [work] is the editable copy that is shown from now on; [original] is what Restore paints back. */
+    fun startErasing(work: Bitmap, original: Bitmap) {
+        bmp = work
+        orig = original
+        origShader = BitmapShader(original, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        workCanvas = Canvas(work)
+        maxSteps = ((48L * 1024 * 1024) / (work.width.toLong() * work.height * 4)).toInt().coerceIn(2, 12)
+        undoS.clear()
+        redoS.clear()
+    }
+
+    private fun snap(): Bitmap = bmp.copy(Bitmap.Config.ARGB_8888, false)
+
+    private fun trim(l: ArrayList<Bitmap>) {
+        while (l.size > maxSteps) l.removeAt(0).recycle()
+    }
+
+    private fun pushUndo() {
+        undoS.add(snap())
+        trim(undoS)
+        redoS.forEach { it.recycle() }
+        redoS.clear()
+    }
+
+    private fun put(src: Bitmap) {
+        workCanvas?.drawBitmap(src, 0f, 0f, srcP)
+    }
+
+    private fun cancelStroke() {
+        if (undoS.isEmpty()) return
+        val s = undoS.removeAt(undoS.size - 1)
+        put(s)
+        s.recycle()
+        changed()
+    }
+
+    fun undoErase() {
+        if (undoS.isEmpty()) return
+        redoS.add(snap())
+        trim(redoS)
+        val s = undoS.removeAt(undoS.size - 1)
+        put(s)
+        s.recycle()
+        dirty = true
+        changed()
+    }
+
+    fun redoErase() {
+        if (redoS.isEmpty()) return
+        undoS.add(snap())
+        trim(undoS)
+        val s = redoS.removeAt(redoS.size - 1)
+        put(s)
+        s.recycle()
+        dirty = true
+        changed()
+    }
+
+    /** Card point to a pixel of the layer's picture (undoing rotation, mirror and flip). */
+    private fun toBmp(wx: Float, wy: Float): Pair<Float, Float> {
+        var (lx, ly) = local(layer, wx, wy)
+        if (layer.mx) lx = -lx
+        if (layer.fy) ly = -ly
+        return ((lx / layer.w + 0.5f) * bmp.width) to ((ly / layer.h + 0.5f) * bmp.height)
+    }
+
+    private fun dab(x0: Float, y0: Float, x1: Float, y1: Float) {
+        val c = workCanvas ?: return
+        val size = max(1f, brush * bmp.width / max(1f, layer.w))
+        val soft = if (hardness >= 99f) 0f else max(0.5f, (1f - hardness / 100f) * size / 4f)
+        brushP.strokeWidth = max(1f, size - 2f * soft)
+        brushP.maskFilter = if (soft > 0f) BlurMaskFilter(soft, BlurMaskFilter.Blur.NORMAL) else null
+        if (restore) {
+            brushP.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
+            brushP.shader = origShader
+        } else {
+            brushP.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+            brushP.shader = null
+        }
+        if (x0 == x1 && y0 == y1) c.drawPoint(x1, y1, brushP) else c.drawLine(x0, y0, x1, y1, brushP)
+    }
+
     fun changed() {
         redraw?.invoke()
         onChange?.invoke()
     }
 
-    private enum class Mode { NONE, MOVE, ROT, CORNER, EDGE, PINCH }
+    private enum class Mode { NONE, MOVE, ROT, CORNER, EDGE, PINCH, ERASE }
 
     private var mode = Mode.NONE
     private var l0 = layer.copy()
@@ -125,6 +242,17 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
             val b = corners[(i + 1) % 4]
             c.drawLine(sx(a.first), sy(a.second), sx(b.first), sy(b.second), line)
         }
+        if (eraser) {
+            // The brush ring, where the next stroke will land.
+            val rr = brush * k / 2f
+            line.color = Color.BLACK
+            line.strokeWidth = 3f * density
+            c.drawCircle(sx(curX), sy(curY), rr, line)
+            line.color = Color.WHITE
+            line.strokeWidth = 1.5f * density
+            c.drawCircle(sx(curX), sy(curY), rr, line)
+            return
+        }
         val r = 7f * density
         fun dot(p: Pair<Float, Float>, color: Int) {
             fillP.color = Color.WHITE
@@ -189,6 +317,21 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
         val l = layer
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                if (eraser && workCanvas != null) {
+                    val ex = cx(ev.x)
+                    val ey = cy(ev.y - if (aboveFinger) 56f * density else 0f)
+                    pushUndo()
+                    mode = Mode.ERASE
+                    curX = ex
+                    curY = ey
+                    val (px, py) = toBmp(ex, ey)
+                    lastPx = px
+                    lastPy = py
+                    dab(px, py, px, py)
+                    dirty = true
+                    changed()
+                    return true
+                }
                 val wx = cx(ev.x)
                 val wy = cy(ev.y)
                 val thr = 26f * density / k
@@ -225,6 +368,7 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
                 return true
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
+                if (mode == Mode.ERASE) cancelStroke()
                 if (ev.pointerCount == 2) {
                     mode = Mode.PINCH
                     l0 = l.copy()
@@ -243,6 +387,20 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
             }
             MotionEvent.ACTION_MOVE -> {
                 if (mode == Mode.NONE) return true
+                if (mode == Mode.ERASE) {
+                    if (ev.pointerCount == 1) {
+                        val ex = cx(ev.x)
+                        val ey = cy(ev.y - if (aboveFinger) 56f * density else 0f)
+                        curX = ex
+                        curY = ey
+                        val (px, py) = toBmp(ex, ey)
+                        dab(lastPx, lastPy, px, py)
+                        lastPx = px
+                        lastPy = py
+                        changed()
+                    }
+                    return true
+                }
                 if (mode == Mode.PINCH && ev.pointerCount >= 2) {
                     val ax = cx(ev.getX(0)); val ay = cy(ev.getY(0)); val bx = cx(ev.getX(1)); val by = cy(ev.getY(1))
                     val d = max(1f, hypot(bx - ax, by - ay))
@@ -329,7 +487,7 @@ class LayerEditor(val layer: Layer, val bmp: Bitmap, val cardW: Float, val cardH
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (mode != Mode.NONE) onCommit?.invoke()
+                if (mode == Mode.ERASE) onStroke?.invoke() else if (mode != Mode.NONE) onCommit?.invoke()
                 mode = Mode.NONE
                 guideX = null
                 guideY = null

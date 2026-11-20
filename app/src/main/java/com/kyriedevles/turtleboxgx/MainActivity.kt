@@ -832,6 +832,7 @@ class MainActivity : Activity() {
         val existing = all.firstOrNull { it.id == replaceId }
         if (existing != null) {
             st.files[existing.file] = png
+            st.files.remove(existing.origFile)
             ImageLayers.fit(existing, bw, bh, l.width, l.height)
         } else {
             val id = ImageLayers.newId()
@@ -899,6 +900,36 @@ class MainActivity : Activity() {
                 val loc = IntArray(2)
                 cardView.getLocationOnScreen(loc)
                 cardView.insetBottom = maxOf(0, loc[1] + cardView.height - topY)
+            },
+            eraserSource = {
+                try {
+                    // Both pictures at the same size, at most 2048 px on the long side, so Restore lines up.
+                    val origBytes = st.files[layer.origFile] ?: st.files[layer.file]!!
+                    val (ow, oh) = ImageLayers.size(origBytes)
+                    val sc = minOf(1f, 2048f / maxOf(ow, oh))
+                    val tw = maxOf(1, Math.round(ow * sc))
+                    val th = maxOf(1, Math.round(oh * sc))
+                    fun dec(b: ByteArray): Bitmap {
+                        val (bw, bh) = ImageLayers.size(b)
+                        var s = 1
+                        while (maxOf(bw, bh) / (s * 2) >= maxOf(tw, th)) s *= 2
+                        var bm = BitmapFactory.decodeByteArray(b, 0, b.size, BitmapFactory.Options().apply { inSampleSize = s; inPreferredConfig = Bitmap.Config.ARGB_8888 })!!
+                        if (bm.width != tw || bm.height != th) bm = Bitmap.createScaledBitmap(bm, tw, th, true)
+                        return bm
+                    }
+                    val orig = dec(origBytes)
+                    val work = dec(st.files[layer.file]!!).copy(Bitmap.Config.ARGB_8888, true)
+                    work to orig
+                } catch (e: Throwable) {
+                    toast("Could not open the picture for erasing.")
+                    null
+                }
+            },
+            saveBitmap = { bm ->
+                val out = java.io.ByteArrayOutputStream()
+                bm.compress(Bitmap.CompressFormat.PNG, 100, out)
+                if (st.files[layer.origFile] == null) st.files[layer.file]?.let { st.files[layer.origFile] = it }
+                st.files[layer.file] = out.toByteArray()
             },
             onDone = {
                 cardView.editor = null
