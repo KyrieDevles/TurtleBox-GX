@@ -125,6 +125,7 @@ class NameStyleEditor(
     fun show() {
         var st = NameStyle.parse(current())
         var section = "Color"
+        var presetMine = false
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(2), 0, dp(2))
@@ -253,22 +254,19 @@ class NameStyleEditor(
         fun tiles(items: List<Pair<String, Map<String, String>?>>, selected: (Int) -> Boolean, pick: (Int) -> Unit) {
             val grid = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
             val views = ArrayList<ImageView>()
-            val borders = ArrayList<GradientDrawable>()
+            val cells = ArrayList<LinearLayout>()
             val names = ArrayList<TextView>()
-            fun paintNames() { for (n in names.indices) { val on = selected(n); names[n].setTextColor(if (on) pink else soft); names[n].typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT } }
+            fun paintNames() { for (n in names.indices) { val on = selected(n); names[n].setTextColor(if (on) Theme.onPink else soft); names[n].typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT; cells[n].background = if (on) Theme.on(cut = dp(10).toFloat(), shadow = dp(5).toFloat()) else Theme.card(dp(10).toFloat(), dp(4).toFloat(), 0f) } }
             var i = 0
             while (i < items.size) {
                 val r = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
                 for (j in i until min(i + 3, items.size)) {
                     val iv = ImageView(activity).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
-                    val bd = GradientDrawable().apply { setColor(Color.parseColor("#8a8a90")); cornerRadius = dp(10).toFloat() }
-                    bd.setStroke(dp(3), if (selected(j)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
-                    iv.background = bd
+                    iv.setBackgroundColor(Color.parseColor("#8a8a90"))
                     iv.setPadding(dp(3), dp(2), dp(3), dp(2))
                     iv.contentDescription = items[j].first
                     iv.setOnClickListener {
                         pick(j)
-                        for (n in borders.indices) borders[n].setStroke(dp(3), if (selected(n)) Color.parseColor("#ff1493") else Color.parseColor("#3a3a3a"))
                         paintNames()
                     }
                     val nameTv = TextView(activity).apply {
@@ -280,12 +278,13 @@ class NameStyleEditor(
                         includeFontPadding = false
                     }
                     views.add(iv)
-                    borders.add(bd)
                     names.add(nameTv)
-                    val cell = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+                    val cell = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(6), dp(6), dp(6), dp(6)) }
+                    cells.add(cell)
+                    cell.setOnClickListener { iv.performClick() }
                     cell.addView(iv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
-                    cell.addView(nameTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
-                    r.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), dp(3), dp(3), dp(4)) })
+                    cell.addView(nameTv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(5) })
+                    r.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
                 }
                 for (f in 0 until i + 3 - min(i + 3, items.size)) r.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
                 grid.addView(r)
@@ -574,6 +573,8 @@ class NameStyleEditor(
             for ((m, tv) in modeBtns) {
                 val on = st.mode == m
                 tv.setTextColor(if (on) Theme.onPink else soft)
+                tv.text = tv.text.toString().uppercase()
+                tv.letterSpacing = 0.08f
                 val first = m == ms.first()
                 val last = m == ms.last()
                 tv.background = if (on) Theme.on(slant = dp(6).toFloat()) else Theme.off(slant = dp(6).toFloat())
@@ -618,7 +619,9 @@ class NameStyleEditor(
                         setAllCaps(false)
                         typeface = Typeface.DEFAULT_BOLD
                         setTextColor(pink)
-                        background = Theme.field(dp(11).toFloat(), dp(1).toFloat() * 1.5f)
+                        text = "SAVE PRESET"
+                        letterSpacing = 0.08f
+                        background = Theme.off(cut = dp(10).toFloat())
                         setOnClickListener {
                             val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
                             ThemedBuilder(activity)
@@ -832,22 +835,37 @@ class NameStyleEditor(
             refreshPreview()
             when (st.mode) {
                 "predefined" -> {
+                    val sub = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                    for ((lab, mine) in listOf("BUILT-IN" to false, "MINE" to true)) {
+                        sub.addView(TextView(activity).apply {
+                            text = lab
+                            typeface = Typeface.DEFAULT_BOLD
+                            letterSpacing = 0.08f
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                            gravity = Gravity.CENTER
+                            setTextColor(if (presetMine == mine) Theme.onPink else soft)
+                            background = if (presetMine == mine) Theme.on(slant = dp(8).toFloat()) else Theme.off(slant = dp(8).toFloat())
+                            setOnClickListener { presetMine = mine; rebuild() }
+                        }, LinearLayout.LayoutParams(dp(82), dp(32)).apply { rightMargin = dp(6) })
+                    }
+                    sub.addView(View(activity), LinearLayout.LayoutParams(0, 1, 1f))
+                    sub.addView(TextView(activity).apply {
+                        text = "IMPORT · EXPORT"
+                        typeface = Typeface.DEFAULT_BOLD
+                        letterSpacing = 0.06f
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                        setTextColor(Theme.pink)
+                        setPadding(dp(6), dp(8), dp(2), dp(8))
+                        setOnClickListener { manage() }
+                    })
+                    body.addView(sub, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
                     val names = ArrayList<String>()
-                    layout.datas["namepresets"]?.items?.forEach { names.add(it.first) }
-                    userPresets().keys.forEach { names.add(it) }
+                    if (presetMine) userPresets().keys.forEach { names.add(it) } else layout.datas["namepresets"]?.items?.forEach { names.add(it.first) }
+                    if (names.isEmpty()) body.addView(label("No saved presets yet. In Custom, tap Save preset."))
                     tiles(names.map { it to presetValues(it) }, { n -> st.preset == names[n] }) { n ->
                         st.preset = names[n]
                         commit()
                     }
-                    body.addView(TextView(activity).apply {
-                        text = "Manage presets"
-                        gravity = Gravity.CENTER
-                        setTextColor(pink)
-                        typeface = Typeface.DEFAULT_BOLD
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                        background = Theme.field(dp(11).toFloat(), dp(1).toFloat() * 1.5f)
-                        setOnClickListener { manage() }
-                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(8) })
                 }
                 "custom" -> {
                     tabRow.removeAllViews()
@@ -861,8 +879,8 @@ class NameStyleEditor(
                             val (v, rest) = when (s) {
                                 "Color" -> val_("fill").ifEmpty { "#000000" } to ""
                                 "Shadow" -> if (used(s)) "${val_("shx").ifEmpty { "0" }}, ${val_("shy").ifEmpty { "0" }}" to " · blur ${val_("shblur").ifEmpty { "0" }}" else "off" to ""
-                                "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to "" else "off" to ""
-                                "Gradient" -> if (used(s)) "on" to "" else "off" to ""
+                                "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to " · ${val_("olcolor").ifEmpty { "#000000" }}" else "off" to ""
+                                "Gradient" -> if (used(s)) "${val_("gstops").split(',').count { it.contains('|') }} stops" to " · ${val_("gangle").ifEmpty { "0" }}°" else "off" to ""
                                 "Pattern" -> val_("pattern").ifEmpty { "none" } to ""
                                 "Font" -> val_("font").ifEmpty { "auto" } to ""
                                 else -> if (used(s)) "on" to "" else "off" to ""
@@ -951,6 +969,7 @@ class NameStyleEditor(
             text = "NAME STYLE"
             letterSpacing = 0.12f
             setTextColor(Theme.hot)
+            paint.shader = android.graphics.LinearGradient(0f, 0f, dp(170).toFloat(), 0f, Theme.metal, null, android.graphics.Shader.TileMode.CLAMP)
             typeface = Typeface.DEFAULT_BOLD
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setPadding(0, dp(6), 0, dp(6))
@@ -975,10 +994,13 @@ class NameStyleEditor(
         val bottomBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(12))
+            background = Theme.dock(0f, dp(3).toFloat(), dp(8).toFloat())
             (saveBtn.parent as? ViewGroup)?.removeView(saveBtn)
             addView(saveBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { rightMargin = dp(10) })
             addView(doneTv.apply {
                 text = "DONE"
+                letterSpacing = 0.12f
                 gravity = Gravity.CENTER
                 setTextColor(Theme.onPink)
                 background = Theme.on(cut = dp(10).toFloat(), shadow = dp(5).toFloat())
@@ -991,7 +1013,7 @@ class NameStyleEditor(
             addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
             addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6); bottomMargin = dp(10) })
+            addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6); leftMargin = -dp(14); rightMargin = -dp(14) })
         }
         if (land) box.addView(head, 0)
         box.setPadding(0, dp(2), 0, dp(4))
