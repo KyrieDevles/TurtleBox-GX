@@ -187,9 +187,8 @@ class Editor(
                             val on = v == chosen
                             tv.setTextColor(if (on) Theme.onPink else Theme.muted)
                             tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                            val shape = if (on) Theme.on(slant = dp(9).toFloat()) else Theme.off(slant = dp(9).toFloat())
+                            val shape = if (on) Theme.on(slant = dp(9).toFloat(), shadow = dp(7).toFloat()) else Theme.off(slant = dp(9).toFloat(), shadow = dp(7).toFloat())
                             tv.background = shape
-                            Theme.lift(tv, shape, dp(7).toFloat())
                         }
                     }
                     for ((name, v) in f.items) {
@@ -251,7 +250,7 @@ class Editor(
                         setTextColor(Color.WHITE)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                         setHintTextColor(Color.GRAY)
-                        background = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f))
+                        background = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f) * 1.5f, dp(7).toFloat())
                         setPadding(dp(14), dp(12), dp(14), dp(12))
                         if (multi) {
                             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
@@ -348,9 +347,8 @@ class Editor(
                 val on = isOn(v)
                 tv.setTextColor(if (on) Theme.onPink else Theme.muted)
                 tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                val shape = if (on) Theme.on(cut = dp(14).toFloat()) else Theme.off(cut = dp(14).toFloat())
+                val shape = if (on) Theme.on(cut = dp(14).toFloat(), shadow = dp(7).toFloat()) else Theme.off(cut = dp(14).toFloat(), shadow = dp(7).toFloat())
                 tv.background = shape
-                Theme.lift(tv, shape, dp(7).toFloat())
             }
         }
         for ((label, v, oo) in cells) {
@@ -699,9 +697,7 @@ class Editor(
         stateListAnimator = null
         minHeight = dp(44)
         minimumHeight = dp(44)
-        val shape = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f))
-        background = shape
-        Theme.lift(this, shape, dp(6).toFloat())
+        background = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f) * 1.5f, dp(7).toFloat())
         setPadding(dp(14), 0, dp(14), 0)
     }
 
@@ -728,6 +724,10 @@ class Editor(
 
 /** Lays its children out left to right and wraps to the next line, for rows of option chips. */
 class FlowLayout(context: Context, private val gap: Int) : ViewGroup(context) {
+    init {
+        clipChildren = false
+    }
+
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val maxW = MeasureSpec.getSize(wSpec)
         var x = 0

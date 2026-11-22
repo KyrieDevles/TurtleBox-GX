@@ -1,5 +1,7 @@
 package com.kyriedevles.turtleboxgx
 
+import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
@@ -36,13 +38,13 @@ object Theme {
     val metal = intArrayOf(Color.parseColor("#ff9bd0"), hot, crimson)
 
     /** A field or button box: dark fill, gradient hairline edge, top-right corner cut. */
-    fun field(cut: Float, edgePx: Float) = CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx)
+    fun field(cut: Float, edgePx: Float, shadow: Float = 0f) = CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow)
 
     /** A selected option pill or switched-on cell: metallic pink fill. */
-    fun on(cut: Float = 0f, slant: Float = 0f) = CutDrawable(metal, cutTR = cut, slant = slant)
+    fun on(cut: Float = 0f, slant: Float = 0f, shadow: Float = 0f) = CutDrawable(metal, cutTR = cut, slant = slant, shadow = shadow)
 
     /** An unselected option pill or switched-off cell. */
-    fun off(cut: Float = 0f, slant: Float = 0f) = CutDrawable(intArrayOf(plane3), cutTR = cut, slant = slant)
+    fun off(cut: Float = 0f, slant: Float = 0f, shadow: Float = 0f) = CutDrawable(intArrayOf(plane3), cutTR = cut, slant = slant, shadow = shadow)
 
     /** The dialog plane: dark with the metallic strip on top and the top-right corner cut. */
     fun dialog(cut: Float, stripPx: Float) = CutDrawable(intArrayOf(plane), cutTR = cut, strip = stripPx)
@@ -69,7 +71,32 @@ class CutDrawable(
     private val slant: Float = 0f,
     private val border: Float = 0f,
     private val strip: Float = 0f,
+    private val shadow: Float = 0f,
 ) : Drawable() {
+    private var shadowBmp: Bitmap? = null
+    private var shadowPad = 0
+
+    override fun onBoundsChange(b: android.graphics.Rect) {
+        shadowBmp = null
+    }
+
+    /** A dark blurred copy of the shape, a little lower than the shape, with a faint pink glow around it. Drawn outside the view's own bounds. */
+    private fun makeShadow(w: Int, h: Int): Bitmap {
+        val pad = (shadow * 3f).toInt()
+        shadowPad = pad
+        val bmp = Bitmap.createBitmap(w + 2 * pad, h + 2 * pad, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        val path = pathFor(w.toFloat(), h.toFloat())
+        p.color = Color.argb(56, 255, 79, 157)
+        p.maskFilter = BlurMaskFilter(shadow * 2f, BlurMaskFilter.Blur.NORMAL)
+        c.save(); c.translate(pad.toFloat(), pad.toFloat()); c.drawPath(path, p); c.restore()
+        p.color = Color.argb(240, 0, 0, 0)
+        p.maskFilter = BlurMaskFilter(shadow, BlurMaskFilter.Blur.NORMAL)
+        c.save(); c.translate(pad + shadow * 0.2f, pad + shadow * 0.9f); c.drawPath(path, p); c.restore()
+        return bmp
+    }
+
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -100,9 +127,13 @@ class CutDrawable(
         if (w <= 0f || h <= 0f) return
         c.save()
         c.translate(bounds.left.toFloat(), bounds.top.toFloat())
+        if (shadow > 0f) {
+            val sb = shadowBmp ?: makeShadow(w.toInt(), h.toInt()).also { shadowBmp = it }
+            c.drawBitmap(sb, -shadowPad.toFloat(), -shadowPad.toFloat(), null)
+        }
         if (border > 0f) {
             edge.shader = LinearGradient(0f, 0f, w, h, intArrayOf(
-                Color.argb(179, 255, 107, 179), Color.argb(15, 255, 107, 179), Color.argb(64, 255, 107, 179),
+                Color.argb(235, 255, 107, 179), Color.argb(46, 255, 107, 179), Color.argb(110, 255, 107, 179),
             ), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
             c.drawPath(pathFor(w, h), edge)
         }
