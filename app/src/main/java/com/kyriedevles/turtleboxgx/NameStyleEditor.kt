@@ -819,7 +819,7 @@ class NameStyleEditor(
             val root = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = Theme.field(dp(18).toFloat(), dp(1).toFloat() * 1.5f)
+                background = Theme.dialog(dp(22).toFloat(), dp(4).toFloat())
             }
             root.addView(title)
             root.addView(seg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(10) })
