@@ -118,7 +118,7 @@ class LayersPanel(
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(activity.dpx(12), activity.dpx(7), activity.dpx(12), activity.dpx(7))
-                    background = Theme.tile(activity.dpx(12).toFloat(), activity.dpx(1).toFloat() * 1.5f, 0f, true)
+                    background = CutDrawable(intArrayOf(Theme.plane2), cutTR = activity.dpx(12).toFloat())
                 }
                 row.addView(activity.tv(r.name, 13f, DIM), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 row.addView(activity.tv("index " + fmt(r.z), 12f, DIM, true))

@@ -45,9 +45,9 @@ class NameStyleEditor(
     private val previewer: ((List<Map<String, String>?>) -> List<Bitmap>)?,
     private val after: () -> Unit,
 ) {
-    private val pink = Color.parseColor("#ff6ec7")
-    private val hot = Color.parseColor("#ff1493")
-    private val soft = Color.parseColor("#e7c3d6")
+    private val pink = Theme.pink
+    private val hot = Theme.hot
+    private val soft = Theme.label
     private val userKey = "namepresets_user"
 
     companion object {
@@ -87,11 +87,9 @@ class NameStyleEditor(
         typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         setPadding(dp(10), dp(6), dp(10), dp(6))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        background = GradientDrawable().apply {
-            setColor(Color.BLACK)
-            setStroke(dp(2), if (on) hot else Color.parseColor("#3a1a2c"))
-            cornerRadius = dp(10).toFloat()
-        }
+        background = if (on) Theme.on(slant = dp(8).toFloat()) else Theme.off(slant = dp(8).toFloat())
+        setTextColor(if (on) Theme.onPink else soft)
+        setPadding(dp(16), dp(6), dp(16), dp(6))
         setOnClickListener { click() }
         layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
@@ -199,7 +197,7 @@ class NameStyleEditor(
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
                     setSelectAllOnFocus(true)
-                    background = GradientDrawable().apply { setColor(Color.parseColor("#000000")); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
+                    background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f)
                     addTextChangedListener(object : TextWatcher {
                         override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -233,7 +231,7 @@ class NameStyleEditor(
                 text = t
                 setTextColor(pink)
                 typeface = Typeface.DEFAULT_BOLD
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(10).toFloat() }
+                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f)
                 tidyBtn(this, 16f)
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
@@ -319,7 +317,7 @@ class NameStyleEditor(
             val c = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(12))
-                background = GradientDrawable().apply { setColor(Color.parseColor("#0f0a14")); setStroke(dp(1) + 1, Color.parseColor("#2c1226")); cornerRadius = dp(14).toFloat() }
+                background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat())
             }
             if (title != null) c.addView(TextView(activity).apply {
                 text = title.uppercase()
@@ -421,7 +419,7 @@ class NameStyleEditor(
             val mid = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(10).toFloat() }
+                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f)
             }
             mid.addView(label("Stop at").apply { setPadding(0, 0, dp(6), 0) })
             stopAt.apply {
@@ -579,7 +577,7 @@ class NameStyleEditor(
         val tabScroll = android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tabRow) }
         val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(12).toFloat() }
+            background = Theme.field(dp(12).toFloat(), dp(1).toFloat() * 1.5f)
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
         val modeBtns = LinkedHashMap<String, TextView>()
@@ -592,7 +590,7 @@ class NameStyleEditor(
                 val first = m == ms.first()
                 val last = m == ms.last()
                 tv.background = GradientDrawable().apply {
-                    setColor(if (on) Color.parseColor("#ff1493") else Color.BLACK)
+                    setColor(if (on) Theme.hot else Theme.plane2)
                     cornerRadii = floatArrayOf(if (first) r else 0f, if (first) r else 0f, if (last) r else 0f, if (last) r else 0f, if (last) r else 0f, if (last) r else 0f, if (first) r else 0f, if (first) r else 0f)
                 }
             }
@@ -636,7 +634,7 @@ class NameStyleEditor(
                         setAllCaps(false)
                         typeface = Typeface.DEFAULT_BOLD
                         setTextColor(pink)
-                        background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(11).toFloat() }
+                        background = Theme.field(dp(11).toFloat(), dp(1).toFloat() * 1.5f)
                         setOnClickListener {
                             val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
                             ThemedBuilder(activity)
@@ -733,7 +731,7 @@ class NameStyleEditor(
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(8), dp(6), dp(8), dp(6))
-                        background = GradientDrawable().apply { setColor(Color.parseColor("#0f0a14")); setStroke(dp(1), Color.parseColor("#2c1226")); cornerRadius = dp(14).toFloat() }
+                        background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat())
                     }
                     if (showMine) {
                         val ud = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -774,14 +772,14 @@ class NameStyleEditor(
             val seg = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(2), dp(2), dp(2), dp(2))
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(12).toFloat() }
+                background = Theme.field(dp(12).toFloat(), dp(1).toFloat() * 1.5f)
             }
             val segBtns = ArrayList<TextView>()
             fun paintSeg() {
                 for ((i, t) in segBtns.withIndex()) {
                     val on = (i == 1) == showMine
                     t.setTextColor(if (on) Color.BLACK else soft)
-                    t.background = GradientDrawable().apply { setColor(if (on) hot else Color.BLACK); cornerRadius = dp(10).toFloat() }
+                    t.background = GradientDrawable().apply { setColor(if (on) hot else Theme.plane2); cornerRadius = dp(10).toFloat() }
                 }
             }
             for ((i, nm) in listOf("Built-in (view only)", "Mine").withIndex()) {
@@ -826,7 +824,7 @@ class NameStyleEditor(
             val root = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(18).toFloat() }
+                background = Theme.field(dp(18).toFloat(), dp(1).toFloat() * 1.5f)
             }
             root.addView(title)
             root.addView(seg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(10) })
@@ -864,7 +862,7 @@ class NameStyleEditor(
                         setTextColor(pink)
                         typeface = Typeface.DEFAULT_BOLD
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                        background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), hot); cornerRadius = dp(11).toFloat() }
+                        background = Theme.field(dp(11).toFloat(), dp(1).toFloat() * 1.5f)
                         setOnClickListener { manage() }
                     }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(8) })
                 }
@@ -973,12 +971,7 @@ class NameStyleEditor(
         w?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
         w?.setGravity(Gravity.BOTTOM)
-        val outer = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#ff00aa"), Color.parseColor("#ff6ec7")),
-        ).apply { cornerRadius = dp(20).toFloat() }
-        val inner = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = dp(18).toFloat() }
-        w?.setBackgroundDrawable(LayerDrawable(arrayOf(outer, InsetDrawable(inner, dp(2)))))
+        w?.setBackgroundDrawable(Theme.dialog(dp(22).toFloat(), dp(4).toFloat()))
         var startY = 0f
         var startH = 0
         val drag = View.OnTouchListener { _, ev ->
