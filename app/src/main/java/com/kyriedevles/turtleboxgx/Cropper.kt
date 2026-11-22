@@ -358,15 +358,15 @@ object Cropper {
     /** Full-screen crop. [onCrop] gets the cropped picture, [onWhole] means "use the whole image" (true = keep the original resolution). */
     fun show(activity: Activity, preview: Bitmap, bytes: ByteArray, origW: Int, aspect: Float, onCrop: (Bitmap) -> Unit, onWhole: (Boolean) -> Unit) {
         val d = activity.resources.displayMetrics.density
-        val pink = Color.parseColor("#ff6ec7")
+        val pink = Theme.pink
         val dlg = Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dlg.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Theme.ground)
         }
         val info = TextView(activity).apply {
-            setTextColor(Color.parseColor("#e7c3d6"))
+            setTextColor(Theme.label)
             gravity = Gravity.CENTER
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f)
             setPadding(0, (24 * d).toInt(), 0, (4 * d).toInt())
@@ -380,16 +380,9 @@ object Cropper {
             text = t
             isAllCaps = false
             setTextColor(if (strong) Color.WHITE else pink)
-            background = GradientDrawable().apply {
-                if (strong) {
-                    orientation = GradientDrawable.Orientation.TL_BR
-                    colors = intArrayOf(Color.parseColor("#ff1493"), pink)
-                } else {
-                    setColor(Color.BLACK)
-                    setStroke((2 * d).toInt(), Color.parseColor("#ff1493"))
-                }
-                cornerRadius = 12 * d
-            }
+            setTextColor(if (strong) Theme.onPink else Theme.pink)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            background = if (strong) Theme.on(cut = 14 * d, shadow = 6 * d) else Theme.field(14 * d, 1.5f * d, 4 * d)
         }
         val angleBox = EditText(activity).apply {
             setText("0")
@@ -399,11 +392,7 @@ object Cropper {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
             setSingleLine(true)
             setSelectAllOnFocus(true)
-            background = GradientDrawable().apply {
-                setColor(Color.BLACK)
-                setStroke((2 * d).toInt(), Color.parseColor("#ff1493"))
-                cornerRadius = 10 * d
-            }
+            background = Theme.field(10 * d, 1.5f * d)
             setPadding((6 * d).toInt(), (4 * d).toInt(), (6 * d).toInt(), (4 * d).toInt())
         }
         val seek = SeekBar(activity).apply {
@@ -481,7 +470,7 @@ object Cropper {
         val keep = android.widget.CheckBox(activity).apply {
             text = "Keep original resolution (off = smaller copy, 2000 px)"
             isChecked = true
-            setTextColor(Color.parseColor("#e7c3d6"))
+            setTextColor(Theme.label)
             buttonTintList = android.content.res.ColorStateList.valueOf(pink)
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
             setPadding((12 * d).toInt(), 0, (12 * d).toInt(), 0)

@@ -861,7 +861,7 @@ class MainActivity : Activity() {
         val d = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         d.setContentView(
             ImageView(this).apply {
-                setBackgroundColor(Color.BLACK)
+                setBackgroundColor(Theme.ground)
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setImageBitmap(b)
                 setOnClickListener { d.dismiss() }
