@@ -56,8 +56,8 @@ object Theme {
                 if (view.width > 0 && view.height > 0) outline.setConvexPath(d.pathFor(view.width.toFloat(), view.height.toFloat()))
             }
         }
-        v.outlineSpotShadowColor = Color.argb(255, 255, 79, 157)
-        v.outlineAmbientShadowColor = Color.BLACK
+        v.outlineSpotShadowColor = Color.BLACK
+        v.outlineAmbientShadowColor = Color.argb(255, 255, 79, 157)
     }
 }
 

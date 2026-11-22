@@ -120,7 +120,9 @@ class Editor(
         val commits = ArrayList<() -> Unit>()
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(8), dp(20), dp(8))
+            setPadding(dp(20), dp(8), dp(20), dp(22))
+            clipChildren = false
+            clipToPadding = false
         }
         var firstEdit: EditText? = null
         var dlgRef: AlertDialog? = null
@@ -187,7 +189,7 @@ class Editor(
                             tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.create("sans-serif-medium", Typeface.NORMAL)
                             val shape = if (on) Theme.on(slant = dp(9).toFloat()) else Theme.off(slant = dp(9).toFloat())
                             tv.background = shape
-                            Theme.lift(tv, shape, dp(3).toFloat())
+                            Theme.lift(tv, shape, dp(7).toFloat())
                         }
                     }
                     for ((name, v) in f.items) {
@@ -348,7 +350,7 @@ class Editor(
                 tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
                 val shape = if (on) Theme.on(cut = dp(14).toFloat()) else Theme.off(cut = dp(14).toFloat())
                 tv.background = shape
-                Theme.lift(tv, shape, dp(3).toFloat())
+                Theme.lift(tv, shape, dp(7).toFloat())
             }
         }
         for ((label, v, oo) in cells) {
@@ -699,7 +701,7 @@ class Editor(
         minimumHeight = dp(44)
         val shape = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f))
         background = shape
-        Theme.lift(this, shape, dp(3).toFloat())
+        Theme.lift(this, shape, dp(6).toFloat())
         setPadding(dp(14), 0, dp(14), 0)
     }
 
