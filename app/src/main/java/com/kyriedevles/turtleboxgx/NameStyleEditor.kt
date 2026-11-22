@@ -385,7 +385,7 @@ class NameStyleEditor(
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor(bg))
                 tidyBtn(this, 13f)
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor(bg)); cornerRadius = dp(10).toFloat() }
+                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
                 setOnClickListener { click() }
             }
             fun sq(t: String, click: () -> Unit) = smallBtn(t, "#ff1493", click).apply { setTextColor(pink) }
@@ -577,7 +577,6 @@ class NameStyleEditor(
         val tabScroll = android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tabRow) }
         val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Theme.field(dp(12).toFloat(), dp(1).toFloat() * 1.5f)
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
         val modeBtns = LinkedHashMap<String, TextView>()
@@ -586,13 +585,10 @@ class NameStyleEditor(
             val ms = modeBtns.keys.toList()
             for ((m, tv) in modeBtns) {
                 val on = st.mode == m
-                tv.setTextColor(if (on) Color.BLACK else soft)
+                tv.setTextColor(if (on) Theme.onPink else soft)
                 val first = m == ms.first()
                 val last = m == ms.last()
-                tv.background = GradientDrawable().apply {
-                    setColor(if (on) Theme.hot else Theme.plane2)
-                    cornerRadii = floatArrayOf(if (first) r else 0f, if (first) r else 0f, if (last) r else 0f, if (last) r else 0f, if (last) r else 0f, if (last) r else 0f, if (first) r else 0f, if (first) r else 0f)
-                }
+                tv.background = if (on) Theme.on(slant = dp(6).toFloat()) else Theme.off(slant = dp(6).toFloat())
             }
         }
         refreshPreview = {
@@ -626,7 +622,7 @@ class NameStyleEditor(
                     rebuild()
                 }
             }
-            modeRow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            modeRow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(3); marginEnd = dp(3) })
         }
         val saveBtn = Button(activity).apply {
                         text = "Save preset"
@@ -681,7 +677,7 @@ class NameStyleEditor(
                 setTextColor(c)
                 typeface = Typeface.DEFAULT_BOLD
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), c); cornerRadius = dp(10).toFloat() }
+                background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f)
                 setOnClickListener { click() }
             }
             fun changed() { onChanged(); rebuild() }
@@ -731,7 +727,7 @@ class NameStyleEditor(
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                         setPadding(dp(8), dp(6), dp(8), dp(6))
-                        background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat())
+                        background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), opaque = true)
                     }
                     if (showMine) {
                         val ud = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
@@ -772,14 +768,13 @@ class NameStyleEditor(
             val seg = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(dp(2), dp(2), dp(2), dp(2))
-                background = Theme.field(dp(12).toFloat(), dp(1).toFloat() * 1.5f)
             }
             val segBtns = ArrayList<TextView>()
             fun paintSeg() {
                 for ((i, t) in segBtns.withIndex()) {
                     val on = (i == 1) == showMine
-                    t.setTextColor(if (on) Color.BLACK else soft)
-                    t.background = GradientDrawable().apply { setColor(if (on) hot else Theme.plane2); cornerRadius = dp(10).toFloat() }
+                    t.setTextColor(if (on) Theme.onPink else soft)
+                    t.background = if (on) Theme.on(slant = dp(6).toFloat()) else Theme.off(slant = dp(6).toFloat())
                 }
             }
             for ((i, nm) in listOf("Built-in (view only)", "Mine").withIndex()) {

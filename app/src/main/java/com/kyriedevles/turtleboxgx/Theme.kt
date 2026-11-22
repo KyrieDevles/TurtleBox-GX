@@ -99,8 +99,8 @@ object Theme {
     fun chip(slant: Float, edgePx: Float, shadow: Float) = CutDrawable(intArrayOf(plane2), slant = slant, border = edgePx, shadow = shadow)
 
     /** A card plane for the Layouts and Sets pages: cut corner, bar down the left edge. `lit` marks the chosen one. */
-    fun card(cut: Float, shadow: Float, bar: Float, lit: Boolean = false) =
-        CutDrawable(intArrayOf(if (lit) plane2 else plane), cutTR = cut, leftBar = bar, shadow = shadow, border = if (lit) 2f else 0f)
+    fun card(cut: Float, shadow: Float, bar: Float, lit: Boolean = false, opaque: Boolean = false) =
+        CutDrawable(intArrayOf(if (lit) plane2 else plane), cutTR = cut, leftBar = bar, shadow = shadow, border = if (lit) 2f else 0f, opaque = opaque)
 
     /** The edit dock: plane with the strip on top and the top-left corner cut; its shadow falls upward. */
     fun dock(cut: Float, stripPx: Float, shadow: Float) =

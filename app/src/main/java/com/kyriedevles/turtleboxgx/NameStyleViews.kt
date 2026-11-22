@@ -145,7 +145,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
             minimumHeight = 0
             includeFontPadding = false
             setSelectAllOnFocus(true)
-            background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(2, Color.parseColor("#ff1493")); cornerRadius = 8f }
+            background = Theme.field(dp(8), dp(1) * 1.5f)
         }
         info.addView(hexBox, if (compact) LayoutParams(0, dp(34).toInt(), 1f) else LayoutParams(dp(100).toInt(), dp(34).toInt()))
         rgb = TextView(c).apply {
