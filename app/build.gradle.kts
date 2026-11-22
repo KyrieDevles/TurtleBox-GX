@@ -43,6 +43,11 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // The bundled layout zip is already compressed; storing it as is keeps the APK build fast and the copy simple.
+    androidResources {
+        noCompress += listOf("zip")
+    }
 }
 
 dependencies {

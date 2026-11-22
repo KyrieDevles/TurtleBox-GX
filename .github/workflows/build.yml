@@ -23,6 +23,16 @@ jobs:
         with:
           gradle-version: 8.7
 
+      # The layout XML and zip live on the repo's "Assets" release (too big for the repo). Whatever is attached
+      # there is packed into the APK; if the release is missing the app simply has no built-in layout.
+      - name: Fetch the bundled layout files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p app/src/main/assets
+          gh release download Assets --dir app/src/main/assets --clobber || echo "No Assets release; building without a built-in layout."
+          ls -la app/src/main/assets
+
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 

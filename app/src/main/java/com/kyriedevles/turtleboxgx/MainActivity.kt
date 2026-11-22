@@ -309,6 +309,14 @@ class MainActivity : Activity() {
             val uri = Uri.parse(saved)
             val stillAllowed = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
             if (stillAllowed) scan(uri)
+        } else if (!prefs.getBoolean("setupAsked", false) && bundledFiles().isNotEmpty()) {
+            prefs.edit().putBoolean("setupAsked", true).apply()
+            handler.post {
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Set up TurtleBox GX")
+                    .setMessage("Choose or create a folder (for example “Turtlebox GX”). The app puts its layout files and an empty templates folder there; you can add your own templates later.")
+                    .setPositiveButton("Set up") { _, _ -> setupFolder() }
+                    .setNegativeButton("Later", null).show()
+            }
         }
     }
 
@@ -1030,6 +1038,24 @@ class MainActivity : Activity() {
         folder.addView(buttons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         add(folder)
 
+        if (bundledFiles().isNotEmpty()) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Hot.outline(dp(16).toFloat(), dp(2), Hot.line)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+            }
+            if (folderUri == null) {
+                card.addView(label("Set up", 13f, Hot.muted))
+                card.addView(label("The app carries a built-in layout. Choose or create a folder (for example “Turtlebox GX”) and it puts the layout files and an empty templates folder there. Files already in the folder are kept.", 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
+                card.addView(pill("Set up", true) { setupFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
+            } else {
+                card.addView(label("Built-in layout", 13f, Hot.muted))
+                card.addView(label("Put the layout XML or the zip back to the version the app came with.", 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
+                card.addView(pill("Restore…", false) { restoreDialog() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
+            }
+            add(card, 12)
+        }
+
         if (templates.isNotEmpty()) {
             val tcard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1257,6 +1283,89 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---- built-in layout: the APK can carry the layout XML and zip; Set up copies them into a folder the user picks ----
+
+    private fun bundledFiles(): List<String> = try {
+        assets.list("")?.filter { it.endsWith(".xml") || it.endsWith(".zip") }?.sorted() ?: emptyList()
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private fun setupFolder() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+        )
+        startActivityForResult(intent, REQ_SETUP)
+    }
+
+    /** Copies the built-in files into [tree] and makes an empty `templates` folder. Existing files are kept unless [overwrite]. */
+    private fun copyBundled(tree: Uri, names: List<String>, overwrite: Boolean) {
+        val progress = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Setting up")
+            .setMessage("Copying the layout files. This can take a few seconds.").setCancelable(false).show()
+        thread {
+            val notes = ArrayList<String>()
+            var failed: String? = null
+            try {
+                val dir = DocumentFile.fromTreeUri(this, tree) ?: throw IllegalStateException("Cannot open that folder.")
+                if (dir.findFile("templates") == null) dir.createDirectory("templates")
+                for (n in names) {
+                    val existing = dir.findFile(n)
+                    if (existing != null && !overwrite) {
+                        notes.add("kept $n")
+                        continue
+                    }
+                    val f = existing ?: dir.createFile(if (n.endsWith(".xml")) "text/xml" else "application/zip", n)
+                        ?: throw IllegalStateException("Could not create $n.")
+                    assets.open(n).use { input ->
+                        (contentResolver.openOutputStream(f.uri, "wt") ?: throw IllegalStateException("Could not write $n.")).use { out ->
+                            input.copyTo(out, 64 * 1024)
+                        }
+                    }
+                    notes.add("wrote $n")
+                }
+            } catch (e: SecurityException) {
+                failed = "this folder was opened read-only. Use Set up and choose it again to allow writing."
+            } catch (e: Throwable) {
+                failed = e.message ?: e.javaClass.simpleName
+            }
+            runOnUiThread {
+                progress.dismiss()
+                if (failed != null) {
+                    toast("Set up failed: $failed")
+                } else {
+                    toast(notes.joinToString(" · "))
+                    scan(tree)
+                }
+            }
+        }
+    }
+
+    private fun restoreDialog() {
+        val names = bundledFiles()
+        val uri = folderUri
+        if (names.isEmpty() || uri == null) return
+        val canWrite = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission }
+        if (!canWrite) {
+            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Allow writing")
+                .setMessage("This folder was opened for reading only. Choose the same folder again to let the app restore files in it.")
+                .setPositiveButton("Choose folder") { _, _ -> setupFolder() }.setNegativeButton("Cancel", null).show()
+            return
+        }
+        val xml = names.filter { it.endsWith(".xml") }
+        val zip = names.filter { it.endsWith(".zip") }
+        val options = listOf("Layout XML only" to xml, "Pictures and fonts (zip) only" to zip, "Both" to names).filter { it.second.isNotEmpty() }
+        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restore built-in files")
+            .setItems(options.map { it.first }.toTypedArray()) { _, i ->
+                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Replace your copy?")
+                    .setMessage("This overwrites ${options[i].second.joinToString(", ")} in your folder with the built-in version. Any edits you made to it are lost.")
+                    .setPositiveButton("Replace") { _, _ -> copyBundled(uri, options[i].second, true) }
+                    .setNegativeButton("Cancel", null).show()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun pickFolder() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
             Intent.FLAG_GRANT_READ_URI_PERMISSION or
@@ -1384,6 +1493,15 @@ class MainActivity : Activity() {
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         when (requestCode) {
+            REQ_SETUP -> {
+                try {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                } catch (e: Exception) {
+                    // Some providers refuse persistence; the copy below still works this session.
+                }
+                prefs.edit().putString("tree", uri.toString()).apply()
+                copyBundled(uri, bundledFiles(), false)
+            }
             REQ_TREE -> {
                 try {
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1717,6 +1835,7 @@ class MainActivity : Activity() {
     companion object {
         private const val DEV_FOLDER = "TurtleBox dev"
         private const val REQ_LAYER = 1007
+        private const val REQ_SETUP = 1008
         private const val REQ_SETS_TREE = 1006
         private const val REQ_TREE = 1001
         private const val REQ_SET = 1002

@@ -4,3 +4,7 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+
+# Bundled layout files: fetched from the "Assets" release at build time, never committed
+app/src/main/assets/*.xml
+app/src/main/assets/*.zip
