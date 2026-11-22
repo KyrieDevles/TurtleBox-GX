@@ -427,7 +427,7 @@ class MainActivity : Activity() {
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         fun action(kind: String, name: String, act: () -> Unit) {
             val b = FrameLayout(this@MainActivity).apply {
-                background = CutDrawable(intArrayOf(Theme.plane), cutTR = dp(10).toFloat(), shadow = dp(6).toFloat())
+                background = CutDrawable(intArrayOf(Theme.plane), cutTR = dp(10).toFloat(), shadow = dp(5).toFloat())
                 isClickable = true
                 contentDescription = name
                 setOnClickListener { act() }
@@ -536,16 +536,16 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             isAllCaps = true
             letterSpacing = 0.12f
-            setTextColor(Theme.text)
+            setTextColor(Theme.pink)
             maxLines = 1
             maxWidth = dp(160)
             ellipsize = android.text.TextUtils.TruncateAt.END
-            background = Theme.off(slant = dp(8).toFloat(), shadow = dp(5).toFloat())
+            background = Theme.chip(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             setOnClickListener { showTemplateDialog() }
         }
         handle.addView(dockPill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28), Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin = dp(12) })
         dockChev = FrameLayout(this).apply {
-            background = Theme.off(cut = dp(8).toFloat(), shadow = dp(5).toFloat())
+            background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             isClickable = true
             setOnClickListener { flipDock() }
         }
@@ -1053,7 +1053,7 @@ class MainActivity : Activity() {
 
         val folder = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat(), true)
+            background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat(), true)
             setPadding(dp(16), dp(14), dp(16), dp(14))
         }
         folder.addView(label("Folder", 12f, Theme.pink))
@@ -1067,7 +1067,7 @@ class MainActivity : Activity() {
         if (bundledFiles().isNotEmpty()) {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat())
+                background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
                 setPadding(dp(16), dp(12), dp(16), dp(12))
             }
             if (folderUri == null) {
@@ -1085,7 +1085,7 @@ class MainActivity : Activity() {
         if (templates.isNotEmpty()) {
             val tcard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat())
+                background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
                 setPadding(dp(16), dp(12), dp(16), dp(12))
             }
             tcard.addView(label("Template", 12f, Theme.pink))
@@ -1141,7 +1141,7 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat(), !ok)
+            background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), !ok)
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
         row.addView(
@@ -1158,7 +1158,7 @@ class MainActivity : Activity() {
         row.addView(
             label(if (ok) "OK" else "Error", 12f, Color.BLACK, bold = true).apply {
                 setPadding(dp(8), dp(3), dp(8), dp(3))
-                background = Hot.outline(dp(10).toFloat(), 0, Color.TRANSPARENT, if (ok) Hot.ok else Hot.bad)
+                background = CutDrawable(intArrayOf(if (ok) Hot.ok else Hot.bad), cutTR = dp(6).toFloat())
             },
         )
         return row
@@ -1185,7 +1185,7 @@ class MainActivity : Activity() {
         box.removeAllViews()
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat(), true)
+            background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat(), true)
             setPadding(dp(16), dp(14), dp(16), dp(14))
         }
         head.addView(label("Current card", 12f, Theme.pink))
@@ -1199,7 +1199,7 @@ class MainActivity : Activity() {
 
         val folderCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat())
+            background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
         folderCard.addView(label("Sets folder", 12f, Theme.pink))
@@ -1218,7 +1218,7 @@ class MainActivity : Activity() {
         list.forEach { (u, name) ->
             val r = label(name.removeSuffix(".msoe-set"), 15f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat())
+                background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat())
                 setPadding(dp(16), 0, dp(16), 0)
                 setOnClickListener { loadSet(Uri.parse(u)) }
             }
@@ -1231,7 +1231,7 @@ class MainActivity : Activity() {
                 val on = curSet == f.uri
                 val r = label(f.name.removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER_VERTICAL
-                    background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat(), on)
+                    background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), on)
                     setPadding(dp(16), 0, dp(16), 0)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1244,7 +1244,7 @@ class MainActivity : Activity() {
                     val isOpen = openSetFolders.contains(k.path)
                     val h = label((if (isOpen) "▾  " else "▸  ") + k.name + "  ·  ${k.total}", 15f, Hot.pinkLight, bold = true).apply {
                         gravity = Gravity.CENTER_VERTICAL
-                        background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat(), isOpen)
+                        background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), isOpen)
                         setPadding(dp(16), 0, dp(16), 0)
                         setSingleLine(true)
                         ellipsize = android.text.TextUtils.TruncateAt.END

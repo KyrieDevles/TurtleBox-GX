@@ -51,6 +51,9 @@ object Theme {
     /** The dialog plane: dark with the metallic strip on top and the top-right corner cut. */
     fun dialog(cut: Float, stripPx: Float) = CutDrawable(intArrayOf(plane), cutTR = cut, strip = stripPx)
 
+    /** A slanted tab with the same pink edge as the fields. */
+    fun chip(slant: Float, edgePx: Float, shadow: Float) = CutDrawable(intArrayOf(plane2), slant = slant, border = edgePx, shadow = shadow)
+
     /** A card plane for the Layouts and Sets pages: cut corner, bar down the left edge. `lit` marks the chosen one. */
     fun card(cut: Float, shadow: Float, bar: Float, lit: Boolean = false) =
         CutDrawable(intArrayOf(if (lit) plane2 else plane), cutTR = cut, leftBar = bar, shadow = shadow, border = if (lit) 2f else 0f)
@@ -195,12 +198,13 @@ class CutDrawable(
 /** The diagonal metallic bands in the top-right corner, drawn behind the top bar. */
 class BandsView(context: Context) : View(context) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val sh = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(150, 0, 0, 0) }
+    private val sh = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(90, 0, 0, 0) }
 
     override fun onDraw(c: Canvas) {
+        c.clipRect(0f, 0f, width.toFloat(), height.toFloat())
         val d = resources.displayMetrics.density
         // x from the right edge (dp, on a 390 dp wide screen), centre y, thickness
-        val bands = arrayOf(floatArrayOf(190f, -5f, 26f), floatArrayOf(128f, -6f, 16f), floatArrayOf(64f, -4f, 8f))
+        val bands = arrayOf(floatArrayOf(125f, -8f, 18f), floatArrayOf(86f, -8f, 11f), floatArrayOf(48f, -6f, 6f))
         for (b in bands) {
             val x = width - b[0] * d
             val y = b[1] * d
@@ -208,7 +212,7 @@ class BandsView(context: Context) : View(context) {
             c.save()
             c.translate(x, y)
             c.rotate(28f)
-            c.drawRect(0f, -th / 2f + 5f * d, 700f * d, th / 2f + 7f * d, sh)
+            c.drawRect(0f, -th / 2f + 2f * d, 700f * d, th / 2f + 4f * d, sh)
             p.shader = LinearGradient(0f, -th / 2f, 0f, th / 2f, intArrayOf(
                 Theme.deep, Color.parseColor("#ff5fa8"), Theme.crimson, Theme.deep,
             ), floatArrayOf(0f, 0.45f, 0.7f, 1f), Shader.TileMode.CLAMP)
