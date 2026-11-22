@@ -131,6 +131,7 @@ class NameStyleEditor(
         }
         val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
         var cur: LinearLayout = body
+        var host: LinearLayout = body
         val before = state.values[key]
         val beforeUser = state.values[userKey]
 
@@ -142,6 +143,7 @@ class NameStyleEditor(
         fun setV(k: String, v: String) {
             st.v[k] = v
             commit()
+            rebuildChips()
         }
 
         fun fmtN(v: Float, int: Boolean) = if (int) Math.round(v).toString() else String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
@@ -290,7 +292,7 @@ class NameStyleEditor(
                 i += 3
             }
             paintNames()
-            body.addView(grid)
+            host.addView(grid)
             if (previewer == null) {
                 for ((n, v) in views.withIndex()) {
                     val t = TextView(activity)
@@ -317,7 +319,7 @@ class NameStyleEditor(
             val c = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(12))
-                background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat())
+                if (host === body) background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat()) else setPadding(0, dp(6), 0, dp(4))
             }
             if (title != null) c.addView(TextView(activity).apply {
                 text = title.uppercase()
@@ -327,25 +329,12 @@ class NameStyleEditor(
                 letterSpacing = 0.05f
                 setPadding(0, 0, 0, dp(6))
             })
-            body.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+            host.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(if (host === body) 10 else 4) })
             return c
         }
 
         fun header(name: String, k: String, note: String? = null) {
-            val c = card(null)
-            val cb = android.widget.Switch(activity).apply {
-                text = name
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                isChecked = st.v[k] == "1"
-                val checked = intArrayOf(android.R.attr.state_checked)
-                thumbTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.WHITE, Color.parseColor("#c98aae")))
-                trackTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#4a1a35")))
-                setOnCheckedChangeListener { _, on -> setV(k, if (on) "1" else "0"); rebuildChips() }
-            }
-            c.addView(cb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            if (note != null) c.addView(TextView(activity).apply { text = note; setTextColor(Color.parseColor("#b98aa5")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setPadding(0, dp(6), 0, 0) })
+            if (note != null) card(null).addView(TextView(activity).apply { text = note; setTextColor(Theme.muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f) })
         }
 
         fun gradientUi() {
@@ -403,7 +392,6 @@ class NameStyleEditor(
                 trackTintList = android.content.res.ColorStateList(arrayOf(checked, intArrayOf()), intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#4a1a35")))
                 setOnCheckedChangeListener { _, on -> setV("grad", if (on) "1" else "0"); rebuildChips() }
             }
-            c1.addView(sw, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
             bar = GradientBarView(activity, stops, { g -> select(g) }) {
                 stopAt.setText(Math.round(bar.selected.pos * 100f).toString())
                 save()
@@ -535,7 +523,7 @@ class NameStyleEditor(
                 "Pattern" -> {
                     val items = layout.datas["namepatterns"]?.items ?: emptyList<Pair<String, String>>()
                     if (items.isEmpty()) {
-                        body.addView(label("This layout has no namepatterns list."))
+                        host.addView(label("This layout has no namepatterns list."))
                     } else {
                         val list = ArrayList<Pair<String, Map<String, String>?>>()
                         list.add("None" to withFill(emptyMap()))
@@ -548,7 +536,7 @@ class NameStyleEditor(
                 "Font" -> {
                     val items = layout.datas["namefonts"]?.items ?: emptyList<Pair<String, String>>()
                     if (items.isEmpty()) {
-                        body.addView(label("This layout has no namefonts list."))
+                        host.addView(label("This layout has no namefonts list."))
                     } else {
                         val list = ArrayList<Pair<String, Map<String, String>?>>()
                         list.add("Auto" to withFill(emptyMap()))
@@ -651,7 +639,7 @@ class NameStyleEditor(
                         }
                     }
         var chipFlow: FlowLayout? = null
-        val chipButtons = LinkedHashMap<String, TextView>()
+        val rowUpd = LinkedHashMap<String, () -> Unit>()
         fun used(s: String) = when (s) {
             "Shadow" -> st.v["shadow"] == "1"
             "Outline" -> st.v["outline"] == "1"
@@ -662,7 +650,7 @@ class NameStyleEditor(
             else -> false
         }
         rebuildChipsRef = {
-            for ((s, tv) in chipButtons) tv.text = s + if (used(s)) " ●" else ""
+            for (u in rowUpd.values) u()
         }
         reviseRef = { rebuild() }
 
@@ -837,7 +825,7 @@ class NameStyleEditor(
 
         rebuild = {
             body.removeAllViews()
-            chipButtons.clear()
+            rowUpd.clear()
             tabScroll.visibility = View.GONE
             saveBtn.visibility = if (st.mode == "custom") View.VISIBLE else View.GONE
             paintMode()
@@ -865,19 +853,62 @@ class NameStyleEditor(
                     tabRow.removeAllViews()
                     for (s in listOf("Color", "Shadow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
                         val open = section == s
-                        val tv = TextView(activity).apply {
-                            text = s + if (used(s)) " ●" else ""
-                            typeface = Typeface.DEFAULT_BOLD
-                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                            setTextColor(if (open) Theme.onPink else Theme.text)
-                            setPadding(dp(16), 0, dp(16), 0)
+                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
+                        val tg = SkewToggle(activity)
+                        val sum = TextView(activity).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.END }
+                        fun val_(k: String) = st.v[k] ?: ""
+                        fun summary(): CharSequence {
+                            val (v, rest) = when (s) {
+                                "Color" -> val_("fill").ifEmpty { "#000000" } to ""
+                                "Shadow" -> if (used(s)) "${val_("shx").ifEmpty { "0" }}, ${val_("shy").ifEmpty { "0" }}" to " · blur ${val_("shblur").ifEmpty { "0" }}" else "off" to ""
+                                "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to "" else "off" to ""
+                                "Gradient" -> if (used(s)) "on" to "" else "off" to ""
+                                "Pattern" -> val_("pattern").ifEmpty { "none" } to ""
+                                "Font" -> val_("font").ifEmpty { "auto" } to ""
+                                else -> if (used(s)) "on" to "" else "off" to ""
+                            }
+                            val sb = android.text.SpannableStringBuilder(v + rest)
+                            if (used(s) || s == "Color") sb.setSpan(android.text.style.ForegroundColorSpan(Theme.pink), 0, v.length, 0)
+                            if (used(s) || s == "Color") sb.setSpan(android.text.style.StyleSpan(Typeface.BOLD), 0, v.length, 0)
+                            return sb
+                        }
+                        fun upd() {
+                            tg.on = s == "Color" || used(s)
+                            tg.invalidate()
+                            sum.setTextColor(Theme.muted)
+                            sum.text = summary()
+                        }
+                        rowUpd[s] = { upd() }
+                        upd()
+                        tg.setOnClickListener {
+                            when {
+                                toggleKey != null -> setV(toggleKey, if (st.v[toggleKey] == "1") "0" else "1")
+                                s == "Pattern" || s == "Font" -> if (used(s)) setV(s.lowercase(), "") else { section = s; rebuild() }
+                            }
+                        }
+                        val head = LinearLayout(activity).apply {
+                            orientation = LinearLayout.HORIZONTAL
                             gravity = Gravity.CENTER_VERTICAL
-                            background = if (open) Theme.on(cut = dp(12).toFloat(), shadow = dp(5).toFloat()) else Theme.card(dp(12).toFloat(), dp(4).toFloat(), dp(3).toFloat(), used(s))
+                            setPadding(dp(14), 0, dp(14), 0)
+                            addView(tg, LinearLayout.LayoutParams(dp(34), dp(18)).apply { rightMargin = dp(12) })
+                            addView(TextView(activity).apply { text = s; typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTextColor(Theme.text) })
+                            addView(sum, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(8) })
+                            addView(TextView(activity).apply { text = if (open) "▾" else "▸"; setTextColor(Theme.muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setPadding(dp(10), 0, 0, 0) })
                             setOnClickListener { section = if (open) "" else s; rebuild() }
                         }
-                        chipButtons[s] = tv
-                        body.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
-                        if (open) sectionBody()
+                        val rowBox = LinearLayout(activity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            background = Theme.card(dp(12).toFloat(), dp(4).toFloat(), dp(3).toFloat(), open)
+                        }
+                        rowBox.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
+                        body.addView(rowBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+                        if (open) {
+                            val inner = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(14), dp(10)) }
+                            rowBox.addView(inner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                            host = inner
+                            sectionBody()
+                            host = body
+                        }
                     }
                     val mine = userPresets()
                     if (mine.isNotEmpty()) {
@@ -917,8 +948,9 @@ class NameStyleEditor(
             addView(grip, LinearLayout.LayoutParams(dp(44), dp(5)))
         }
         val titleTv = TextView(activity).apply {
-            text = "Name Style"
-            setTextColor(Color.parseColor("#ff4da6"))
+            text = "NAME STYLE"
+            letterSpacing = 0.12f
+            setTextColor(Theme.hot)
             typeface = Typeface.DEFAULT_BOLD
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setPadding(0, dp(6), 0, dp(6))
@@ -937,10 +969,21 @@ class NameStyleEditor(
             gravity = Gravity.CENTER_VERTICAL
             addView(titleTv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(cancelTv)
-            addView(doneTv)
         }
         // In landscape there is little height, so the preview and tabs scroll with everything else.
         panelH = if (lastH > 0) lastH else if (land) (screenH * 0.86f).toInt() else (screenH * 0.6f).toInt()
+        val bottomBar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            (saveBtn.parent as? ViewGroup)?.removeView(saveBtn)
+            addView(saveBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)).apply { rightMargin = dp(10) })
+            addView(doneTv.apply {
+                text = "DONE"
+                gravity = Gravity.CENTER
+                setTextColor(Theme.onPink)
+                background = Theme.on(cut = dp(10).toFloat(), shadow = dp(5).toFloat())
+            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        }
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), 0, dp(14), 0)
@@ -948,7 +991,7 @@ class NameStyleEditor(
             addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
             addView(ScrollView(activity).apply { addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            addView(saveBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(6); bottomMargin = dp(10) })
+            addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6); bottomMargin = dp(10) })
         }
         if (land) box.addView(head, 0)
         box.setPadding(0, dp(2), 0, dp(4))
@@ -1006,5 +1049,23 @@ class NameStyleEditor(
     private fun presetValues(name: String): Map<String, String> {
         userPresets()[name]?.let { return NameStyle.kv(it) }
         return layout.datas["namepresets"]?.items?.firstOrNull { it.first == name }?.let { NameStyle.kv(it.second) } ?: emptyMap()
+    }
+}
+
+/** The little slanted on/off switch used on the effect rows. */
+class SkewToggle(ctx: android.content.Context) : View(ctx) {
+    var on = false
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    override fun onDraw(c: android.graphics.Canvas) {
+        val w = width.toFloat(); val h = height.toFloat(); val k = h * 0.3f
+        val path = android.graphics.Path().apply { moveTo(k, 0f); lineTo(w, 0f); lineTo(w - k, h); lineTo(0f, h); close() }
+        paint.shader = if (on) android.graphics.LinearGradient(0f, 0f, w, h, Theme.metal, null, android.graphics.Shader.TileMode.CLAMP) else null
+        paint.color = Theme.plane3
+        c.drawPath(path, paint)
+        paint.shader = null
+        paint.color = if (on) Theme.onPink else Color.parseColor("#6a5c65")
+        val t = h * 0.7f; val pad = h * 0.15f
+        val x = if (on) w - t - pad - k * 0.5f else pad + k * 0.5f
+        c.drawRect(x, pad, x + t, pad + t, paint)
     }
 }
