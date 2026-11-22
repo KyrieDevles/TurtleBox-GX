@@ -243,7 +243,7 @@ class LayersPanel(
 
     private fun rename(l: Layer) {
         val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); setText(l.name); setSelection(l.name.length) }
-        AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert).setTitle("Rename layer").setView(input)
+        ThemedBuilder(activity).setTitle("Rename layer").setView(input)
             .setPositiveButton("Rename") { _, _ ->
                 val n = input.text.toString().trim()
                 if (n.isNotEmpty()) {
@@ -271,7 +271,7 @@ class LayersPanel(
     }
 
     private fun delete(l: Layer) {
-        AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert).setTitle("Delete “${l.name}”?")
+        ThemedBuilder(activity).setTitle("Delete “${l.name}”?")
             .setPositiveButton("Delete") { _, _ ->
                 val cur = layers()
                 cur.removeAll { it.id == l.id }

@@ -696,31 +696,8 @@ class Editor(
         setPadding(dp(14), 0, dp(14), 0)
     }
 
-    /** The dialog frame: a charcoal plane with the metallic strip on top and a cut corner. */
-    private fun style(dlg: AlertDialog) {
-        dlg.window?.setBackgroundDrawable(Theme.dialog(dp(22).toFloat(), dp(4).toFloat()))
-        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.apply {
-            setTextColor(Theme.hot)
-            isAllCaps = true
-            letterSpacing = 0.12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        }
-        fun cutButton(b: Button?, on: Boolean) {
-            b ?: return
-            b.stateListAnimator = null
-            b.letterSpacing = 0.1f
-            b.setTextColor(if (on) Theme.onPink else Theme.text)
-            b.background = if (on) Theme.on(cut = dp(10).toFloat(), shadow = dp(6).toFloat()) else Theme.off(cut = dp(10).toFloat(), shadow = dp(6).toFloat())
-            b.minHeight = dp(40)
-            b.minimumHeight = dp(40)
-            b.setPadding(dp(22), 0, dp(22), 0)
-            (b.layoutParams as? ViewGroup.MarginLayoutParams)?.let { it.leftMargin = dp(8); it.rightMargin = dp(8) }
-            var p = b.parent
-            repeat(4) { (p as? ViewGroup)?.clipChildren = false; p = p?.parent }
-        }
-        cutButton(dlg.getButton(AlertDialog.BUTTON_POSITIVE), true)
-        cutButton(dlg.getButton(AlertDialog.BUTTON_NEGATIVE), false)
-    }
+    /** The dialog frame: see Theme.styleDialog. */
+    private fun style(dlg: AlertDialog) = Theme.styleDialog(activity, dlg)
 }
 
 

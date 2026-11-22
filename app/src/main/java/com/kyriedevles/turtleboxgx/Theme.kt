@@ -62,6 +62,35 @@ object Theme {
     /** The dialog plane: dark with the metallic strip on top and the top-right corner cut. */
     fun dialog(cut: Float, stripPx: Float) = CutDrawable(intArrayOf(plane), cutTR = cut, strip = stripPx, opaque = true)
 
+    /** Frames a dialog like the edit menus: charcoal plane, metallic strip, cut corner, spaced-caps title, cut-corner buttons. */
+    fun styleDialog(activity: android.app.Activity, dlg: android.app.AlertDialog) {
+        val density = activity.resources.displayMetrics.density
+        fun dp(v: Int): Int = (v * density).toInt()
+        dlg.window?.setBackgroundDrawable(dialog(dp(22).toFloat(), dp(4).toFloat()))
+        dlg.findViewById<android.widget.TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.apply {
+            setTextColor(hot)
+            isAllCaps = true
+            letterSpacing = 0.12f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+        }
+        fun cutButton(b: android.widget.Button?, on: Boolean) {
+            b ?: return
+            b.stateListAnimator = null
+            b.letterSpacing = 0.1f
+            b.setTextColor(if (on) onPink else text)
+            b.background = if (on) on(cut = dp(10).toFloat(), shadow = dp(6).toFloat()) else off(cut = dp(10).toFloat(), shadow = dp(6).toFloat())
+            b.minHeight = dp(40)
+            b.minimumHeight = dp(40)
+            b.setPadding(dp(22), 0, dp(22), 0)
+            (b.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { it.leftMargin = dp(8); it.rightMargin = dp(8) }
+            var p = b.parent
+            repeat(4) { (p as? android.view.ViewGroup)?.clipChildren = false; p = p?.parent }
+        }
+        cutButton(dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE), true)
+        cutButton(dlg.getButton(android.app.AlertDialog.BUTTON_NEGATIVE), false)
+        cutButton(dlg.getButton(android.app.AlertDialog.BUTTON_NEUTRAL), false)
+    }
+
     /** The top bar: the dock turned upside down, with the metallic strip along its bottom edge and a cut bottom-right corner. */
     fun header(cut: Float, stripPx: Float, shadow: Float) =
         CutDrawable(intArrayOf(plane), cutBR = cut, strip = stripPx, stripBottom = true, shadow = shadow)
@@ -267,4 +296,15 @@ class CoverDrawable(private val bmp: android.graphics.Bitmap) : Drawable() {
     override fun setColorFilter(f: ColorFilter?) {}
     @Suppress("OVERRIDE_DEPRECATION")
     override fun getOpacity(): Int = PixelFormat.OPAQUE
+}
+
+/** An AlertDialog builder whose dialogs come out in the new look. */
+class ThemedBuilder(private val activity: android.app.Activity) :
+    android.app.AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert) {
+    override fun show(): android.app.AlertDialog {
+        val d = create()
+        d.show()
+        Theme.styleDialog(activity, d)
+        return d
+    }
 }

@@ -309,7 +309,7 @@ class MainActivity : Activity() {
             crashFile.delete()
             if (report.isNotBlank()) {
                 val tv = label(report, 11f, Color.WHITE).apply { typeface = Typeface.MONOSPACE; setTextIsSelectable(true); setPadding(dp(16), dp(12), dp(16), dp(12)) }
-                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("The app crashed last time")
+                ThemedBuilder(this).setTitle("The app crashed last time")
                     .setView(ScrollView(this).apply { addView(tv) }).setPositiveButton("Close", null).show()
             }
         }
@@ -321,7 +321,7 @@ class MainActivity : Activity() {
         } else if (!prefs.getBoolean("setupAsked", false) && bundledFiles().isNotEmpty()) {
             prefs.edit().putBoolean("setupAsked", true).apply()
             handler.post {
-                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Set up TurtleBox GX")
+                ThemedBuilder(this).setTitle("Set up TurtleBox GX")
                     .setMessage("Choose or create a folder (for example “Turtlebox GX”). The app puts its layout files and an empty templates folder there; you can add your own templates later.")
                     .setPositiveButton("Set up") { _, _ -> setupFolder() }
                     .setNegativeButton("Later", null).show()
@@ -438,18 +438,25 @@ class MainActivity : Activity() {
                 setOnClickListener { act() }
             }
             b.addView(HotIcon(this@MainActivity, kind), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
-            row.addView(b, LinearLayout.LayoutParams(dp(38), dp(34)).apply { leftMargin = dp(8) })
+            row.addView(b, LinearLayout.LayoutParams(dp(44), dp(36)).apply { leftMargin = dp(10) })
         }
         action("clear", "Clear") { clearCard() }
-        action("save", "Save") { saveSet() }
+        action("save", "Save") { saveMenu() }
         action("eye", "Preview") { showPreview() }
-        action("image", "Image") { saveImage() }
         addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    /** The Save button: one menu for the two ways to save the card. */
+    private fun saveMenu() {
+        ThemedBuilder(this).setTitle("Save")
+            .setItems(arrayOf("Save as set", "Save as image")) { _, i -> if (i == 0) saveSet() else saveImage() }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun clearCard() {
         if (layout == null) return toast("Choose a layout folder first.")
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Clear card?")
+        ThemedBuilder(this).setTitle("Clear card?")
             .setMessage("This resets the card to the layout's defaults. Anything not saved to a set is lost.")
             .setPositiveButton("Clear") { _, _ -> renderCard(null, true) }
             .setNegativeButton("Cancel", null).show()
@@ -687,7 +694,7 @@ class MainActivity : Activity() {
     private fun showTemplateDialog() {
         val names = listOf("") + templates.keys
         val labels = (listOf(layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Template")
+        ThemedBuilder(this).setTitle("Template")
             .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
             .setNegativeButton("Cancel", null).show()
     }
@@ -845,7 +852,7 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
             setPadding(dp(20), dp(16), dp(20), dp(16))
         }
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Details").setView(ScrollView(this).apply { addView(tv) })
+        ThemedBuilder(this).setTitle("Details").setView(ScrollView(this).apply { addView(tv) })
             .setPositiveButton("Close", null).show()
     }
 
@@ -1348,7 +1355,7 @@ class MainActivity : Activity() {
 
     /** Copies the built-in files into [tree] and makes an empty `templates` folder. Existing files are kept unless [overwrite]. */
     private fun copyBundled(tree: Uri, names: List<String>, overwrite: Boolean) {
-        val progress = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Setting up")
+        val progress = ThemedBuilder(this).setTitle("Setting up")
             .setMessage("Copying the layout files. This can take a few seconds.").setCancelable(false).show()
         thread {
             val notes = ArrayList<String>()
@@ -1394,7 +1401,7 @@ class MainActivity : Activity() {
         if (names.isEmpty() || uri == null) return
         val canWrite = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isWritePermission }
         if (!canWrite) {
-            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Allow writing")
+            ThemedBuilder(this).setTitle("Allow writing")
                 .setMessage("This folder was opened for reading only. Choose the same folder again to let the app restore files in it.")
                 .setPositiveButton("Choose folder") { _, _ -> setupFolder() }.setNegativeButton("Cancel", null).show()
             return
@@ -1402,9 +1409,9 @@ class MainActivity : Activity() {
         val xml = names.filter { it.endsWith(".xml") }
         val zip = names.filter { it.endsWith(".zip") }
         val options = listOf("Layout XML only" to xml, "Pictures and fonts (zip) only" to zip, "Both" to names).filter { it.second.isNotEmpty() }
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Restore built-in files")
+        ThemedBuilder(this).setTitle("Restore built-in files")
             .setItems(options.map { it.first }.toTypedArray()) { _, i ->
-                AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Replace your copy?")
+                ThemedBuilder(this).setTitle("Replace your copy?")
                     .setMessage("This overwrites ${options[i].second.joinToString(", ")} in your folder with the built-in version. Any edits you made to it are lost.")
                     .setPositiveButton("Replace") { _, _ -> copyBundled(uri, options[i].second, true) }
                     .setNegativeButton("Cancel", null).show()
@@ -1436,7 +1443,7 @@ class MainActivity : Activity() {
         if (state == null) return toast("No card to save yet.")
         val cur = curSet
         if (cur == null) return saveSetAsNew()
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Save card set")
+        ThemedBuilder(this).setTitle("Save card set")
             .setMessage("Replace “${curSetName.removeSuffix(".msoe-set")}”, or keep it and save this card as a new set?")
             .setPositiveButton("Overwrite") { _, _ -> overwriteSet(cur) }
             .setNeutralButton("Save as new") { _, _ -> saveSetAsNew() }

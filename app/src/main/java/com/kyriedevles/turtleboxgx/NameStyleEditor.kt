@@ -639,7 +639,7 @@ class NameStyleEditor(
                         background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(dp(2), Color.parseColor("#ff1493")); cornerRadius = dp(11).toFloat() }
                         setOnClickListener {
                             val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
-                            AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                            ThemedBuilder(activity)
                                 .setTitle("Save preset")
                                 .setView(input)
                                 .setPositiveButton("Save") { _, _ ->
@@ -699,7 +699,7 @@ class NameStyleEditor(
             }
             fun rename(old: String) {
                 val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); setText(old); setSelection(old.length) }
-                AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert).setTitle("Rename preset").setView(input)
+                ThemedBuilder(activity).setTitle("Rename preset").setView(input)
                     .setPositiveButton("Rename") { _, _ ->
                         val n = input.text.toString().trim().replace('\t', ' ').replace('\n', ' ')
                         val m = userPresets()
@@ -716,7 +716,7 @@ class NameStyleEditor(
                     }.setNegativeButton("Cancel", null).show()
             }
             fun delete(n: String) {
-                AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert).setTitle("Delete “$n”?")
+                ThemedBuilder(activity).setTitle("Delete “$n”?")
                     .setPositiveButton("Delete") { _, _ ->
                         val m = userPresets(); m.remove(n); saveUserPresets(m)
                         changed(); fill()
