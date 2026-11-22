@@ -838,7 +838,7 @@ class NameStyleEditor(
         rebuild = {
             body.removeAllViews()
             chipButtons.clear()
-            tabScroll.visibility = if (st.mode == "custom") View.VISIBLE else View.GONE
+            tabScroll.visibility = View.GONE
             saveBtn.visibility = if (st.mode == "custom") View.VISIBLE else View.GONE
             paintMode()
             refreshPreview()
@@ -864,11 +864,21 @@ class NameStyleEditor(
                 "custom" -> {
                     tabRow.removeAllViews()
                     for (s in listOf("Color", "Shadow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
-                        val tv = chip(s + if (used(s)) " ●" else "", section == s) { section = s; rebuild() }
+                        val open = section == s
+                        val tv = TextView(activity).apply {
+                            text = s + if (used(s)) " ●" else ""
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                            setTextColor(if (open) Theme.onPink else Theme.text)
+                            setPadding(dp(16), 0, dp(16), 0)
+                            gravity = Gravity.CENTER_VERTICAL
+                            background = if (open) Theme.on(cut = dp(12).toFloat(), shadow = dp(5).toFloat()) else Theme.card(dp(12).toFloat(), dp(4).toFloat(), dp(3).toFloat(), used(s))
+                            setOnClickListener { section = if (open) "" else s; rebuild() }
+                        }
                         chipButtons[s] = tv
-                        tabRow.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(6) })
+                        body.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
+                        if (open) sectionBody()
                     }
-                    sectionBody()
                     val mine = userPresets()
                     if (mine.isNotEmpty()) {
                         body.addView(label("Your presets (tap to load)"))
