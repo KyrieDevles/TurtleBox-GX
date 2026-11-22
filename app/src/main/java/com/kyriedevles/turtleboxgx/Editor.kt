@@ -95,8 +95,8 @@ class Editor(
     private val pickImage: (String) -> Unit,
     private val namePreview: ((List<Map<String, String>?>) -> List<android.graphics.Bitmap>)? = null,
 ) {
-    private val pink = Color.parseColor("#ff6ec7")
-    private val hot = Color.parseColor("#ff1493")
+    private val pink = Theme.pink
+    private val hot = Theme.hot
 
     private fun dp(v: Int): Int = (v * activity.resources.displayMetrics.density).toInt()
 
@@ -183,21 +183,21 @@ class Editor(
                     fun paint() {
                         for ((tv, v) in chips) {
                             val on = v == chosen
-                            tv.setTextColor(if (on) pink else Color.parseColor("#e7c3d6"))
-                            tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                            tv.background = GradientDrawable().apply {
-                                setColor(Color.BLACK)
-                                setStroke(dp(2), if (on) hot else Color.parseColor("#3a1a2c"))
-                                cornerRadius = dp(18).toFloat()
-                            }
+                            tv.setTextColor(if (on) Theme.onPink else Theme.muted)
+                            tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                            val shape = if (on) Theme.on(slant = dp(9).toFloat()) else Theme.off(slant = dp(9).toFloat())
+                            tv.background = shape
+                            Theme.lift(tv, shape, dp(3).toFloat())
                         }
                     }
                     for ((name, v) in f.items) {
                         val tv = TextView(activity).apply {
                             text = name
+                            isAllCaps = true
+                            letterSpacing = 0.08f
                             gravity = android.view.Gravity.CENTER
-                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                            setPadding(dp(14), 0, dp(14), 0)
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                            setPadding(dp(20), 0, dp(20), 0)
                             minimumHeight = dp(36)
                             setOnClickListener {
                                 chosen = v
@@ -249,12 +249,8 @@ class Editor(
                         setTextColor(Color.WHITE)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                         setHintTextColor(Color.GRAY)
-                        background = GradientDrawable().apply {
-                            setColor(Color.BLACK)
-                            setStroke(dp(1), Color.parseColor("#5a2a43"))
-                            cornerRadius = dp(10).toFloat()
-                        }
-                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        background = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f))
+                        setPadding(dp(14), dp(12), dp(14), dp(12))
                         if (multi) {
                             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
                             minLines = 6
@@ -348,13 +344,11 @@ class Editor(
         fun paint() {
             for ((tv, v) in views) {
                 val on = isOn(v)
-                tv.setTextColor(if (on) pink else Color.parseColor("#e7c3d6"))
+                tv.setTextColor(if (on) Theme.onPink else Theme.muted)
                 tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                tv.background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#12081a"))
-                    setStroke(dp(2), if (on) hot else Color.parseColor("#4a1f38"))
-                    cornerRadius = dp(14).toFloat()
-                }
+                val shape = if (on) Theme.on(cut = dp(14).toFloat()) else Theme.off(cut = dp(14).toFloat())
+                tv.background = shape
+                Theme.lift(tv, shape, dp(3).toFloat())
             }
         }
         for ((label, v, oo) in cells) {
@@ -679,40 +673,53 @@ class Editor(
 
     private fun label(text: String) = TextView(activity).apply {
         this.text = text
-        setTextColor(Color.parseColor("#e7c3d6"))
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        setPadding(0, dp(6), 0, dp(4))
+        setTextColor(Theme.label)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        setPadding(0, dp(8), 0, dp(6))
     }
 
+    /** A field-style button: dark box, gradient edge, cut corner. Text after "·" or "●" is dimmed or accented. */
     private fun hotButton(text: String) = Button(activity).apply {
-        this.text = text
+        val sep = text.indexOf("   ·   ")
+        val dot = text.indexOf("   ●  ")
+        val spanned = android.text.SpannableString(text)
+        if (sep >= 0) {
+            spanned.setSpan(android.text.style.ForegroundColorSpan(Theme.muted), sep, text.length, 0)
+            spanned.setSpan(android.text.style.StyleSpan(Typeface.NORMAL), sep, text.length, 0)
+        } else if (dot >= 0) {
+            spanned.setSpan(android.text.style.ForegroundColorSpan(Theme.pink), dot, text.length, 0)
+        }
+        this.text = spanned
         setAllCaps(false)
         setTextColor(pink)
         typeface = Typeface.DEFAULT_BOLD
         gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL
-        background = GradientDrawable().apply {
-            setColor(Color.BLACK)
-            setStroke(dp(2), hot)
-            cornerRadius = dp(10).toFloat()
-        }
+        stateListAnimator = null
+        minHeight = dp(44)
+        minimumHeight = dp(44)
+        val shape = Theme.field(dp(12).toFloat(), dp(1).toFloat().coerceAtLeast(1f))
+        background = shape
+        Theme.lift(this, shape, dp(3).toFloat())
         setPadding(dp(14), 0, dp(14), 0)
     }
 
-    /** Black dialog with a hot-pink gradient outline, like the TurtleBox menus. */
+    /** The dialog frame: a charcoal plane with the metallic strip on top and a cut corner. */
     private fun style(dlg: AlertDialog) {
-        val outer = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.parseColor("#ff1493"), Color.parseColor("#ff00aa"), Color.parseColor("#ff6ec7")),
-        ).apply { cornerRadius = dp(22).toFloat() }
-        val inner = GradientDrawable().apply {
-            setColor(Color.BLACK)
-            cornerRadius = dp(20).toFloat()
+        dlg.window?.setBackgroundDrawable(Theme.dialog(dp(22).toFloat(), dp(4).toFloat()))
+        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.apply {
+            setTextColor(Theme.hot)
+            isAllCaps = true
+            letterSpacing = 0.12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         }
-        val layers = LayerDrawable(arrayOf(outer, InsetDrawable(inner, dp(2))))
-        dlg.window?.setBackgroundDrawable(layers)
-        dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setTextColor(Color.parseColor("#ff4da6"))
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(pink)
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(Color.parseColor("#e7c3d6"))
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+            setTextColor(Theme.pink)
+            letterSpacing = 0.1f
+        }
+        dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+            setTextColor(Theme.text)
+            letterSpacing = 0.1f
+        }
     }
 }
 

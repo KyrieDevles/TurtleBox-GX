@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      full:
+        description: "Also bundle the layout XML and zip (about 77 MB) and publish it as the 'latest' release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -23,9 +28,11 @@ jobs:
         with:
           gradle-version: 8.7
 
-      # The layout XML and zip live on the repo's "Assets" release (too big for the repo). Whatever is attached
-      # there is packed into the APK; if the release is missing the app simply has no built-in layout.
+      # Every push builds the lean APK (no layout XML or zip, small download) and publishes it as "newlook".
+      # Run the workflow by hand with "full" ticked to build the 77 MB package with the layout files bundled.
+      # The layout XML and zip live on the repo's "Assets" release (too big for the repo).
       - name: Fetch the bundled layout files
+        if: ${{ inputs.full }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -42,8 +49,21 @@ jobs:
           name: TurtleBox-GX-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      # Publishes the APK on the repo's Releases page, which is the easiest place to download it on a phone.
-      - name: Publish to the "latest" release
+      - name: Publish the lean build to the "newlook" release
+        if: ${{ !inputs.full }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk TurtleBox-GX-newlook.apk
+          gh release delete newlook --cleanup-tag --yes || true
+          gh release create newlook TurtleBox-GX-newlook.apk \
+            --title "New look (lean build)" \
+            --notes "Built from commit ${GITHUB_SHA::7}. No layout XML or zip bundled, so it is small. Installs over the existing app and keeps your folder and settings." \
+            --prerelease
+
+      # The full package, only when asked for.
+      - name: Publish the full package to the "latest" release
+        if: ${{ inputs.full }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -51,5 +71,5 @@ jobs:
           gh release delete latest --cleanup-tag --yes || true
           gh release create latest TurtleBox-GX.apk \
             --title "Latest build" \
-            --notes "Built from commit ${GITHUB_SHA::7}. Download TurtleBox-GX.apk and install it." \
+            --notes "Full package built from commit ${GITHUB_SHA::7}, with the layout XML and zip bundled. Download TurtleBox-GX.apk and install it." \
             --prerelease
