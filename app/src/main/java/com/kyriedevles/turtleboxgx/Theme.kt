@@ -9,6 +9,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.Region
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.Build
@@ -34,6 +35,16 @@ object Theme {
     val muted = Color.parseColor("#a89aa3")
     val onPink = Color.parseColor("#2b0a1a")
     val nav = Color.parseColor("#121214")
+
+    /** True while the wallpaper is on: planes turn partly see-through so it shows behind them. */
+    var glass = false
+    private const val GLASS = 0.80f
+
+    fun glassed(c: Int, opaque: Boolean): Int =
+        if (glass && !opaque && (c == plane || c == plane2 || c == plane3)) Color.argb((255 * GLASS).toInt(), Color.red(c), Color.green(c), Color.blue(c)) else c
+
+    /** The nav bar colour, see-through when the wallpaper is on. */
+    fun navColor(): Int = if (glass) Color.argb(220, 18, 18, 20) else nav
     val glow = Color.parseColor("#ff4f9d")
 
     /** Light pink to crimson, the metallic fill of anything switched on. */
@@ -49,7 +60,11 @@ object Theme {
     fun off(cut: Float = 0f, slant: Float = 0f, shadow: Float = 0f) = CutDrawable(intArrayOf(plane3), cutTR = cut, slant = slant, shadow = shadow)
 
     /** The dialog plane: dark with the metallic strip on top and the top-right corner cut. */
-    fun dialog(cut: Float, stripPx: Float) = CutDrawable(intArrayOf(plane), cutTR = cut, strip = stripPx)
+    fun dialog(cut: Float, stripPx: Float) = CutDrawable(intArrayOf(plane), cutTR = cut, strip = stripPx, opaque = true)
+
+    /** The top bar: the dock turned upside down, with the metallic strip along its bottom edge and a cut bottom-right corner. */
+    fun header(cut: Float, stripPx: Float, shadow: Float) =
+        CutDrawable(intArrayOf(plane), cutBR = cut, strip = stripPx, stripBottom = true, shadow = shadow)
 
     /** A slanted tab with the same pink edge as the fields. */
     fun chip(slant: Float, edgePx: Float, shadow: Float) = CutDrawable(intArrayOf(plane2), slant = slant, border = edgePx, shadow = shadow)
@@ -100,6 +115,9 @@ class CutDrawable(
     private val leftBar: Float = 0f,
     private val shadowUp: Boolean = false,
     private val steadyEdge: Boolean = false,
+    private val opaque: Boolean = false,
+    private val cutBR: Float = 0f,
+    private val stripBottom: Boolean = false,
 ) : Drawable() {
     private var shadowBmp: Bitmap? = null
     private var shadowPad = 0
@@ -143,7 +161,9 @@ class CutDrawable(
                 val tr = if (cutTR > 0f) maxOf(cutTR - k, 0f) else 0f
                 if (tl > 0f) { moveTo(l, t + tl); lineTo(l + tl, t) } else moveTo(l, t)
                 if (tr > 0f) { lineTo(r - tr, t); lineTo(r, t + tr) } else lineTo(r, t)
-                lineTo(r, b); lineTo(l, b)
+                val br = if (cutBR > 0f) maxOf(cutBR - k, 0f) else 0f
+                if (br > 0f) { lineTo(r, b - br); lineTo(r - br, b) } else lineTo(r, b)
+                lineTo(l, b)
             }
             close()
         }
@@ -157,7 +177,10 @@ class CutDrawable(
         c.translate(bounds.left.toFloat(), bounds.top.toFloat())
         if (shadow > 0f) {
             val sb = shadowBmp ?: makeShadow(w.toInt(), h.toInt()).also { shadowBmp = it }
+            c.save()
+            c.clipPath(pathFor(w, h), Region.Op.DIFFERENCE)
             c.drawBitmap(sb, -shadowPad.toFloat(), -shadowPad.toFloat(), null)
+            c.restore()
         }
         if (border > 0f) {
             edge.shader = if (steadyEdge) null else LinearGradient(0f, 0f, w, h, intArrayOf(
@@ -168,7 +191,7 @@ class CutDrawable(
         }
         val body = pathFor(w, h, border)
         fill.shader = if (colors.size > 1) LinearGradient(0f, 0f, w, h, colors, null, Shader.TileMode.CLAMP) else null
-        if (colors.size == 1) fill.color = colors[0]
+        if (colors.size == 1) fill.color = Theme.glassed(colors[0], opaque)
         c.drawPath(body, fill)
         if (strip > 0f) {
             bar.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(
@@ -176,7 +199,7 @@ class CutDrawable(
             ), floatArrayOf(0f, 0.3f, 0.6f, 1f), Shader.TileMode.CLAMP)
             c.save()
             c.clipPath(body)
-            c.drawRect(0f, 0f, w, strip, bar)
+            if (stripBottom) c.drawRect(0f, h - strip, w, h, bar) else c.drawRect(0f, 0f, w, strip, bar)
             c.restore()
         }
         if (leftBar > 0f) {
@@ -220,4 +243,28 @@ class BandsView(context: Context) : View(context) {
             c.restore()
         }
     }
+}
+
+/** Draws a picture scaled to cover the whole area, cropping the overflow, like a wallpaper. */
+class CoverDrawable(private val bmp: android.graphics.Bitmap) : Drawable() {
+    private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    private val src = android.graphics.Rect()
+
+    override fun draw(c: Canvas) {
+        val w = bounds.width().toFloat()
+        val h = bounds.height().toFloat()
+        if (w <= 0f || h <= 0f) return
+        val k = maxOf(w / bmp.width, h / bmp.height)
+        val sw = (w / k).toInt().coerceAtMost(bmp.width)
+        val sh = (h / k).toInt().coerceAtMost(bmp.height)
+        val sx = (bmp.width - sw) / 2
+        val sy = (bmp.height - sh) / 2
+        src.set(sx, sy, sx + sw, sy + sh)
+        c.drawBitmap(bmp, src, bounds, paint)
+    }
+
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(f: ColorFilter?) {}
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getOpacity(): Int = PixelFormat.OPAQUE
 }

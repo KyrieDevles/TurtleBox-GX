@@ -252,6 +252,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Theme.glass = prefs.getBoolean("bg_image", true)
         val crashFile = File(filesDir, "crash.txt")
         val prevHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
@@ -269,7 +270,11 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Theme.ground)
+            if (Theme.glass) {
+                background = CoverDrawable(android.graphics.BitmapFactory.decodeResource(resources, R.drawable.bg_wallpaper))
+            } else {
+                setBackgroundColor(Theme.ground)
+            }
         }
         root.addView(buildTopBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
 
@@ -405,11 +410,11 @@ class MainActivity : Activity() {
     // ---- shell ----
 
     private fun buildTopBar(): View = FrameLayout(this).apply {
-        addView(BandsView(this@MainActivity), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        background = Theme.header(dp(16).toFloat(), dp(4).toFloat(), dp(10).toFloat())
         val row = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(4), dp(16), 0)
+            setPadding(dp(18), 0, dp(22), dp(4))
         }
         val title = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
         val name = label("TurtleBox", 18f, Theme.pink, bold = true).apply {
@@ -427,13 +432,13 @@ class MainActivity : Activity() {
         row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         fun action(kind: String, name: String, act: () -> Unit) {
             val b = FrameLayout(this@MainActivity).apply {
-                background = CutDrawable(intArrayOf(Theme.plane), cutTR = dp(10).toFloat(), shadow = dp(5).toFloat())
+                background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
                 isClickable = true
                 contentDescription = name
                 setOnClickListener { act() }
             }
-            b.addView(HotIcon(this@MainActivity, kind), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
-            row.addView(b, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(8) })
+            b.addView(HotIcon(this@MainActivity, kind), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+            row.addView(b, LinearLayout.LayoutParams(dp(38), dp(34)).apply { leftMargin = dp(8) })
         }
         action("clear", "Clear") { clearCard() }
         action("save", "Save") { saveSet() }
@@ -451,7 +456,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildBottomBar(): View {
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(Theme.nav) }
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(Theme.navColor()) }
         val icons = ArrayList<HotIcon>()
         val labels = ArrayList<TextView>()
         val marks = ArrayList<View>()
@@ -500,7 +505,7 @@ class MainActivity : Activity() {
     private fun buildCardPage(): View {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Theme.ground)
+            setBackgroundColor(if (Theme.glass) Color.TRANSPARENT else Theme.ground)
         }
         cardView = CardView(this).apply {
             hint = "Open the Layouts tab and choose\nthe folder with your layout files."
@@ -1099,6 +1104,19 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
             add(tcard, 12)
         }
+
+                val bgCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        bgCard.addView(label("Background", 12f, Theme.pink))
+        bgCard.addView(label(if (Theme.glass) "Wallpaper" else "Plain", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+        bgCard.addView(pill(if (Theme.glass) "Turn off" else "Turn on", false) {
+            prefs.edit().putBoolean("bg_image", !Theme.glass).apply()
+            recreate()
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
+        add(bgCard, 12)
 
         add(label("Files in use", 12f, Theme.pink), 18)
         if (xmlName.isNotBlank() || xmlError != null) {
