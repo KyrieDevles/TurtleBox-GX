@@ -12,6 +12,7 @@ import android.graphics.PixelFormat
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.content.Context
 import android.view.View
 import android.view.ViewOutlineProvider
 
@@ -32,6 +33,7 @@ object Theme {
     val label = Color.parseColor("#c9bcc4")
     val muted = Color.parseColor("#a89aa3")
     val onPink = Color.parseColor("#2b0a1a")
+    val nav = Color.parseColor("#121214")
     val glow = Color.parseColor("#ff4f9d")
 
     /** Light pink to crimson, the metallic fill of anything switched on. */
@@ -48,6 +50,26 @@ object Theme {
 
     /** The dialog plane: dark with the metallic strip on top and the top-right corner cut. */
     fun dialog(cut: Float, stripPx: Float) = CutDrawable(intArrayOf(plane), cutTR = cut, strip = stripPx)
+
+    /** A card plane for the Layouts and Sets pages: cut corner, bar down the left edge. `lit` marks the chosen one. */
+    fun card(cut: Float, shadow: Float, bar: Float, lit: Boolean = false) =
+        CutDrawable(intArrayOf(if (lit) plane2 else plane), cutTR = cut, leftBar = bar, shadow = shadow, border = if (lit) 2f else 0f)
+
+    /** The edit dock: plane with the strip on top and the top-left corner cut; its shadow falls upward. */
+    fun dock(cut: Float, stripPx: Float, shadow: Float) =
+        CutDrawable(intArrayOf(plane), cutTL = cut, strip = stripPx, shadow = shadow, shadowUp = true)
+
+    /** A dock tile. Tiles added by a template get a steadier, brighter edge. */
+    fun tile(cut: Float, edgePx: Float, shadow: Float, steady: Boolean) =
+        CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow, steadyEdge = steady)
+
+    /** Turns off child clipping through a view tree so shadows can spill past a view's edge. Scroll views keep clipping. */
+    fun noClip(v: View) {
+        if (v is android.view.ViewGroup) {
+            if (v !is android.widget.ScrollView && v !is android.widget.HorizontalScrollView) v.clipChildren = false
+            for (i in 0 until v.childCount) noClip(v.getChildAt(i))
+        }
+    }
 
     /** Raises a view so it casts a shadow with a pink tint. Shapes with cut corners need Android 11 or newer; older phones just skip it. */
     fun lift(v: View, d: CutDrawable, elevationPx: Float) {
@@ -72,6 +94,9 @@ class CutDrawable(
     private val border: Float = 0f,
     private val strip: Float = 0f,
     private val shadow: Float = 0f,
+    private val leftBar: Float = 0f,
+    private val shadowUp: Boolean = false,
+    private val steadyEdge: Boolean = false,
 ) : Drawable() {
     private var shadowBmp: Bitmap? = null
     private var shadowPad = 0
@@ -93,7 +118,7 @@ class CutDrawable(
         c.save(); c.translate(pad.toFloat(), pad.toFloat()); c.drawPath(path, p); c.restore()
         p.color = Color.argb(240, 0, 0, 0)
         p.maskFilter = BlurMaskFilter(shadow, BlurMaskFilter.Blur.NORMAL)
-        c.save(); c.translate(pad + shadow * 0.2f, pad + shadow * 0.9f); c.drawPath(path, p); c.restore()
+        c.save(); c.translate(pad + shadow * 0.2f, pad + shadow * (if (shadowUp) -0.9f else 0.9f)); c.drawPath(path, p); c.restore()
         return bmp
     }
 
@@ -132,9 +157,10 @@ class CutDrawable(
             c.drawBitmap(sb, -shadowPad.toFloat(), -shadowPad.toFloat(), null)
         }
         if (border > 0f) {
-            edge.shader = LinearGradient(0f, 0f, w, h, intArrayOf(
+            edge.shader = if (steadyEdge) null else LinearGradient(0f, 0f, w, h, intArrayOf(
                 Color.argb(235, 255, 107, 179), Color.argb(46, 255, 107, 179), Color.argb(110, 255, 107, 179),
             ), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+            if (steadyEdge) edge.color = Color.argb(200, 255, 79, 157)
             c.drawPath(pathFor(w, h), edge)
         }
         val body = pathFor(w, h, border)
@@ -150,6 +176,13 @@ class CutDrawable(
             c.drawRect(0f, 0f, w, strip, bar)
             c.restore()
         }
+        if (leftBar > 0f) {
+            bar.shader = LinearGradient(0f, 0f, 0f, h, Color.parseColor("#ff5fa8"), Theme.deep, Shader.TileMode.CLAMP)
+            c.save()
+            c.clipPath(body)
+            c.drawRect(0f, 0f, leftBar, h, bar)
+            c.restore()
+        }
         c.restore()
     }
 
@@ -157,4 +190,30 @@ class CutDrawable(
     override fun setColorFilter(f: ColorFilter?) {}
     @Suppress("OVERRIDE_DEPRECATION")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+/** The diagonal metallic bands in the top-right corner, drawn behind the top bar. */
+class BandsView(context: Context) : View(context) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sh = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(150, 0, 0, 0) }
+
+    override fun onDraw(c: Canvas) {
+        val d = resources.displayMetrics.density
+        // x from the right edge (dp, on a 390 dp wide screen), centre y, thickness
+        val bands = arrayOf(floatArrayOf(190f, -5f, 26f), floatArrayOf(128f, -6f, 16f), floatArrayOf(64f, -4f, 8f))
+        for (b in bands) {
+            val x = width - b[0] * d
+            val y = b[1] * d
+            val th = b[2] * d
+            c.save()
+            c.translate(x, y)
+            c.rotate(28f)
+            c.drawRect(0f, -th / 2f + 5f * d, 700f * d, th / 2f + 7f * d, sh)
+            p.shader = LinearGradient(0f, -th / 2f, 0f, th / 2f, intArrayOf(
+                Theme.deep, Color.parseColor("#ff5fa8"), Theme.crimson, Theme.deep,
+            ), floatArrayOf(0f, 0.45f, 0.7f, 1f), Shader.TileMode.CLAMP)
+            c.drawRect(0f, -th / 2f, 700f * d, th / 2f, p)
+            c.restore()
+        }
+    }
 }

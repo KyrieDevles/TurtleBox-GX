@@ -245,7 +245,7 @@ class CardView(context: Context) : View(context) {
     }
 
     override fun onDraw(c: Canvas) {
-        bgPaint.shader = RadialGradient(width / 2f, height * 0.4f, maxOf(width, height) * 0.7f, Color.parseColor("#2a0a1c"), Color.BLACK, Shader.TileMode.CLAMP)
+        bgPaint.shader = RadialGradient(width / 2f, height * 0.4f, maxOf(width, height) * 0.7f, Color.parseColor("#26141d"), Theme.ground, Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
         val b = bitmap
         if (b == null) {

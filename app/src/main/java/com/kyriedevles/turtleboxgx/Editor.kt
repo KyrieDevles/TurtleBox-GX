@@ -269,7 +269,7 @@ class Editor(
                     }
                     val gearName = f.gear
                     if (gearName != null && find(gearName) != null) {
-                        val line = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                        val line = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; clipChildren = false }
                         line.addView(et, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                         val g = gearButton()
                         g.setOnClickListener {
@@ -289,7 +289,7 @@ class Editor(
 
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(d.desc?.takeIf { it.isNotBlank() } ?: d.name)
-            .setView(ScrollView(activity).apply { addView(box) })
+            .setView(ScrollView(activity).apply { addView(box); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
             .setPositiveButton("Done") { _, _ ->
                 commitAll(commits)
                 onChanged()
@@ -399,18 +399,13 @@ class Editor(
 
     /** Round gradient hot-pink button with a white gear. */
     private fun gearButton(): View = View(activity).apply {
-        background = LayerDrawable(
-            arrayOf(
-                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(hot, Color.parseColor("#ff00aa"), pink)).apply { shape = GradientDrawable.OVAL },
-                GearDrawable(),
-            ),
-        )
+        background = LayerDrawable(arrayOf(Theme.on(cut = dp(12).toFloat(), shadow = dp(6).toFloat()), GearDrawable()))
         isClickable = true
         contentDescription = "Settings"
     }
 
     private class GearDrawable : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Theme.onPink }
         private val path = Path()
         override fun onBoundsChange(b: android.graphics.Rect) {
             path.reset()
@@ -573,7 +568,7 @@ class Editor(
         var finished = false
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(title)
-            .setView(ScrollView(activity).apply { addView(box) })
+            .setView(ScrollView(activity).apply { addView(box); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
             .setPositiveButton("Done") { _, _ -> finished = true; onChanged() }
             .setNegativeButton("Cancel") { _, _ ->
                 finished = true
@@ -685,7 +680,7 @@ class Editor(
         val spanned = android.text.SpannableString(text)
         if (sep >= 0) {
             spanned.setSpan(android.text.style.ForegroundColorSpan(Theme.muted), sep, text.length, 0)
-            spanned.setSpan(android.text.style.StyleSpan(Typeface.NORMAL), sep, text.length, 0)
+            spanned.setSpan(android.text.style.TypefaceSpan("sans-serif"), sep, text.length, 0)
         } else if (dot >= 0) {
             spanned.setSpan(android.text.style.ForegroundColorSpan(Theme.pink), dot, text.length, 0)
         }
@@ -710,14 +705,21 @@ class Editor(
             letterSpacing = 0.12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         }
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
-            setTextColor(Theme.pink)
-            letterSpacing = 0.1f
+        fun cutButton(b: Button?, on: Boolean) {
+            b ?: return
+            b.stateListAnimator = null
+            b.letterSpacing = 0.1f
+            b.setTextColor(if (on) Theme.onPink else Theme.text)
+            b.background = if (on) Theme.on(cut = dp(10).toFloat(), shadow = dp(6).toFloat()) else Theme.off(cut = dp(10).toFloat(), shadow = dp(6).toFloat())
+            b.minHeight = dp(40)
+            b.minimumHeight = dp(40)
+            b.setPadding(dp(22), 0, dp(22), 0)
+            (b.layoutParams as? ViewGroup.MarginLayoutParams)?.let { it.leftMargin = dp(8); it.rightMargin = dp(8) }
+            var p = b.parent
+            repeat(4) { (p as? ViewGroup)?.clipChildren = false; p = p?.parent }
         }
-        dlg.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
-            setTextColor(Theme.text)
-            letterSpacing = 0.1f
-        }
+        cutButton(dlg.getButton(AlertDialog.BUTTON_POSITIVE), true)
+        cutButton(dlg.getButton(AlertDialog.BUTTON_NEGATIVE), false)
     }
 }
 

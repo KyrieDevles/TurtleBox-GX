@@ -7,6 +7,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -67,6 +69,7 @@ class MainActivity : Activity() {
     private lateinit var pages: List<View>
     private lateinit var tabIcons: List<HotIcon>
     private lateinit var tabLabels: List<TextView>
+    private var tabMarks: List<View> = emptyList()
     private var tab = 0
 
     private var layout: Layout? = null
@@ -231,16 +234,18 @@ class MainActivity : Activity() {
 
     private fun pill(text: String, filled: Boolean, onClick: () -> Unit) = TextView(this).apply {
         this.text = text
+        isAllCaps = true
+        letterSpacing = 0.1f
         gravity = Gravity.CENTER
-        setPadding(dp(16), 0, dp(16), 0)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        setPadding(dp(18), 0, dp(18), 0)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         typeface = Typeface.DEFAULT_BOLD
         if (filled) {
-            setTextColor(Color.BLACK)
-            background = Hot.gradient(dp(20).toFloat())
+            setTextColor(Theme.onPink)
+            background = Theme.on(cut = dp(10).toFloat(), shadow = dp(6).toFloat())
         } else {
-            setTextColor(Hot.pinkLight)
-            background = Hot.outline(dp(20).toFloat(), dp(2), Color.parseColor("#5a2a43"))
+            setTextColor(Theme.pink)
+            background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(6).toFloat())
         }
         setOnClickListener { onClick() }
     }
@@ -259,15 +264,14 @@ class MainActivity : Activity() {
         curSet = prefs.getString("curset", null)?.let { Uri.parse(it) }
         selectedTemplate = prefs.getString("template", "") ?: ""
         curSetName = prefs.getString("cursetname", "") ?: ""
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
+        window.statusBarColor = Theme.ground
+        window.navigationBarColor = Theme.nav
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Theme.ground)
         }
-        root.addView(buildTopBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)))
-        root.addView(View(this).apply { background = Hot.gradient(0f, horizontal = true) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
+        root.addView(buildTopBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
 
         val content = FrameLayout(this)
         val cardPage = buildCardPage()
@@ -287,8 +291,8 @@ class MainActivity : Activity() {
         pages = listOf(cardPage, layoutsPage, setsPage)
         root.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        root.addView(View(this).apply { setBackgroundColor(Color.parseColor("#2a1220")) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
         root.addView(buildBottomBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)))
+        Theme.noClip(root)
         setContentView(root)
 
         showTab(savedInstanceState?.getInt("tab") ?: 0)
@@ -400,28 +404,42 @@ class MainActivity : Activity() {
 
     // ---- shell ----
 
-    private fun buildTopBar(): View = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(20), 0, dp(4), 0)
+    private fun buildTopBar(): View = FrameLayout(this).apply {
+        addView(BandsView(this@MainActivity), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        val row = LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(4), dp(16), 0)
+        }
         val title = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        title.addView(label("TurtleBox", 20f, Hot.pink, bold = true).apply { includeFontPadding = false })
-        title.addView(label("v${versionName()}", 11f, Hot.dim).apply { includeFontPadding = false; setPadding(0, dp(2), 0, 0) })
-        addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val name = label("TurtleBox", 18f, Theme.pink, bold = true).apply {
+            includeFontPadding = false
+            isAllCaps = true
+            letterSpacing = 0.16f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        }
+        name.post {
+            name.paint.shader = LinearGradient(0f, 0f, name.width.toFloat().coerceAtLeast(1f), 0f, Color.parseColor("#ff9bd0"), Theme.hot, Shader.TileMode.CLAMP)
+            name.invalidate()
+        }
+        title.addView(name)
+        title.addView(label("v${versionName()}", 11f, Theme.muted).apply { includeFontPadding = false; setPadding(0, dp(3), 0, 0) })
+        row.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         fun action(kind: String, name: String, act: () -> Unit) {
-            val col = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
+            val b = FrameLayout(this@MainActivity).apply {
+                background = CutDrawable(intArrayOf(Theme.plane), cutTR = dp(10).toFloat(), shadow = dp(6).toFloat())
+                isClickable = true
+                contentDescription = name
                 setOnClickListener { act() }
             }
-            col.addView(HotIcon(this@MainActivity, kind).apply { contentDescription = name }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(2) })
-            col.addView(label(name, 12f, Hot.inactive).apply { gravity = Gravity.CENTER; includeFontPadding = false }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(col, LinearLayout.LayoutParams(dp(60), ViewGroup.LayoutParams.MATCH_PARENT))
+            b.addView(HotIcon(this@MainActivity, kind), FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
+            row.addView(b, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(8) })
         }
         action("clear", "Clear") { clearCard() }
         action("save", "Save") { saveSet() }
         action("eye", "Preview") { showPreview() }
         action("image", "Image") { saveImage() }
+        addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
     private fun clearCard() {
@@ -433,25 +451,32 @@ class MainActivity : Activity() {
     }
 
     private fun buildBottomBar(): View {
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(Theme.nav) }
         val icons = ArrayList<HotIcon>()
         val labels = ArrayList<TextView>()
+        val marks = ArrayList<View>()
         listOf("card" to "Card", "layouts" to "Layouts", "sets" to "Sets").forEachIndexed { i, (kind, name) ->
+            val wrap = FrameLayout(this)
             val col = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setOnClickListener { showTab(i) }
             }
             val ic = HotIcon(this, kind)
-            val tx = label(name, 12f, Hot.inactive).apply { gravity = Gravity.CENTER; includeFontPadding = false }
+            val tx = label(name, 12f, Theme.muted).apply { gravity = Gravity.CENTER; includeFontPadding = false }
             col.addView(ic, LinearLayout.LayoutParams(dp(22), dp(22)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(2) })
             col.addView(tx, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            wrap.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            val mark = View(this).apply { background = Theme.on(slant = dp(3).toFloat()) }
+            wrap.addView(mark, FrameLayout.LayoutParams(dp(44), dp(3), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
             icons.add(ic)
             labels.add(tx)
-            bar.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            marks.add(mark)
+            bar.addView(wrap, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         }
         tabIcons = icons
         tabLabels = labels
+        tabMarks = marks
         return bar
     }
 
@@ -459,8 +484,9 @@ class MainActivity : Activity() {
         tab = i
         pages.forEachIndexed { n, p -> p.visibility = if (n == i) View.VISIBLE else View.GONE }
         tabIcons.forEachIndexed { n, ic -> ic.gradient = n == i }
+        tabMarks.forEachIndexed { n, m -> m.visibility = if (n == i) View.VISIBLE else View.INVISIBLE }
         tabLabels.forEachIndexed { n, t ->
-            t.setTextColor(if (n == i) Hot.pinkLight else Hot.inactive)
+            t.setTextColor(if (n == i) Theme.pink else Theme.muted)
             t.typeface = if (n == i) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         }
         if (i == 1) refreshLayoutsPage()
@@ -474,7 +500,7 @@ class MainActivity : Activity() {
     private fun buildCardPage(): View {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Theme.ground)
         }
         cardView = CardView(this).apply {
             hint = "Open the Layouts tab and choose\nthe folder with your layout files."
@@ -482,7 +508,7 @@ class MainActivity : Activity() {
         }
         page.addView(cardView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        statusLine = label("", 11f, Hot.dim).apply {
+        statusLine = label("", 11f, Theme.muted).apply {
             setPadding(dp(16), dp(6), dp(16), 0)
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -491,32 +517,35 @@ class MainActivity : Activity() {
         // The edit dock: a row of tiles that opens into a grid.
         dockOuter = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Hot.gradient(dp(20).toFloat())
-            setPadding(dp(2), dp(2), dp(2), dp(2))
         }
         dockInner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Hot.outline(dp(18).toFloat(), 0, Color.BLACK)
+            background = Theme.dock(dp(16).toFloat(), dp(4).toFloat(), dp(10).toFloat())
+            setPadding(0, dp(4), 0, 0)
         }
         // The handle stays put while the body is rebuilt, so a drag is never interrupted.
         val handle = FrameLayout(this)
         handle.addView(
-            View(this).apply { background = Hot.gradient(dp(3).toFloat(), true) },
+            View(this).apply { background = Theme.on(slant = dp(3).toFloat()) },
             FrameLayout.LayoutParams(dp(44), dp(5), Gravity.CENTER),
         )
         dockPill = TextView(this).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(12), 0, dp(12), 0)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setPadding(dp(20), 0, dp(20), 0)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Hot.muted)
+            isAllCaps = true
+            letterSpacing = 0.12f
+            setTextColor(Theme.text)
             maxLines = 1
-            background = Hot.outline(dp(14).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
+            maxWidth = dp(160)
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            background = Theme.off(slant = dp(8).toFloat(), shadow = dp(5).toFloat())
             setOnClickListener { showTemplateDialog() }
         }
         handle.addView(dockPill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28), Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin = dp(12) })
         dockChev = FrameLayout(this).apply {
-            background = Hot.outline(dp(14).toFloat(), dp(2), Color.parseColor("#4a1f38"), Color.parseColor("#12081a"))
+            background = Theme.off(cut = dp(8).toFloat(), shadow = dp(5).toFloat())
             isClickable = true
             setOnClickListener { flipDock() }
         }
@@ -571,7 +600,7 @@ class MainActivity : Activity() {
         dockInner.addView(handle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
         dockInner.addView(dockBody, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dockOuter.addView(dockInner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        page.addView(dockOuter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(6), 0, dp(6), dp(6)) })
+        page.addView(dockOuter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         dockPage = page
         refreshDock(true)
         return page
@@ -663,12 +692,7 @@ class MainActivity : Activity() {
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(9), dp(10), dp(9))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#12081a"))
-                cornerRadius = dp(14).toFloat()
-                val c = Color.parseColor("#4a1f38")
-                if (t.fromTemplate) setStroke(dp(2), c, dp(6).toFloat(), dp(4).toFloat()) else setStroke(dp(2), c)
-            }
+            background = Theme.tile(dp(16).toFloat(), dp(1).toFloat() * 1.5f, dp(5).toFloat(), t.fromTemplate)
         }
         val icon = HotIcon(this, t.icon)
         // An icon with a dot in its name is a picture file (png, webp, jpg) from the card, template or layout assets.
@@ -676,14 +700,15 @@ class MainActivity : Activity() {
         col.addView(icon, LinearLayout.LayoutParams(dp(24), dp(24)))
         col.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         col.addView(label(t.label, 13f, Color.WHITE, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        val st = label(status ?: "", 11f, Hot.dim).apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.MARQUEE; marqueeRepeatLimit = -1; isSelected = true; visibility = if (status == null) View.GONE else View.VISIBLE }
+        val st = label(status ?: "", 11f, Theme.muted).apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.MARQUEE; marqueeRepeatLimit = -1; isSelected = true; visibility = if (status == null) View.GONE else View.VISIBLE }
         col.addView(st)
         box.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val dot = View(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Hot.pink) }
+            setBackgroundColor(Theme.pink)
+            rotation = 45f
             visibility = if (changed) View.VISIBLE else View.GONE
         }
-        box.addView(dot, FrameLayout.LayoutParams(dp(8), dp(8), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(9), dp(9), 0) })
+        box.addView(dot, FrameLayout.LayoutParams(dp(7), dp(7), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(24), 0) })
         box.isClickable = true
         box.setOnClickListener { if (t.menu == "@layers") openLayers() else openEditor(t.menu) }
         refs.add(TileRef(t.menu, st, dot, box, t.label))
@@ -757,7 +782,7 @@ class MainActivity : Activity() {
         dockPill.visibility = if (templates.isEmpty()) View.GONE else View.VISIBLE
         dockChev.removeAllViews()
         dockChev.contentDescription = if (m != 0) "Collapse the edit tiles" else "Expand the edit tiles"
-        dockChev.addView(HotIcon(this, if (m != 0) "down" else "up").apply { gradient = false }, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+        dockChev.addView(HotIcon(this, if (m != 0) "down" else "up"), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
 
         if (m == 0) {
             tileRefs = emptyList()
@@ -784,7 +809,7 @@ class MainActivity : Activity() {
             dockOuter.post { rowH = dockOuter.height }
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(dp(14), 0, dp(14), 0)
+                setPadding(dp(14), dp(2), dp(14), dp(12))
             }
             for ((t, status, changed) in info) {
                 row.addView(tileView(t, status, changed, icons, refs), LinearLayout.LayoutParams(dp(92), dp(76)).apply { rightMargin = dp(8) })
@@ -799,6 +824,7 @@ class MainActivity : Activity() {
         }
         if (m != 0) tileRefs = refs
         try { icons?.close() } catch (e: Exception) { }
+        Theme.noClip(dockBody)
         statusLine.setPadding(dp(16), dp(6), dp(16), dp(8))
         if (m != 0) dockBody.addView(statusLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
@@ -1027,10 +1053,10 @@ class MainActivity : Activity() {
 
         val folder = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Hot.outline(dp(16).toFloat(), dp(2), Hot.pinkDeep)
+            background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat(), true)
             setPadding(dp(16), dp(14), dp(16), dp(14))
         }
-        folder.addView(label("Folder", 13f, Hot.muted))
+        folder.addView(label("Folder", 12f, Theme.pink))
         folder.addView(label(if (folderName.isBlank()) "None chosen yet" else folderName, 15f, Color.WHITE).apply { setPadding(0, dp(2), 0, 0) })
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         buttons.addView(pill("Open folder", true) { pickFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
@@ -1041,16 +1067,16 @@ class MainActivity : Activity() {
         if (bundledFiles().isNotEmpty()) {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                background = Hot.outline(dp(16).toFloat(), dp(2), Hot.line)
+                background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat())
                 setPadding(dp(16), dp(12), dp(16), dp(12))
             }
             if (folderUri == null) {
-                card.addView(label("Set up", 13f, Hot.muted))
-                card.addView(label("The app carries a built-in layout. Choose or create a folder (for example “Turtlebox GX”) and it puts the layout files and an empty templates folder there. Files already in the folder are kept.", 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
+                card.addView(label("Set up", 12f, Theme.pink))
+                card.addView(label("The app carries a built-in layout. Choose or create a folder (for example “Turtlebox GX”) and it puts the layout files and an empty templates folder there. Files already in the folder are kept.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
                 card.addView(pill("Set up", true) { setupFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
             } else {
-                card.addView(label("Built-in layout", 13f, Hot.muted))
-                card.addView(label("Put the layout XML or the zip back to the version the app came with.", 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
+                card.addView(label("Built-in layout", 12f, Theme.pink))
+                card.addView(label("Put the layout XML or the zip back to the version the app came with.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
                 card.addView(pill("Restore…", false) { restoreDialog() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
             }
             add(card, 12)
@@ -1059,14 +1085,14 @@ class MainActivity : Activity() {
         if (templates.isNotEmpty()) {
             val tcard = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                background = Hot.outline(dp(16).toFloat(), dp(2), Hot.line)
+                background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat())
                 setPadding(dp(16), dp(12), dp(16), dp(12))
             }
-            tcard.addView(label("Template", 13f, Hot.muted))
+            tcard.addView(label("Template", 12f, Theme.pink))
             tcard.addView(label(templates[selectedTemplate]?.label ?: layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
             templates[selectedTemplate]?.let { ti ->
                 val meta = listOf(ti.description, listOf(ti.author, ti.version).filter { it.isNotBlank() }.joinToString(" · ")).filter { it.isNotBlank() }.joinToString("\n")
-                if (meta.isNotBlank()) tcard.addView(label(meta, 13f, Hot.dim).apply { setPadding(0, dp(4), 0, 0) })
+                if (meta.isNotBlank()) tcard.addView(label(meta, 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
             }
             tcard.addView(pill("Change", false) {
                 showTemplateDialog()
@@ -1074,7 +1100,7 @@ class MainActivity : Activity() {
             add(tcard, 12)
         }
 
-        add(label("Files in use", 13f, Hot.muted), 18)
+        add(label("Files in use", 12f, Theme.pink), 18)
         if (xmlName.isNotBlank() || xmlError != null) {
             val sub = when {
                 xmlError != null -> "Has a problem. The last good layout is still showing."
@@ -1084,18 +1110,18 @@ class MainActivity : Activity() {
         }
         if (zipName.isNotBlank()) add(fileRow("ZIP", zipName, zipInfo, zipOk), 8)
         if (xmlName.isBlank() && zipName.isBlank() && xmlError == null) {
-            add(label("No files yet. Open the folder that holds your layout .xml and .zip.", 14f, Hot.dim), 8)
+            add(label("No files yet. Open the folder that holds your layout .xml and .zip.", 14f, Theme.muted), 8)
         }
 
         xmlError?.let { e ->
-            add(label("If something is wrong, the app tells you where", 13f, Hot.muted), 18)
+            add(label("If something is wrong, the app tells you where", 12f, Theme.pink), 18)
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = Hot.outline(dp(14).toFloat(), dp(2), Color.parseColor("#ff4d6d"), Color.parseColor("#1a0509"))
                 setPadding(dp(14), dp(12), dp(14), dp(12))
             }
             card.addView(label("Line ${e.line} · ${e.message}", 14f, Hot.bad, bold = true))
-            card.addView(label("The last good layout is still showing. Fix the line and save; the card updates on its own.", 13f, Hot.muted).apply { setPadding(0, dp(4), 0, 0) })
+            card.addView(label("The last good layout is still showing. Fix the line and save; the card updates on its own.", 12f, Theme.pink).apply { setPadding(0, dp(4), 0, 0) })
             card.addView(
                 label(e.context, 12f, Hot.muted).apply {
                     typeface = Typeface.MONOSPACE
@@ -1107,26 +1133,27 @@ class MainActivity : Activity() {
             add(card, 8)
         }
 
-        add(label("Edit the XML with any text editor on your phone. Add a <data> option, a dropdown or a text box and it appears in the menu, with no rebuild and no install. The app checks the file every few seconds and reloads it when it changes.", 13f, Hot.dim), 18)
+        add(label("Edit the XML with any text editor on your phone. Add a <data> option, a dropdown or a text box and it appears in the menu, with no rebuild and no install. The app checks the file every few seconds and reloads it when it changes.", 13f, Theme.muted), 18)
+        Theme.noClip(layoutsBox)
     }
 
     private fun fileRow(badge: String, title: String, sub: String, ok: Boolean): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Hot.outline(dp(14).toFloat(), dp(2), if (ok) Hot.line else Color.parseColor("#ff4d6d"))
+            background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat(), !ok)
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
         row.addView(
             label(badge, 12f, Hot.pinkLight, bold = true).apply {
                 gravity = Gravity.CENTER
-                background = Hot.outline(dp(10).toFloat(), 0, Color.TRANSPARENT, Color.parseColor("#2a0a1c"))
+                background = Theme.off(cut = dp(8).toFloat())
             },
             LinearLayout.LayoutParams(dp(40), dp(40)),
         )
         val mid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         mid.addView(label(title, 15f, Color.WHITE, bold = true))
-        mid.addView(label(sub, 12f, Hot.dim))
+        mid.addView(label(sub, 12f, Theme.muted))
         row.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(12), 0, dp(8), 0) })
         row.addView(
             label(if (ok) "OK" else "Error", 12f, Color.BLACK, bold = true).apply {
@@ -1158,10 +1185,10 @@ class MainActivity : Activity() {
         box.removeAllViews()
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Hot.outline(dp(16).toFloat(), dp(2), Hot.pinkDeep)
+            background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat(), true)
             setPadding(dp(16), dp(14), dp(16), dp(14))
         }
-        head.addView(label("Current card", 13f, Hot.muted))
+        head.addView(label("Current card", 12f, Theme.pink))
         head.addView(label(state?.values?.get("cardname") ?: "Nothing open", 17f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(pill("Open set", true) { pickSet() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
@@ -1172,10 +1199,10 @@ class MainActivity : Activity() {
 
         val folderCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Hot.outline(dp(16).toFloat(), dp(2), Hot.line)
+            background = Theme.card(dp(18).toFloat(), dp(8).toFloat(), dp(3).toFloat())
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
-        folderCard.addView(label("Sets folder", 13f, Hot.muted))
+        folderCard.addView(label("Sets folder", 12f, Theme.pink))
         val sfSaved = prefs.getString("setsTree", null)
         folderCard.addView(label(if (sfSaved == null) "None chosen yet" else "$setsFolderName · ${setRoot?.total ?: 0} sets", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
         val fr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -1183,15 +1210,15 @@ class MainActivity : Activity() {
         if (sfSaved != null) fr.addView(pill("Rescan", false) { scanSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folderCard.addView(fr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
         box.addView(folderCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
-        box.addView(label("Recent sets", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+        box.addView(label("Recent sets", 12f, Theme.pink), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
         val list = recents()
         if (list.isEmpty()) {
-            box.addView(label("Sets you open or save appear here.", 14f, Hot.dim), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            box.addView(label("Sets you open or save appear here.", 14f, Theme.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
         list.forEach { (u, name) ->
             val r = label(name.removeSuffix(".msoe-set"), 15f, Color.WHITE, bold = true).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                background = Hot.outline(dp(14).toFloat(), dp(2), Hot.line)
+                background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat())
                 setPadding(dp(16), 0, dp(16), 0)
                 setOnClickListener { loadSet(Uri.parse(u)) }
             }
@@ -1204,7 +1231,7 @@ class MainActivity : Activity() {
                 val on = curSet == f.uri
                 val r = label(f.name.removeSuffix(".msoe-set"), 15f, if (on) Hot.pinkLight else Color.WHITE, bold = true).apply {
                     gravity = Gravity.CENTER_VERTICAL
-                    background = Hot.outline(dp(14).toFloat(), dp(2), if (on) Hot.pinkDeep else Hot.line)
+                    background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat(), on)
                     setPadding(dp(16), 0, dp(16), 0)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1217,7 +1244,7 @@ class MainActivity : Activity() {
                     val isOpen = openSetFolders.contains(k.path)
                     val h = label((if (isOpen) "▾  " else "▸  ") + k.name + "  ·  ${k.total}", 15f, Hot.pinkLight, bold = true).apply {
                         gravity = Gravity.CENTER_VERTICAL
-                        background = Hot.outline(dp(14).toFloat(), dp(2), if (isOpen) Hot.pinkDeep else Hot.line)
+                        background = Theme.card(dp(14).toFloat(), dp(8).toFloat(), dp(3).toFloat(), isOpen)
                         setPadding(dp(16), 0, dp(16), 0)
                         setSingleLine(true)
                         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1231,15 +1258,15 @@ class MainActivity : Activity() {
                 }
             }
             if (root.children.isNotEmpty()) {
-                box.addView(label("Folders", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+                box.addView(label("Folders", 12f, Theme.pink), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
                 addNode(root, 0)
             }
             if (root.files.isNotEmpty()) {
-                box.addView(label("Sets without a folder", 13f, Hot.muted), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+                box.addView(label("Sets without a folder", 12f, Theme.pink), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
                 root.files.forEach { addSet(it, 0) }
             }
         }
-
+        Theme.noClip(setsBox)
     }
 
     // ---- files ----
