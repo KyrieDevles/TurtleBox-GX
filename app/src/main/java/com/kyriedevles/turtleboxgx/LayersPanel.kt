@@ -24,10 +24,10 @@ import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 
-private val PINK = Color.parseColor("#ff6ec7")
-private val HOT = Color.parseColor("#ff1493")
-private val SOFT = Color.parseColor("#e7c3d6")
-private val DIM = Color.parseColor("#c9a6b9")
+private val PINK = Theme.pink
+private val HOT = Theme.hot
+private val SOFT = Theme.label
+private val DIM = Theme.muted
 
 private fun Activity.dpx(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -41,14 +41,10 @@ private fun Activity.tv(t: String, sp: Float, color: Int, bold: Boolean = false)
 private fun Activity.pillBtn(t: String, color: Int, fill: Boolean = false, click: () -> Unit) = TextView(this).apply {
     text = t
     gravity = Gravity.CENTER
-    setTextColor(if (fill) Color.BLACK else color)
+    setTextColor(if (fill) Theme.onPink else color)
     typeface = Typeface.DEFAULT_BOLD
     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-    background = if (fill) {
-        GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(PINK, HOT)).apply { cornerRadius = dpx(10).toFloat() }
-    } else {
-        GradientDrawable().apply { setColor(Color.BLACK); setStroke(dpx(2), color); cornerRadius = dpx(10).toFloat() }
-    }
+    background = if (fill) Theme.on(cut = dpx(10).toFloat(), shadow = dpx(5).toFloat()) else Theme.field(dpx(10).toFloat(), dpx(1).toFloat() * 1.5f, dpx(5).toFloat())
     setOnClickListener { click() }
 }
 
@@ -62,7 +58,7 @@ class LayersPanel(
     private val startEdit: (Layer, List<Layer>) -> Unit,
 ) {
     private var dlg: Dialog? = null
-    private val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
+    private val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; clipChildren = false }
     private val open = HashSet<String>()
 
     private fun layers() = ImageLayers.read(st.values)
@@ -75,7 +71,7 @@ class LayersPanel(
     private fun thumb(l: Layer): View {
         val box = ImageView(activity).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
-            background = GradientDrawable().apply { setColor(Color.parseColor("#2a2a2e")); cornerRadius = activity.dpx(8).toFloat() }
+            background = CutDrawable(intArrayOf(Theme.plane3), cutTR = activity.dpx(8).toFloat())
             setPadding(activity.dpx(3), activity.dpx(3), activity.dpx(3), activity.dpx(3))
         }
         st.files[l.file]?.let { b ->
@@ -122,7 +118,7 @@ class LayersPanel(
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(activity.dpx(12), activity.dpx(7), activity.dpx(12), activity.dpx(7))
-                    background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(activity.dpx(1), Color.parseColor("#3a1a2c")); cornerRadius = activity.dpx(12).toFloat() }
+                    background = Theme.tile(activity.dpx(12).toFloat(), activity.dpx(1).toFloat() * 1.5f, 0f, true)
                 }
                 row.addView(activity.tv(r.name, 13f, DIM), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 row.addView(activity.tv("index " + fmt(r.z), 12f, DIM, true))
@@ -145,7 +141,7 @@ class LayersPanel(
         val card = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(activity.dpx(10), activity.dpx(8), activity.dpx(10), activity.dpx(8))
-            background = GradientDrawable().apply { setColor(Color.parseColor("#0f0a14")); setStroke(activity.dpx(2), if (isOpen) HOT else Color.parseColor("#2c1226")); cornerRadius = activity.dpx(14).toFloat() }
+            background = Theme.card(activity.dpx(14).toFloat(), activity.dpx(4).toFloat(), activity.dpx(3).toFloat(), isOpen)
         }
         val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(activity.tv(if (isOpen) "▾" else "▸", 18f, PINK, true).apply {
@@ -170,7 +166,7 @@ class LayersPanel(
             includeFontPadding = false
             setPadding(activity.dpx(4), 0, activity.dpx(4), 0)
             imeOptions = EditorInfo.IME_ACTION_DONE
-            background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(activity.dpx(2), HOT); cornerRadius = activity.dpx(9).toFloat() }
+            background = Theme.field(activity.dpx(8).toFloat(), activity.dpx(1).toFloat() * 1.5f)
             fun apply() {
                 val v = text.toString().toFloatOrNull() ?: return
                 if (v != l.z) {
@@ -287,12 +283,12 @@ class LayersPanel(
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dlg = d
         val title = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        title.addView(activity.tv("Image layers", 16f, Color.parseColor("#ff4da6"), true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        title.addView(activity.tv("Image layers", 16f, HOT, true).apply { isAllCaps = true; letterSpacing = 0.12f }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         title.addView(activity.tv("DONE", 13f, PINK, true).apply { setPadding(activity.dpx(10), activity.dpx(8), activity.dpx(10), activity.dpx(8)); setOnClickListener { d.dismiss() } })
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(activity.dpx(14), activity.dpx(12), activity.dpx(14), activity.dpx(12))
-            background = GradientDrawable().apply { setColor(Color.BLACK); setStroke(activity.dpx(2), HOT); cornerRadius = activity.dpx(18).toFloat() }
+            background = Theme.dialog(activity.dpx(22).toFloat(), activity.dpx(4).toFloat())
         }
         root.addView(title)
         root.addView(activity.pillBtn("+  Add image layer", PINK, true) { pickImage(null) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, activity.dpx(40)).apply { topMargin = activity.dpx(8); bottomMargin = activity.dpx(10) })
@@ -359,7 +355,7 @@ class LayerEditWindow(
             setOnCheckedChangeListener { _, v -> ch(v) }
         }
         val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(activity.tv(title, 13f, Color.parseColor("#ff4da6"), true).apply { setSingleLine(true); ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(activity.tv(title, 13f, HOT, true).apply { setSingleLine(true); ellipsize = android.text.TextUtils.TruncateAt.END }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(sw("Grid", editor.grid) { editor.grid = it; editor.changed() })
         head.addView(sw("Lock", editor.lock) { editor.lock = it }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = activity.dpx(10) })
         fun small(t: String, click: () -> Unit) = activity.pillBtn(t, PINK, false, click).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f) }
@@ -383,12 +379,8 @@ class LayerEditWindow(
         }
         // Eraser tools (shown only while the eraser is on).
         fun paintTog(v: TextView, on: Boolean) {
-            v.setTextColor(if (on) Color.BLACK else PINK)
-            v.background = if (on) {
-                GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(PINK, HOT)).apply { cornerRadius = activity.dpx(10).toFloat() }
-            } else {
-                GradientDrawable().apply { setColor(Color.BLACK); setStroke(activity.dpx(2), PINK); cornerRadius = activity.dpx(10).toFloat() }
-            }
+            v.setTextColor(if (on) Theme.onPink else PINK)
+            v.background = if (on) Theme.on(cut = activity.dpx(10).toFloat()) else Theme.field(activity.dpx(10).toFloat(), activity.dpx(1).toFloat() * 1.5f)
         }
         fun slider(name: String, max: Int, start: Int, fmt: (Int) -> String, change: (Int) -> Unit): LinearLayout {
             val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -468,7 +460,7 @@ class LayerEditWindow(
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(activity.dpx(10), activity.dpx(8), activity.dpx(10), activity.dpx(10))
-            background = GradientDrawable().apply { setColor(Color.parseColor("#f00a0510")); setStroke(activity.dpx(2), HOT); cornerRadius = activity.dpx(16).toFloat() }
+            background = Theme.dialog(activity.dpx(16).toFloat(), activity.dpx(3).toFloat())
         }
         root.addView(head)
         root.addView(b1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
