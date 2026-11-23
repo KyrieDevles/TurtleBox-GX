@@ -1472,8 +1472,8 @@ class MainActivity : Activity() {
 
     private fun saveImage() {
         val cur = lastBmp ?: return toast("No card to save yet.")
-        val sizes = listOf(549 to 800, 561 to 818, 813 to 1185, 1122 to 1636, 1388 to 2026, 1626 to 2370)
-        val labels = arrayOf("Current size (${cur.width} × ${cur.height})") + sizes.map { "${it.first} × ${it.second}" }.toTypedArray()
+        val sizes = listOf(804 to 1172, 549 to 800, 561 to 818, 813 to 1185, 1122 to 1636, 1388 to 2026, 1626 to 2370)
+        val labels = arrayOf("Current size (${cur.width} × ${cur.height})") + sizes.mapIndexed { n, it -> "${it.first} × ${it.second}" + if (n == 0) "  (official proxy)" else "" }.toTypedArray()
         ThemedBuilder(this).setTitle("Image size")
             .setItems(labels) { _, i ->
                 val w = if (i == 0) cur.width else sizes[i - 1].first
@@ -1501,7 +1501,7 @@ class MainActivity : Activity() {
                     val assets = Assets(z, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                     val r = Renderer(l, Ctx(l, st.values), assets, st.values)
                     val big = r.render(w / l.width)
-                    val hh = Math.round(w * l.height / l.width)
+                    val hh = if (w == 804) h else Math.round(w * l.height / l.width)
                     bmp = if (big.width == w && big.height == hh) big else Bitmap.createScaledBitmap(big, w, hh, true)
                 }
                 val out = java.io.ByteArrayOutputStream()
