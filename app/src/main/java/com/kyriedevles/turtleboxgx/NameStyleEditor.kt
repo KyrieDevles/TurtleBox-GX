@@ -911,7 +911,7 @@ class NameStyleEditor(
                             addView(tg, LinearLayout.LayoutParams(dp(34), dp(18)).apply { rightMargin = dp(12) })
                             addView(TextView(activity).apply { text = s; typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(Theme.pink) })
                             addView(sum, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(8) })
-                            addView(TextView(activity).apply { text = if (open) "▾" else "▸"; setTextColor(Theme.muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setPadding(dp(10), 0, 0, 0) })
+                            addView(TextView(activity).apply { text = if (open) "▾" else "▸"; setTextColor(Theme.label); setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(10), 0, 0, 0) })
                             setOnClickListener { section = if (open) "" else s; rebuild() }
                         }
                         val rowBox = LinearLayout(activity).apply {
@@ -1014,7 +1014,7 @@ class NameStyleEditor(
             addView(gripBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
-            addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(4), dp(2), dp(4), dp(10)); addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(4), dp(2), dp(4), dp(10)); addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { leftMargin = -dp(4); rightMargin = -dp(4) })
             addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6); leftMargin = -dp(14); rightMargin = -dp(14) })
         }
         if (land) box.addView(head, 0)
