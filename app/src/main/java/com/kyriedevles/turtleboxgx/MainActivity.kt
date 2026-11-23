@@ -1468,11 +1468,61 @@ class MainActivity : Activity() {
         startActivityForResult(intent, REQ_SAVE)
     }
 
+    private var pendingImage: ByteArray? = null
+
     private fun saveImage() {
-        if (lastBmp == null) return toast("No card to save yet.")
-        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-            .setType("image/png").putExtra(Intent.EXTRA_TITLE, "${cardFileName()}.png")
-        startActivityForResult(intent, REQ_PNG)
+        val cur = lastBmp ?: return toast("No card to save yet.")
+        val sizes = listOf(549 to 800, 561 to 818, 813 to 1185, 1122 to 1636, 1388 to 2026, 1626 to 2370)
+        val labels = arrayOf("Current size (${cur.width} × ${cur.height})") + sizes.map { "${it.first} × ${it.second}" }.toTypedArray()
+        ThemedBuilder(this).setTitle("Image size")
+            .setItems(labels) { _, i ->
+                val w = if (i == 0) cur.width else sizes[i - 1].first
+                val h = if (i == 0) cur.height else sizes[i - 1].second
+                ThemedBuilder(this).setTitle("Format")
+                    .setItems(arrayOf("PNG (lossless)", "JPG high (95%)", "JPG medium (80%)", "JPG small (60%)")) { _, f ->
+                        val q = intArrayOf(0, 95, 80, 60)[f]
+                        exportImage(w, h, q)
+                    }
+                    .setNegativeButton("Cancel", null).show()
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Draws the card again at the chosen width (so big sizes stay sharp), then asks where to save it. q = 0 means PNG. */
+    private fun exportImage(w: Int, h: Int, q: Int) {
+        val l = layout ?: return toast("Choose a layout folder first.")
+        val st = state ?: return
+        val z = zipFile
+        setStatus("Preparing the image…")
+        thread {
+            try {
+                var bmp: Bitmap = lastBmp!!
+                if (bmp.width != w) {
+                    val assets = Assets(z, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
+                    val r = Renderer(l, Ctx(l, st.values), assets, st.values)
+                    val big = r.render(w / l.width)
+                    bmp = if (big.width == w && big.height == h) big else Bitmap.createScaledBitmap(big, w, h, true)
+                }
+                val out = java.io.ByteArrayOutputStream()
+                if (q == 0) bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+                else {
+                    val flat = Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
+                    val c = android.graphics.Canvas(flat)
+                    c.drawColor(Color.WHITE)
+                    c.drawBitmap(bmp, 0f, 0f, null)
+                    flat.compress(Bitmap.CompressFormat.JPEG, q, out)
+                }
+                pendingImage = out.toByteArray()
+                runOnUiThread {
+                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType(if (q == 0) "image/png" else "image/jpeg")
+                        .putExtra(Intent.EXTRA_TITLE, "${cardFileName()}.${if (q == 0) "png" else "jpg"}")
+                    startActivityForResult(intent, REQ_PNG)
+                }
+            } catch (e: Throwable) {
+                runOnUiThread { setStatus("Could not prepare the image: ${e.javaClass.simpleName}: ${e.message}") }
+            }
+        }
     }
 
     /** Artwork can be huge; keep it at most 2000 px on its long side and store it as PNG. */
@@ -1629,9 +1679,10 @@ class MainActivity : Activity() {
                 }
             }
             REQ_PNG -> {
-                val b = lastBmp ?: return
+                val bytes = pendingImage ?: return
                 try {
-                    contentResolver.openOutputStream(uri)!!.use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
+                    pendingImage = null
                     toast("Card image saved.")
                 } catch (e: Exception) {
                     setStatus("Could not save the image: ${e.javaClass.simpleName}: ${e.message}")
