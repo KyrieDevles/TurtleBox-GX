@@ -145,7 +145,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
             minimumHeight = 0
             includeFontPadding = false
             setSelectAllOnFocus(true)
-            background = Theme.field(dp(8), dp(1) * 1.5f)
+            background = Theme.field(dp(8), dp(1) * 1.5f, dp(3))
         }
         info.addView(hexBox, if (compact) LayoutParams(0, dp(34).toInt(), 1f) else LayoutParams(dp(100).toInt(), dp(34).toInt()))
         rgb = TextView(c).apply {

@@ -200,7 +200,7 @@ class NameStyleEditor(
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
                     setSelectAllOnFocus(true)
-                    background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f)
+                    background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
                     addTextChangedListener(object : TextWatcher {
                         override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -234,7 +234,7 @@ class NameStyleEditor(
                 text = t
                 setTextColor(pink)
                 typeface = Typeface.DEFAULT_BOLD
-                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f)
+                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
                 tidyBtn(this, 16f)
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
@@ -406,7 +406,7 @@ class NameStyleEditor(
             val mid = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f)
+                background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             }
             mid.addView(label("Stop at").apply { setPadding(0, 0, dp(6), 0) })
             stopAt.apply {
@@ -668,7 +668,7 @@ class NameStyleEditor(
                 setTextColor(c)
                 typeface = Typeface.DEFAULT_BOLD
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f)
+                background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
                 setOnClickListener { click() }
             }
             fun changed() { onChanged(); rebuild() }
