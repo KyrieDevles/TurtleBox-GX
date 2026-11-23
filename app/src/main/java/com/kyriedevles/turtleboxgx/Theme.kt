@@ -163,7 +163,7 @@ class CutDrawable(
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val path = pathFor(w.toFloat(), h.toFloat())
-        p.color = Color.argb(56, 255, 79, 157)
+        p.color = Color.argb(0, 255, 79, 157)
         p.maskFilter = BlurMaskFilter(shadow * 2f, BlurMaskFilter.Blur.NORMAL)
         c.save(); c.translate(pad.toFloat(), pad.toFloat()); c.drawPath(path, p); c.restore()
         p.color = Color.argb(240, 0, 0, 0)
