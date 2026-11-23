@@ -908,18 +908,18 @@ class NameStyleEditor(
                             orientation = LinearLayout.HORIZONTAL
                             gravity = Gravity.CENTER_VERTICAL
                             setPadding(dp(14), 0, dp(14), 0)
-                            addView(tg, LinearLayout.LayoutParams(dp(34), dp(18)).apply { rightMargin = dp(12) })
-                            addView(TextView(activity).apply { text = s; typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(Theme.pink) })
+                            addView(tg, LinearLayout.LayoutParams(dp(30), dp(16)).apply { rightMargin = dp(10) })
+                            addView(TextView(activity).apply { text = s; typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTextColor(Theme.pink) })
                             addView(sum, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(8) })
-                            addView(TextView(activity).apply { text = if (open) "▾" else "▸"; setTextColor(Theme.label); setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f); setPadding(dp(10), 0, 0, 0) })
+                            addView(TextView(activity).apply { text = if (open) "▾" else "▸"; setTextColor(Theme.label); setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f); setPadding(dp(10), 0, 0, 0) })
                             setOnClickListener { section = if (open) "" else s; rebuild() }
                         }
                         val rowBox = LinearLayout(activity).apply {
                             orientation = LinearLayout.VERTICAL
-                            background = Theme.card(dp(14).toFloat(), dp(5).toFloat(), dp(3).toFloat(), open)
+                            background = Theme.card(dp(12).toFloat(), dp(4).toFloat(), dp(3).toFloat(), open)
                         }
-                        rowBox.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)))
-                        body.addView(rowBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+                        rowBox.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)))
+                        body.addView(rowBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
                         if (open) {
                             val inner = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(14), dp(10)) }
                             rowBox.addView(inner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
