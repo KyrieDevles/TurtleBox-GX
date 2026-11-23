@@ -109,8 +109,8 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
         sv = if (full) SvView(c) { s, v -> hsv[1] = s; hsv[2] = v; pushed() } else null
         hueV = if (full) HueView(c) { h -> hsv[0] = h; sv?.hue = h; pushed() } else null
         if (sv != null && hueV != null) {
-            addView(sv, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 88 else 130).toInt()))
-            addView(hueV, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 26 else 30).toInt()))
+            addView(sv, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 80 else 100).toInt()))
+            addView(hueV, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 24 else 26).toInt()))
             sv.hue = hsv[0]; sv.sat = hsv[1]; sv.value = hsv[2]; hueV.hue = hsv[0]
         }
         val palette = listOf(
@@ -126,7 +126,7 @@ class ColorPickerView(c: Context, initial: Int, full: Boolean, compact: Boolean 
                     background = GradientDrawable().apply { setColor(Color.parseColor(h)); setStroke(dp(1).toInt().coerceAtLeast(1), Color.parseColor("#3a1a2c")) }
                     setOnClickListener { setColor(Color.parseColor(h)); onColor(Color.parseColor(h)) }
                 }
-                r.addView(cell, LayoutParams(0, dp(22).toInt(), 1f).apply { setMargins(2, 1, 2, 1) })
+                r.addView(cell, LayoutParams(0, dp(17).toInt(), 1f).apply { setMargins(2, 1, 2, 1) })
             }
             grid.addView(r)
         }

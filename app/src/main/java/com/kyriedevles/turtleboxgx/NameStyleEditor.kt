@@ -505,17 +505,17 @@ class NameStyleEditor(
 
         fun sectionBody() {
             when (section) {
-                "Color" -> { cur = card("Text colour"); colorPicker(null, "fill", "#000000", true) }
+                "Color" -> { cur = card(null); colorPicker(null, "fill", "#000000", true) }
                 "Shadow" -> {
                     header("Has Shadow?", "shadow")
                     cur = card("Position"); pad(15, "shx", "shy")
-                    cur = card("Softness"); slider("Blur", "shblur", 0f, 20f, 0f)
+                    cur = card(null); slider("Blur", "shblur", 0f, 20f, 0f)
                     cur = card("Shadow colour"); colorPicker(null, "shcolor", "#000000", false)
                 }
                 "Outline" -> {
                     header("Has Outline?", "outline")
                     cur = card("Position"); pad(10, "olx", "oly")
-                    cur = card("Size"); slider("Thickness", "olw", 0f, 30f, 0f)
+                    cur = card(null); slider("Thickness", "olw", 0f, 30f, 0f)
                     cur = card("Outline colour"); colorPicker(null, "olcolor", "#000000", false)
                 }
                 "Gradient" -> gradientUi()
@@ -546,9 +546,9 @@ class NameStyleEditor(
                     }
                 }
                 "Emboss" -> {
-                    header("Use Emboss?", "emboss", "Emboss overrides some text features. Change the colour in the Colour tab.")
-                    cur = card("Depth"); slider("Thickness", "ethick", 0f, 10f, 0f)
-                    cur = card("Light"); slider("Pitch", "epitch", 0f, 90f, 90f, true)
+                    header("Use Emboss?", "emboss", "Emboss overrides some text features. Change the colour in the Color row.")
+                    cur = card(null); slider("Thickness", "ethick", 0f, 10f, 0f)
+                    cur = card(null); slider("Pitch", "epitch", 0f, 90f, 90f, true)
                     cur = card("Light direction"); dial("Yaw", "eyaw", 90, cur, 130)
                 }
             }
