@@ -1088,6 +1088,8 @@ class SkewToggle(ctx: android.content.Context) : View(ctx) {
         paint.color = if (on) Theme.onPink else Color.parseColor("#6a5c65")
         val t = h * 0.7f; val pad = h * 0.15f
         val x = if (on) w - t - pad - k * 0.5f else pad + k * 0.5f
-        c.drawRect(x, pad, x + t, pad + t, paint)
+        val kk = t * 0.3f
+        val knob = android.graphics.Path().apply { moveTo(x + kk, pad); lineTo(x + t, pad); lineTo(x + t - kk, pad + t); lineTo(x, pad + t); close() }
+        c.drawPath(knob, paint)
     }
 }
