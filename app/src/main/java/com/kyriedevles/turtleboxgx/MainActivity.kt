@@ -1501,7 +1501,8 @@ class MainActivity : Activity() {
                     val assets = Assets(z, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                     val r = Renderer(l, Ctx(l, st.values), assets, st.values)
                     val big = r.render(w / l.width)
-                    bmp = if (big.width == w && big.height == h) big else Bitmap.createScaledBitmap(big, w, h, true)
+                    val hh = Math.round(w * l.height / l.width)
+                    bmp = if (big.width == w && big.height == hh) big else Bitmap.createScaledBitmap(big, w, hh, true)
                 }
                 val out = java.io.ByteArrayOutputStream()
                 if (q == 0) bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
