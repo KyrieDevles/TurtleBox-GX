@@ -276,7 +276,7 @@ class MainActivity : Activity() {
                 setBackgroundColor(Theme.ground)
             }
         }
-        root.addView(buildTopBar(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
+        root.addView(buildTopBar().apply { outlineProvider = null; z = dp(12).toFloat() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
 
         val content = FrameLayout(this)
         val cardPage = buildCardPage()

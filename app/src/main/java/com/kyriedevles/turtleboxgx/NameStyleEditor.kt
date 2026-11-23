@@ -621,7 +621,7 @@ class NameStyleEditor(
                         setTextColor(pink)
                         text = "SAVE PRESET"
                         letterSpacing = 0.08f
-                        background = Theme.off(cut = dp(10).toFloat())
+                        background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
                         setOnClickListener {
                             val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "Preset name" }
                             ThemedBuilder(activity)
@@ -909,17 +909,17 @@ class NameStyleEditor(
                             gravity = Gravity.CENTER_VERTICAL
                             setPadding(dp(14), 0, dp(14), 0)
                             addView(tg, LinearLayout.LayoutParams(dp(34), dp(18)).apply { rightMargin = dp(12) })
-                            addView(TextView(activity).apply { text = s; typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTextColor(Theme.text) })
+                            addView(TextView(activity).apply { text = s; typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); setTextColor(Theme.pink) })
                             addView(sum, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(8) })
                             addView(TextView(activity).apply { text = if (open) "▾" else "▸"; setTextColor(Theme.muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setPadding(dp(10), 0, 0, 0) })
                             setOnClickListener { section = if (open) "" else s; rebuild() }
                         }
                         val rowBox = LinearLayout(activity).apply {
                             orientation = LinearLayout.VERTICAL
-                            background = Theme.card(dp(12).toFloat(), dp(4).toFloat(), dp(3).toFloat(), open)
+                            background = Theme.card(dp(14).toFloat(), dp(5).toFloat(), dp(3).toFloat(), open)
                         }
-                        rowBox.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)))
-                        body.addView(rowBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+                        rowBox.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)))
+                        body.addView(rowBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
                         if (open) {
                             val inner = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(14), dp(10)) }
                             rowBox.addView(inner, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -1003,7 +1003,7 @@ class NameStyleEditor(
                 letterSpacing = 0.12f
                 gravity = Gravity.CENTER
                 setTextColor(Theme.onPink)
-                background = Theme.on(cut = dp(10).toFloat(), shadow = dp(5).toFloat())
+                background = Theme.on(cut = dp(10).toFloat(), shadow = dp(6).toFloat())
             }, LinearLayout.LayoutParams(0, dp(44), 1f))
         }
         val root = LinearLayout(activity).apply {
