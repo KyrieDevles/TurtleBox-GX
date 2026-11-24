@@ -52,7 +52,7 @@ object Theme {
 
     /** A field or button box: dark fill, gradient hairline edge, top-right corner cut. */
     /** A control sitting inside a card: darker and flat, so it never reads as a box inside a box. */
-    fun inset(cut: Float, edgePx: Float) = CutDrawable(intArrayOf(ground), cutTR = cut, border = edgePx, shadow = 0f)
+    fun inset(cut: Float, edgePx: Float) = CutDrawable(intArrayOf(ground), cutTR = cut, border = 0f, shadow = 0f)
 
     fun field(cut: Float, edgePx: Float, shadow: Float = 0f) = CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow)
 

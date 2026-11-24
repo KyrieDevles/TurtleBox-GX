@@ -275,11 +275,11 @@ class GradientBarView(c: Context, val stops: MutableList<GStop>, private val onS
             bar.shader = null
             bar.color = sorted.firstOrNull()?.color ?: Color.BLACK
         }
-        val rr = dp(7)
+        val rr = dp(2)
         cv.drawRoundRect(RectF(0f, 0f, width.toFloat(), barH), rr, rr, bar)
         edge.style = Paint.Style.STROKE
-        edge.strokeWidth = dp(2)
-        edge.color = Color.parseColor("#ff1493")
+        edge.strokeWidth = dp(1)
+        edge.color = Color.parseColor("#7a2a52")
         cv.drawRoundRect(RectF(dp(1), dp(1), width - dp(1), barH - dp(1)), rr, rr, edge)
         val order = stops.filter { it !== selected } + selected
         for (s in order) {
