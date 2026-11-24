@@ -161,7 +161,7 @@ class CutDrawable(
         shadowBmp = null
     }
 
-    /** A dark blurred copy of the shape, a little lower than the shape, with a faint pink glow around it. Drawn outside the view's own bounds. */
+    /** A black glow: soft dark blurred copies of the shape centred on it. Drawn outside the view's own bounds. */
     private fun makeShadow(w: Int, h: Int): Bitmap {
         val pad = (shadow * 3f).toInt()
         shadowPad = pad
@@ -169,12 +169,14 @@ class CutDrawable(
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val path = pathFor(w.toFloat(), h.toFloat())
-        p.color = Color.argb(0, 255, 79, 157)
-        p.maskFilter = BlurMaskFilter(shadow * 2f, BlurMaskFilter.Blur.NORMAL)
-        c.save(); c.translate(pad.toFloat(), pad.toFloat()); c.drawPath(path, p); c.restore()
-        p.color = Color.argb(240, 0, 0, 0)
-        p.maskFilter = BlurMaskFilter(shadow, BlurMaskFilter.Blur.NORMAL)
-        c.save(); c.translate(pad + shadow * 0.2f, pad + shadow * (if (shadowUp) -0.9f else 0.9f)); c.drawPath(path, p); c.restore()
+        // Black glow: no offset, so the dark halo sits evenly around every edge (the dock leans a little upward).
+        val lean = if (shadowUp) -shadow * 0.3f else 0f
+        p.color = Color.argb(190, 0, 0, 0)
+        p.maskFilter = BlurMaskFilter(shadow * 2.2f, BlurMaskFilter.Blur.NORMAL)
+        c.save(); c.translate(pad.toFloat(), pad + lean); c.drawPath(path, p); c.restore()
+        p.color = Color.argb(235, 0, 0, 0)
+        p.maskFilter = BlurMaskFilter(shadow * 0.9f, BlurMaskFilter.Blur.NORMAL)
+        c.save(); c.translate(pad.toFloat(), pad + lean); c.drawPath(path, p); c.restore()
         return bmp
     }
 
