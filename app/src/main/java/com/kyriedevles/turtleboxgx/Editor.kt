@@ -294,7 +294,7 @@ class Editor(
                 override fun dispatchDraw(canvas: android.graphics.Canvas) {
                     canvas.save()
                     // Once scrolled, start the clip a little lower so the glow of a row that just left the view is hidden too.
-                    canvas.clipRect(0, paddingTop + minOf(scrollY, dp(10)), width, height - paddingBottom)
+                    canvas.clipRect(0, scrollY + paddingTop + minOf(scrollY, dp(10)), width, scrollY + height - paddingBottom)
                     super.dispatchDraw(canvas)
                     canvas.restore()
                 }
