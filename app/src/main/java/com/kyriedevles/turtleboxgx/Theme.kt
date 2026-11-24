@@ -117,9 +117,12 @@ object Theme {
         CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow, steadyEdge = steady)
 
     /** Turns off child clipping through a view tree so shadows can spill past a view's edge. Scroll views keep clipping. */
+    /** Android only pushes the flag down to children that exist when it changes, so flip it on and off to reach every child. */
+    fun unclip(g: android.view.ViewGroup) { g.clipChildren = true; g.clipChildren = false }
+
     fun noClip(v: View) {
         if (v is android.view.ViewGroup) {
-            if (v !is android.widget.ScrollView && v !is android.widget.HorizontalScrollView) v.clipChildren = false
+            if (v !is android.widget.ScrollView && v !is android.widget.HorizontalScrollView) unclip(v)
             for (i in 0 until v.childCount) noClip(v.getChildAt(i))
         }
     }

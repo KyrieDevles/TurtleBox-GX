@@ -813,7 +813,7 @@ class NameStyleEditor(
                 }
             }
             val io = joined(importBtn to 1f, exportBtn to 1f)
-            val sv = ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(12), dp(8), dp(12), dp(8)); addView(list); clipChildren = false }
+            val sv = ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(12), dp(8), dp(12), dp(8)); addView(list); Theme.unclip(this) }
             val root = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
@@ -955,7 +955,7 @@ class NameStyleEditor(
             Theme.noClip(body)
         }
         box.addView(body)
-        box.clipChildren = false
+        Theme.unclip(box)
         rebuild()
         val land = activity.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val screenH = activity.resources.displayMetrics.heightPixels
@@ -1021,7 +1021,7 @@ class NameStyleEditor(
             addView(gripBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
-            addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(14), dp(10), dp(14), dp(16)); addView(box); clipChildren = false }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { leftMargin = -dp(14); rightMargin = -dp(14) })
+            addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(14), dp(10), dp(14), dp(16)); addView(box); Theme.unclip(this) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { leftMargin = -dp(14); rightMargin = -dp(14) })
             addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6); leftMargin = -dp(14); rightMargin = -dp(14) })
         }
         if (land) box.addView(head, 0)

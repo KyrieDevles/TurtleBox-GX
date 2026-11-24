@@ -292,7 +292,7 @@ class LayersPanel(
         }
         root.addView(title)
         root.addView(activity.pillBtn("+  Add image layer", PINK, true) { pickImage(null) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, activity.dpx(40)).apply { topMargin = activity.dpx(8); bottomMargin = activity.dpx(10) })
-        root.addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding((10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt(), (10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt()); addView(list); clipChildren = false }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding((10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt(), (10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt()); addView(list); Theme.unclip(this) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         d.setContentView(root)
         d.setOnDismissListener { if (dlg === d) dlg = null }
         d.window?.apply {
