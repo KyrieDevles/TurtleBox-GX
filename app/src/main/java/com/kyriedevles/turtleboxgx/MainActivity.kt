@@ -288,8 +288,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(16), dp(16), dp(16))
         }
-        val layoutsPage = ScrollView(this).apply { clipChildren = false; clipToPadding = false; setPadding(0, dp(6), 0, dp(10)); addView(layoutsBox) }
-        val setsPage = ScrollView(this).apply { clipChildren = false; clipToPadding = false; setPadding(0, dp(6), 0, dp(10)); addView(setsBox) }
+        val layoutsPage = ScrollView(this).apply { clipChildren = false; clipToPadding = false; setPadding(0, dp(6), 0, dp(10)); addView(layoutsBox); clipChildren = false }
+        val setsPage = ScrollView(this).apply { clipChildren = false; clipToPadding = false; setPadding(0, dp(6), 0, dp(10)); addView(setsBox); clipChildren = false }
         content.addView(cardPage)
         content.addView(layoutsPage)
         content.addView(setsPage)
