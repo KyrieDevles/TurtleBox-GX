@@ -1087,6 +1087,11 @@ class NameStyleEditor(
 class SkewToggle(ctx: android.content.Context) : View(ctx) {
     var on = false
     private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    init {
+        // Thin black glow around the octagon; the glow is drawn outside the view's bounds.
+        val d = ctx.resources.displayMetrics.density
+        background = CutDrawable(intArrayOf(Theme.plane3), cutTL = 16f * d * 0.3f, shadow = 3f * d)
+    }
     private fun oct(l: Float, t: Float, r: Float, b: Float, q: Float) = android.graphics.Path().apply {
         moveTo(l, t + q); lineTo(l + q, t); lineTo(r - q, t); lineTo(r, t + q)
         lineTo(r, b - q); lineTo(r - q, b); lineTo(l + q, b); lineTo(l, b - q); close()
@@ -1095,8 +1100,7 @@ class SkewToggle(ctx: android.content.Context) : View(ctx) {
         val w = width.toFloat(); val h = height.toFloat(); val k = h * 0.3f
         val path = oct(0f, 0f, w, h, k)
         paint.shader = if (on) android.graphics.LinearGradient(0f, 0f, w, h, Theme.metal, null, android.graphics.Shader.TileMode.CLAMP) else null
-        paint.color = Theme.plane3
-        c.drawPath(path, paint)
+        if (on) c.drawPath(path, paint)
         paint.shader = null
         paint.color = if (on) Theme.onPink else Color.parseColor("#6a5c65")
         val t = h * 0.7f; val pad = h * 0.15f
