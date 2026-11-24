@@ -59,6 +59,13 @@ object Theme {
 
     fun field(cut: Float, edgePx: Float, shadow: Float = 0f) = CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow)
 
+    /** A choice button: octagon with the pink gradient edge when off, metallic pink fill when on. */
+    fun choice(on: Boolean, cut: Float, edgePx: Float, shadow: Float) =
+        if (on) CutDrawable(metal, cutTR = cut, shadow = shadow) else CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow)
+
+    /** A segment inside a joined choice bar: octagon fill when chosen, nothing when not. */
+    fun segment(on: Boolean, cut: Float): Drawable? = if (on) CutDrawable(metal, cutTR = cut) else null
+
     /** A selected option pill or switched-on cell: metallic pink fill. */
     fun on(cut: Float = 0f, slant: Float = 0f, shadow: Float = 0f) = CutDrawable(metal, cutTR = cut, slant = slant, shadow = shadow)
 

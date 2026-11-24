@@ -87,7 +87,7 @@ class NameStyleEditor(
         typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         setPadding(dp(10), dp(6), dp(10), dp(6))
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        background = if (on) Theme.on(slant = dp(8).toFloat()) else Theme.off(slant = dp(8).toFloat())
+        background = Theme.choice(on, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
         setTextColor(if (on) Theme.onPink else soft)
         setPadding(dp(16), dp(6), dp(16), dp(6))
         setOnClickListener { click() }
@@ -391,7 +391,7 @@ class NameStyleEditor(
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor(bg))
                 tidyBtn(this, 13f)
-                background = Theme.off(slant = dp(8).toFloat(), shadow = dp(4).toFloat())
+                background = Theme.choice(false, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
                 setOnClickListener { click() }
             }
             fun sq(t: String, click: () -> Unit) = smallBtn(t, "#ff1493", click).apply { setTextColor(pink) }
@@ -574,7 +574,8 @@ class NameStyleEditor(
         val tabScroll = android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tabRow) }
         val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(2), dp(2), dp(2), dp(2))
+            background = Theme.bar(dp(11).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
+            setPadding(dp(3), dp(3), dp(3), dp(3))
         }
         val modeBtns = LinkedHashMap<String, TextView>()
         fun paintMode() {
@@ -587,7 +588,7 @@ class NameStyleEditor(
                 tv.letterSpacing = 0.08f
                 val first = m == ms.first()
                 val last = m == ms.last()
-                tv.background = if (on) Theme.on(slant = dp(6).toFloat()) else Theme.off(slant = dp(6).toFloat())
+                tv.background = Theme.segment(on, dp(8).toFloat())
             }
         }
         refreshPreview = {
@@ -621,7 +622,7 @@ class NameStyleEditor(
                     rebuild()
                 }
             }
-            modeRow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(3); marginEnd = dp(3) })
+            modeRow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
         val saveBtn = Button(activity).apply {
                         text = "Save preset"
@@ -772,7 +773,7 @@ class NameStyleEditor(
                 for ((i, t) in segBtns.withIndex()) {
                     val on = (i == 1) == showMine
                     t.setTextColor(if (on) Theme.onPink else soft)
-                    t.background = if (on) Theme.on(slant = dp(6).toFloat()) else Theme.off(slant = dp(6).toFloat())
+                    t.background = Theme.choice(on, dp(6).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
                 }
             }
             for ((i, nm) in listOf("Built-in (view only)", "Mine").withIndex()) {
@@ -851,7 +852,7 @@ class NameStyleEditor(
                             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                             gravity = Gravity.CENTER
                             setTextColor(if (presetMine == mine) Theme.onPink else soft)
-                            background = if (presetMine == mine) Theme.on(slant = dp(8).toFloat()) else Theme.off(slant = dp(8).toFloat())
+                            background = Theme.choice(presetMine == mine, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
                             setOnClickListener { presetMine = mine; rebuild() }
                         }, LinearLayout.LayoutParams(dp(82), dp(32)).apply { rightMargin = dp(6) })
                     }

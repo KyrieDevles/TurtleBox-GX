@@ -180,15 +180,22 @@ class Editor(
                 }
                 f.items.isNotEmpty() && f.items.size <= 8 && f.items.all { it.first.length <= 34 } -> {
                     var chosen = current
-                    val flow = FlowLayout(activity, dp(6))
+                    // Two or three short choices share one joined bar; longer sets are a list of full-width octagons.
+                    val joined = f.items.size <= 3 && f.items.all { it.first.length <= 12 }
+                    val flow: LinearLayout = LinearLayout(activity).apply {
+                        orientation = if (joined) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+                        if (joined) {
+                            background = Theme.bar(dp(11).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
+                            setPadding(dp(3), dp(3), dp(3), dp(3))
+                        }
+                    }
                     val chips = ArrayList<Pair<TextView, String>>()
                     fun paint() {
                         for ((tv, v) in chips) {
                             val on = v == chosen
                             tv.setTextColor(if (on) Theme.onPink else Theme.muted)
                             tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                            val shape = if (on) Theme.on(slant = dp(9).toFloat(), shadow = dp(7).toFloat()) else Theme.off(slant = dp(9).toFloat(), shadow = dp(7).toFloat())
-                            tv.background = shape
+                            tv.background = if (joined) Theme.segment(on, dp(8).toFloat()) else Theme.choice(on, dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(5).toFloat())
                         }
                     }
                     for ((name, v) in f.items) {
@@ -198,15 +205,16 @@ class Editor(
                             letterSpacing = 0.08f
                             gravity = android.view.Gravity.CENTER
                             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                            setPadding(dp(20), 0, dp(20), 0)
-                            minimumHeight = dp(36)
+                            setPadding(dp(14), 0, dp(14), 0)
+                            minimumHeight = dp(if (joined) 38 else 40)
                             setOnClickListener {
                                 chosen = v
                                 paint()
                             }
                         }
                         chips.add(tv to v)
-                        flow.addView(tv)
+                        if (joined) flow.addView(tv, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        else flow.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
                     }
                     paint()
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
