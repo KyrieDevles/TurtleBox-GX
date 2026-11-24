@@ -234,7 +234,7 @@ class NameStyleEditor(
                 text = t
                 setTextColor(pink)
                 typeface = Typeface.DEFAULT_BOLD
-                background = Theme.off(slant = dp(7).toFloat())
+                background = Theme.off(slant = dp(7).toFloat(), shadow = dp(4).toFloat())
                 tidyBtn(this, 16f)
                 setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
             }
@@ -373,7 +373,7 @@ class NameStyleEditor(
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.parseColor(bg))
                 tidyBtn(this, 13f)
-                background = Theme.off(slant = dp(8).toFloat())
+                background = Theme.off(slant = dp(8).toFloat(), shadow = dp(4).toFloat())
                 setOnClickListener { click() }
             }
             fun sq(t: String, click: () -> Unit) = smallBtn(t, "#ff1493", click).apply { setTextColor(pink) }
@@ -458,7 +458,7 @@ class NameStyleEditor(
                     save()
                 }
             }
-            addBtn.background = Theme.on(slant = dp(8).toFloat())
+            addBtn.background = Theme.on(slant = dp(8).toFloat(), shadow = dp(5).toFloat())
             val removeBtn = smallBtn("Remove", "#ff4d6d") {
                 if (stops.size > 2) {
                     val sorted = stops.sortedBy { it.pos }
@@ -669,7 +669,7 @@ class NameStyleEditor(
                 setTextColor(c)
                 typeface = Typeface.DEFAULT_BOLD
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = Theme.off(slant = dp(7).toFloat())
+                background = Theme.off(slant = dp(7).toFloat(), shadow = dp(3).toFloat())
                 setOnClickListener { click() }
             }
             fun changed() { onChanged(); rebuild() }
