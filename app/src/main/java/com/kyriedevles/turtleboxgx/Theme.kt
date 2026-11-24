@@ -51,6 +51,9 @@ object Theme {
     val metal = intArrayOf(Color.parseColor("#ff9bd0"), hot, crimson)
 
     /** A field or button box: dark fill, gradient hairline edge, top-right corner cut. */
+    /** A control sitting inside a card: darker and flat, so it never reads as a box inside a box. */
+    fun inset(cut: Float, edgePx: Float) = CutDrawable(intArrayOf(ground), cutTR = cut, border = edgePx, shadow = 0f)
+
     fun field(cut: Float, edgePx: Float, shadow: Float = 0f) = CutDrawable(intArrayOf(plane2), cutTR = cut, border = edgePx, shadow = shadow)
 
     /** A selected option pill or switched-on cell: metallic pink fill. */
