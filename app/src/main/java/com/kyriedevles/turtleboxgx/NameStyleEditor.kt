@@ -1083,13 +1083,17 @@ class NameStyleEditor(
     }
 }
 
-/** The little slanted on/off switch used on the effect rows. */
+/** The little octagon on/off switch used on the effect rows. */
 class SkewToggle(ctx: android.content.Context) : View(ctx) {
     var on = false
     private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private fun oct(l: Float, t: Float, r: Float, b: Float, q: Float) = android.graphics.Path().apply {
+        moveTo(l, t + q); lineTo(l + q, t); lineTo(r - q, t); lineTo(r, t + q)
+        lineTo(r, b - q); lineTo(r - q, b); lineTo(l + q, b); lineTo(l, b - q); close()
+    }
     override fun onDraw(c: android.graphics.Canvas) {
         val w = width.toFloat(); val h = height.toFloat(); val k = h * 0.3f
-        val path = android.graphics.Path().apply { moveTo(k, 0f); lineTo(w, 0f); lineTo(w - k, h); lineTo(0f, h); close() }
+        val path = oct(0f, 0f, w, h, k)
         paint.shader = if (on) android.graphics.LinearGradient(0f, 0f, w, h, Theme.metal, null, android.graphics.Shader.TileMode.CLAMP) else null
         paint.color = Theme.plane3
         c.drawPath(path, paint)
@@ -1097,8 +1101,7 @@ class SkewToggle(ctx: android.content.Context) : View(ctx) {
         paint.color = if (on) Theme.onPink else Color.parseColor("#6a5c65")
         val t = h * 0.7f; val pad = h * 0.15f
         val x = if (on) w - t - pad - k * 0.5f else pad + k * 0.5f
-        val kk = t * 0.3f
-        val knob = android.graphics.Path().apply { moveTo(x + kk, pad); lineTo(x + t, pad); lineTo(x + t - kk, pad + t); lineTo(x, pad + t); close() }
+        val knob = oct(x, pad, x + t, pad + t, t * 0.3f)
         c.drawPath(knob, paint)
     }
 }
