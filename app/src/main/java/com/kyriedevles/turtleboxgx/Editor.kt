@@ -289,7 +289,7 @@ class Editor(
 
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(d.desc?.takeIf { it.isNotBlank() } ?: d.name)
-            .setView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); Theme.unclip(this); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
+            .setView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
             .setPositiveButton("Done") { _, _ ->
                 commitAll(commits)
                 onChanged()
