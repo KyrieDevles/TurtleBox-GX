@@ -132,6 +132,7 @@ class LayersPanel(
             activity.tv("Dashed rows are the layout's own elements that are showing on this card, with their index from the XML. Give a layer a number to put it in front of or behind them. Higher is in front.", 11f, DIM),
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(4) },
         )
+        Theme.noClip(list)
     }
 
     private fun fmt(v: Float) = if (v == Math.rint(v.toDouble()).toFloat()) v.toInt().toString() else String.format(java.util.Locale.US, "%.2f", v)

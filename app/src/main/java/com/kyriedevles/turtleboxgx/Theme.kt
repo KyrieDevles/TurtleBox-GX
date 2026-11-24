@@ -90,11 +90,12 @@ object Theme {
             b.setPadding(dp(22), 0, dp(22), 0)
             (b.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { it.leftMargin = dp(8); it.rightMargin = dp(8) }
             var p = b.parent
-            repeat(4) { (p as? android.view.ViewGroup)?.clipChildren = false; p = p?.parent }
+            repeat(4) { (p as? android.view.ViewGroup)?.let { g -> unclip(g) }; p = p?.parent }
         }
         cutButton(dlg.getButton(android.app.AlertDialog.BUTTON_POSITIVE), true)
         cutButton(dlg.getButton(android.app.AlertDialog.BUTTON_NEGATIVE), false)
         cutButton(dlg.getButton(android.app.AlertDialog.BUTTON_NEUTRAL), false)
+        dlg.window?.decorView?.let { noClip(it) }
     }
 
     /** The top bar: the dock turned upside down, with the metallic strip along its bottom edge and a cut bottom-right corner. */
