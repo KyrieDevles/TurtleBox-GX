@@ -194,13 +194,15 @@ class CutDrawable(
             if (slant > 0f) {
                 moveTo(l + slant, t); lineTo(r, t); lineTo(r - slant, b); lineTo(l, b)
             } else {
-                val tl = if (cutTL > 0f) maxOf(cutTL - k, 0f) else 0f
-                val tr = if (cutTR > 0f) maxOf(cutTR - k, 0f) else 0f
-                if (tl > 0f) { moveTo(l, t + tl); lineTo(l + tl, t) } else moveTo(l, t)
-                if (tr > 0f) { lineTo(r - tr, t); lineTo(r, t + tr) } else lineTo(r, t)
-                val br = if (cutBR > 0f) maxOf(cutBR - k, 0f) else 0f
-                if (br > 0f) { lineTo(r, b - br); lineTo(r - br, b) } else lineTo(r, b)
-                lineTo(l, b)
+                // Octagon: any cut size cuts all four corners.
+                val cu = maxOf(cutTL, cutTR, cutBR)
+                val q = if (cu > 0f) maxOf(cu - k, 0f) else 0f
+                if (q > 0f) {
+                    moveTo(l, t + q); lineTo(l + q, t); lineTo(r - q, t); lineTo(r, t + q)
+                    lineTo(r, b - q); lineTo(r - q, b); lineTo(l + q, b); lineTo(l, b - q)
+                } else {
+                    moveTo(l, t); lineTo(r, t); lineTo(r, b); lineTo(l, b)
+                }
             }
             close()
         }
