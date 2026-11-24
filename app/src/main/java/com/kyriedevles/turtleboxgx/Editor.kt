@@ -298,7 +298,7 @@ class Editor(
                     super.dispatchDraw(canvas)
                     canvas.restore()
                 }
-            }.apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
+            }.apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = false })
             .setPositiveButton("Done") { _, _ ->
                 commitAll(commits)
                 onChanged()
