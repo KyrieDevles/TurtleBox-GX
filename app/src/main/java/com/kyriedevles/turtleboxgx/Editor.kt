@@ -289,7 +289,15 @@ class Editor(
 
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(d.desc?.takeIf { it.isNotBlank() } ?: d.name)
-            .setView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
+            .setView(object : ScrollView(activity) {
+                // Content may spill sideways (glow) but not into the top and bottom padding, where an off-screen row's glow would show without its row.
+                override fun dispatchDraw(canvas: android.graphics.Canvas) {
+                    canvas.save()
+                    canvas.clipRect(0, paddingTop, width, height - paddingBottom)
+                    super.dispatchDraw(canvas)
+                    canvas.restore()
+                }
+            }.apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(24)) })
             .setPositiveButton("Done") { _, _ ->
                 commitAll(commits)
                 onChanged()
