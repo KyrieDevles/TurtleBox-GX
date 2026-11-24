@@ -118,7 +118,7 @@ object Theme {
 
     /** Turns off child clipping through a view tree so shadows can spill past a view's edge. Scroll views keep clipping. */
     /** Android only pushes the flag down to children that exist when it changes, so flip it on and off to reach every child. */
-    fun unclip(g: android.view.ViewGroup) { g.clipChildren = true; g.clipChildren = false }
+    fun unclip(g: android.view.ViewGroup) { g.clipChildren = true; g.clipChildren = false; g.clipToPadding = false }
 
     fun noClip(v: View) {
         if (v is android.view.ViewGroup) {
