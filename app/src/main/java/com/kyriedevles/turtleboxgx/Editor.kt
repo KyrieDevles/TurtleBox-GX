@@ -293,7 +293,8 @@ class Editor(
                 // Content may spill sideways (glow) but not into the top and bottom padding, where an off-screen row's glow would show without its row.
                 override fun dispatchDraw(canvas: android.graphics.Canvas) {
                     canvas.save()
-                    canvas.clipRect(0, paddingTop, width, height - paddingBottom)
+                    // Once scrolled, start the clip a little lower so the glow of a row that just left the view is hidden too.
+                    canvas.clipRect(0, paddingTop + minOf(scrollY, dp(10)), width, height - paddingBottom)
                     super.dispatchDraw(canvas)
                     canvas.restore()
                 }
