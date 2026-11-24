@@ -813,7 +813,7 @@ class NameStyleEditor(
                 }
             }
             val io = joined(importBtn to 1f, exportBtn to 1f)
-            val sv = ScrollView(activity).apply { addView(list) }
+            val sv = ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(12), dp(8), dp(12), dp(8)); addView(list) }
             val root = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(14), dp(12), dp(14), dp(14))
@@ -1021,7 +1021,7 @@ class NameStyleEditor(
             addView(gripBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             if (!land) addView(head)
-            addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(4), dp(2), dp(4), dp(10)); addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { leftMargin = -dp(4); rightMargin = -dp(4) })
+            addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding(dp(14), dp(10), dp(14), dp(16)); addView(box) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { leftMargin = -dp(14); rightMargin = -dp(14) })
             addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6); leftMargin = -dp(14); rightMargin = -dp(14) })
         }
         if (land) box.addView(head, 0)
