@@ -222,33 +222,51 @@ class NameStyleEditor(
             cur.addView(row)
         }
 
+        /** One button that sits inside a joined bar: no box of its own. */
+        fun segBtn(t: String, color: Int, click: () -> Unit) = Button(activity).apply {
+            text = t
+            setAllCaps(false)
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(color)
+            tidyBtn(this, 13f)
+            background = null
+            setOnClickListener { click() }
+        }
+
+        /** Joins controls into one flat bar split by hairlines, with a thin shadow. */
+        fun joined(vararg parts: Pair<View, Float>): LinearLayout {
+            val bar = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = Theme.bar(dp(9).toFloat(), dp(1).toFloat(), dp(3).toFloat())
+                setPadding(dp(1), dp(1), dp(1), dp(1))
+            }
+            for ((i, part) in parts.withIndex()) {
+                if (i > 0) bar.addView(View(activity).apply { setBackgroundColor(Color.parseColor("#3a2a34")) }, LinearLayout.LayoutParams(dp(1), dp(18)))
+                bar.addView(part.first, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, part.second))
+            }
+            return bar
+        }
+
         fun dial(title: String, k: String, def: Int, parent: LinearLayout = cur, size: Int = 150) {
             parent.addView(label(title))
             val d = DialView(activity) { a -> setV(k, a.toString()) }
             d.angle = st.v[k]?.toFloatOrNull()?.toInt() ?: def
-            parent.addView(d, LinearLayout.LayoutParams(dp(size), dp(size)))
-            val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val txt = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f) }
+            val txt = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setSingleLine(true) }
             fun upd() { txt.text = "${d.angle}°" }
-            fun stepBtn(t: String, delta: Int) = Button(activity).apply {
-                text = t
-                setTextColor(pink)
-                typeface = Typeface.DEFAULT_BOLD
-                background = Theme.off(slant = dp(7).toFloat(), shadow = dp(4).toFloat())
-                tidyBtn(this, 16f)
-                setOnClickListener { d.angle = d.angle + delta; setV(k, d.angle.toString()); upd() }
-            }
-            step.addView(stepBtn("−", -1), LinearLayout.LayoutParams(dp(30), dp(30)))
-            txt.setSingleLine(true)
-            txt.minWidth = dp(40)
-            step.addView(txt, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30)))
-            step.addView(stepBtn("+", 1), LinearLayout.LayoutParams(dp(30), dp(30)))
+            val bar = joined(
+                segBtn("−", pink) { d.angle = d.angle - 1; setV(k, d.angle.toString()); upd() } to 1f,
+                txt to 2f,
+                segBtn("+", pink) { d.angle = d.angle + 1; setV(k, d.angle.toString()); upd() } to 1f,
+            )
+            val side = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16), 0, 0, 0) }
+            side.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+            val rowD = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            rowD.addView(d, LinearLayout.LayoutParams(dp(size), dp(size)))
+            rowD.addView(side, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            parent.addView(rowD)
             upd()
-            // keep the number in step while dragging the dial
-            val orig = d
-            parent.addView(step, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            d.setOnTouchListener { v, ev -> val r = d.onTouchEvent(ev); upd(); r }
-            if (orig !== d) return
+            d.setOnTouchListener { _, ev -> val r = d.onTouchEvent(ev); upd(); r }
         }
 
         fun tiles(items: List<Pair<String, Map<String, String>?>>, selected: (Int) -> Boolean, pick: (Int) -> Unit) {
@@ -397,16 +415,14 @@ class NameStyleEditor(
                 refreshInfo()
             }
             c1.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(60)))
-            val row = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            row.addView(sq("◀") {
+            val prevBtn = segBtn("◀", pink) {
                 val sorted = stops.sortedBy { it.pos }
                 val i = sorted.indexOf(bar.selected)
                 select(sorted[(i - 1 + sorted.size) % sorted.size])
-            }, LinearLayout.LayoutParams(dp(34), dp(32)))
+            }
             val mid = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = Theme.inset(dp(10).toFloat(), dp(1).toFloat() * 1.5f)
             }
             mid.addView(label("Stop at").apply { setPadding(0, 0, dp(6), 0) })
             stopAt.apply {
@@ -435,14 +451,14 @@ class NameStyleEditor(
             mid.addView(stopAt, LinearLayout.LayoutParams(dp(44), dp(30)))
             mid.addView(TextView(activity).apply { text = "%"; setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f) })
             mid.addView(info.apply { setPadding(dp(6), 0, 0, 0) })
-            row.addView(mid, LinearLayout.LayoutParams(0, dp(32), 1f).apply { setMargins(dp(8), 0, dp(8), 0) })
-            row.addView(sq("▶") {
+            val nextBtn = segBtn("▶", pink) {
                 val sorted = stops.sortedBy { it.pos }
                 val i = sorted.indexOf(bar.selected)
                 select(sorted[(i + 1) % sorted.size])
-            }, LinearLayout.LayoutParams(dp(34), dp(32)))
-            c1.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-            addBtn = smallBtn("Add Point", "#2b0a1a") {
+            }
+            val row = joined(prevBtn to 1f, mid to 5f, nextBtn to 1f)
+            c1.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(6) })
+            addBtn = segBtn("Add Point", pink) {
                 if (stops.size < 20) {
                     val sorted = stops.sortedBy { it.pos }
                     var bi = 0
@@ -458,8 +474,7 @@ class NameStyleEditor(
                     save()
                 }
             }
-            addBtn.background = Theme.on(slant = dp(8).toFloat(), shadow = dp(5).toFloat())
-            val removeBtn = smallBtn("Remove", "#ff4d6d") {
+            val removeBtn = segBtn("Remove", Color.parseColor("#ff4d6d")) {
                 if (stops.size > 2) {
                     val sorted = stops.sortedBy { it.pos }
                     val i = sorted.indexOf(bar.selected)
@@ -469,10 +484,8 @@ class NameStyleEditor(
                     save()
                 }
             }
-            val btnRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-            btnRow.addView(addBtn, LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
-            btnRow.addView(removeBtn, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(4) })
-            c1.addView(btnRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            val btnRow = joined(addBtn to 1f, removeBtn to 1f)
+            c1.addView(btnRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(10) })
 
             // Card 2: direction
             val c2 = card("Direction")
@@ -484,14 +497,10 @@ class NameStyleEditor(
             val deg = TextView(activity).apply { setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f); setSingleLine(true) }
             fun upd() { deg.text = "${d.angle}°" }
             fun setAng(a: Int) { d.angle = a; setV("gangle", d.angle.toString()); upd() }
-            val chips = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-            for (a in listOf(0, 90, 180, 270)) chips.addView(smallBtn("$a°", "#ff6ec7") { setAng(a) }, LinearLayout.LayoutParams(0, dp(30), 1f).apply { setMargins(dp(2), 0, dp(2), 0) })
-            dCol.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            val stepRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            stepRow.addView(sq("−") { setAng(d.angle - 1) }, LinearLayout.LayoutParams(dp(34), dp(30)))
-            stepRow.addView(deg, LinearLayout.LayoutParams(0, dp(30), 1f))
-            stepRow.addView(sq("+") { setAng(d.angle + 1) }, LinearLayout.LayoutParams(dp(34), dp(30)))
-            dCol.addView(stepRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            val chips = joined(*listOf(0, 90, 180, 270).map { a -> segBtn("$a°", pink) { setAng(a) } to 1f }.toTypedArray())
+            dCol.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+            val stepRow = joined(segBtn("−", pink) { setAng(d.angle - 1) } to 1f, deg to 2f, segBtn("+", pink) { setAng(d.angle + 1) } to 1f)
+            dCol.addView(stepRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(10) })
             dRow.addView(dCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             d.setOnTouchListener { _, ev -> val r = d.onTouchEvent(ev); upd(); r }
             upd()
@@ -669,7 +678,7 @@ class NameStyleEditor(
                 setTextColor(c)
                 typeface = Typeface.DEFAULT_BOLD
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = Theme.off(slant = dp(7).toFloat(), shadow = dp(3).toFloat())
+                background = null
                 setOnClickListener { click() }
             }
             fun changed() { onChanged(); rebuild() }
@@ -722,10 +731,8 @@ class NameStyleEditor(
                         background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), opaque = true)
                     }
                     if (showMine) {
-                        val ud = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
-                        ud.addView(pillBtn("▲", pink) { move(mine, i, -1) }, LinearLayout.LayoutParams(dp(30), dp(24)))
-                        ud.addView(pillBtn("▼", pink) { move(mine, i, 1) }, LinearLayout.LayoutParams(dp(30), dp(24)).apply { topMargin = dp(3) })
-                        row.addView(ud, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dp(8) })
+                        val ud = joined(pillBtn("▲", pink) { move(mine, i, -1) } to 1f, pillBtn("▼", pink) { move(mine, i, 1) } to 1f)
+                        row.addView(ud, LinearLayout.LayoutParams(dp(72), dp(34)).apply { rightMargin = dp(8) })
                     }
                     val iv = ImageView(activity).apply {
                         scaleType = ImageView.ScaleType.FIT_CENTER
@@ -743,8 +750,7 @@ class NameStyleEditor(
                         setPadding(dp(10), 0, dp(6), 0)
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                     if (showMine) {
-                        row.addView(pillBtn("Rename", pink) { rename(n) }, LinearLayout.LayoutParams(dp(66), dp(34)))
-                        row.addView(pillBtn("Delete", Color.parseColor("#ff4d6d")) { delete(n) }, LinearLayout.LayoutParams(dp(58), dp(34)).apply { leftMargin = dp(6) })
+                        row.addView(joined(pillBtn("Rename", pink) { rename(n) } to 1f, pillBtn("Delete", Color.parseColor("#ff4d6d")) { delete(n) } to 1f), LinearLayout.LayoutParams(dp(130), dp(34)))
                     }
                     list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
                 }
@@ -784,8 +790,7 @@ class NameStyleEditor(
             val title = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             title.addView(TextView(activity).apply { text = "Manage presets"; setTextColor(Color.parseColor("#ff4da6")); typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             title.addView(TextView(activity).apply { text = "DONE"; setTextColor(pink); typeface = Typeface.DEFAULT_BOLD; setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setPadding(dp(10), dp(8), dp(10), dp(8)); setOnClickListener { dlg.dismiss() } })
-            val io = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
-            io.addView(pillBtn("Import (paste)", pink) {
+            val importBtn = pillBtn("Import (paste)", pink) {
                 val cm = activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 val txt = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(activity)?.toString() ?: ""
                 val m = userPresets()
@@ -796,8 +801,8 @@ class NameStyleEditor(
                 }
                 if (n > 0) { saveUserPresets(m); changed(); showMine = true; paintSeg(); fill() }
                 Toast.makeText(activity, if (n > 0) "Imported $n presets." else "Copy exported presets first, then tap Import.", Toast.LENGTH_SHORT).show()
-            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { rightMargin = dp(4) })
-            io.addView(pillBtn("Export all (copy)", pink) {
+            }
+            val exportBtn = pillBtn("Export all (copy)", pink) {
                 val m = userPresets()
                 if (m.isEmpty()) {
                     Toast.makeText(activity, "No saved presets to export.", Toast.LENGTH_SHORT).show()
@@ -806,7 +811,8 @@ class NameStyleEditor(
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("presets", m.entries.joinToString("\n") { it.key + "\t" + it.value }))
                     Toast.makeText(activity, "Copied ${m.size} presets. Paste them anywhere to keep or share.", Toast.LENGTH_LONG).show()
                 }
-            }, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(4) })
+            }
+            val io = joined(importBtn to 1f, exportBtn to 1f)
             val sv = ScrollView(activity).apply { addView(list) }
             val root = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
@@ -816,7 +822,7 @@ class NameStyleEditor(
             root.addView(title)
             root.addView(seg, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(10) })
             root.addView(sv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            root.addView(io, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            root.addView(io, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(10) })
             dlg.setContentView(root)
             dlg.window?.apply {
                 setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
