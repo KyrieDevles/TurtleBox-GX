@@ -501,7 +501,7 @@ class MainActivity : Activity() {
             t.setTextColor(if (n == i) Theme.pink else Theme.muted)
             t.typeface = if (n == i) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         }
-        if (i == 1) refreshLayoutsPage()
+        if (i == 1) { refreshLayoutsPage(); checkUpdates() }
         if (i == 2) { refreshSetsPage(); scanSetsFolder() }
     }
 
@@ -1066,6 +1066,40 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Where a chosen folder lives, for example Internal/Documents/Turtlebox. */
+    private fun folderPath(uri: Uri?): String {
+        if (uri == null) return ""
+        return try {
+            val id = DocumentsContract.getTreeDocumentId(uri)
+            val vol = id.substringBefore(':')
+            val rest = id.substringAfter(':', "").trim('/')
+            val where = if (vol.equals("primary", true)) "Internal" else "SD card ($vol)"
+            if (rest.isEmpty()) where else "$where/$rest"
+        } catch (e: Exception) {
+            uri.lastPathSegment ?: ""
+        }
+    }
+
+    private var updateCount = 0
+    private var lastUpdateCheck = 0L
+
+    /** Looks on GitHub (at most every ten minutes) for new or updated layout files and shows a count on the Layouts page. */
+    private fun checkUpdates() {
+        val uri = folderUri ?: return
+        val now = System.currentTimeMillis()
+        if (now - lastUpdateCheck < 10 * 60 * 1000L) return
+        lastUpdateCheck = now
+        thread {
+            val n = try { Downloader.countUpdates(this, uri) } catch (e: Exception) { -1 }
+            if (n >= 0) runOnUiThread {
+                if (n != updateCount) {
+                    updateCount = n
+                    if (tab == 1) refreshLayoutsPage()
+                }
+            }
+        }
+    }
+
     private fun refreshLayoutsPage() {
         val box = layoutsBox
         box.removeAllViews()
@@ -1078,11 +1112,11 @@ class MainActivity : Activity() {
         }
         folder.addView(label("Folder", 12f, Theme.pink))
         folder.addView(label(if (folderName.isBlank()) "None chosen yet" else folderName, 15f, Color.WHITE).apply { setPadding(0, dp(2), 0, 0) })
+        if (folderUri != null) folder.addView(label(folderPath(folderUri), 12f, Theme.muted).apply { setPadding(0, dp(2), 0, 0) })
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         buttons.addView(pill("Open folder", true) { pickFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         buttons.addView(pill("Reload", false) { folderUri?.let { scan(it) } ?: toast("Choose a folder first.") }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folder.addView(buttons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
-        folder.addView(label("How to choose: tap Open folder, go to the folder that holds your layout .xml and .zip (or make a new one), then tap “Use this folder” at the bottom and allow access. Templates go in a folder called templates inside it.", 12f, Theme.muted).apply { setPadding(0, dp(10), 0, 0) })
         add(folder)
 
         run {
@@ -1101,8 +1135,11 @@ class MainActivity : Activity() {
                 card.addView(label(if (bundled) "Layout files" else "Layout files from GitHub", 12f, Theme.pink))
                 card.addView(label(if (bundled) "Put the layout XML or the zip back to the version the app came with, or download newer files and the DLC templates."
                     else "Download the layout, its zip, and the DLC templates, or update the ones you have.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
+                if (updateCount > 0) card.addView(label(if (updateCount == 1) "1 file is new or has an update" else "$updateCount files are new or have updates", 13f, Theme.pink, bold = true).apply { setPadding(0, dp(6), 0, 0) })
                 val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                row.addView(pill("Download…", true) { folderUri?.let { Downloader(this@MainActivity, it) { scan(it) }.show() } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
+                row.addView(pill(if (updateCount > 0) "Update…" else "Download…", true) {
+                    folderUri?.let { Downloader(this@MainActivity, it) { lastUpdateCheck = 0L; updateCount = 0; scan(it); checkUpdates() }.show() }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
                 if (bundled) row.addView(pill("Restore…", false) { restoreDialog() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
                 card.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
             }
@@ -1267,11 +1304,11 @@ class MainActivity : Activity() {
         folderCard.addView(label("Sets folder", 12f, Theme.pink))
         val sfSaved = prefs.getString("setsTree", null)
         folderCard.addView(label(if (sfSaved == null) "None chosen yet" else "$setsFolderName · ${setRoot?.total ?: 0} sets", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
+        if (sfSaved != null) folderCard.addView(label(folderPath(Uri.parse(sfSaved)), 12f, Theme.muted).apply { setPadding(0, dp(2), 0, 0) })
         val fr = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fr.addView(pill(if (sfSaved == null) "Choose folder" else "Change", true) { pickSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         if (sfSaved != null) fr.addView(pill("Rescan", false) { scanSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folderCard.addView(fr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
-        folderCard.addView(label("How to choose: tap Choose folder, open the folder that holds your .msoe-set files (folders inside it are included), then tap “Use this folder” at the bottom and allow access.", 12f, Theme.muted).apply { setPadding(0, dp(10), 0, 0) })
         box.addView(folderCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
         box.addView(label("Recent sets", 12f, Theme.pink), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
         val list = recents()
