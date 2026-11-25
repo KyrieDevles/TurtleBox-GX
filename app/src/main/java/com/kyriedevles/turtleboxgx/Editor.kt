@@ -117,6 +117,16 @@ class Editor(
         }
         val fields = if (d.type == "multi_select") d.items.mapNotNull { find(it.second) } else listOf(d)
         if (fields.isEmpty()) return
+        // An item whose value starts with # is a section heading (<item name="Spacing" value="#"/>): it is shown above the next field.
+        val headings = HashMap<String, String>()
+        if (d.type == "multi_select") {
+            var pending: String? = null
+            for ((nm, v) in d.items) {
+                if (v.startsWith("#")) { pending = nm; continue }
+                val f = find(v) ?: continue
+                if (pending != null) { headings[f.name] = pending; pending = null }
+            }
+        }
 
         val ctx = Ctx(layout, state.values)
         val commits = ArrayList<() -> Unit>()
@@ -143,6 +153,16 @@ class Editor(
         }
         for (f in fields) {
             if (f.type == "multi_select") continue
+            headings[f.name]?.let { h ->
+                box.addView(TextView(activity).apply {
+                    text = h.uppercase()
+                    setTextColor(Theme.pink)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    letterSpacing = 0.14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setPadding(dp(2), dp(14), 0, dp(2))
+                })
+            }
             if (f.type == "namestyle") {
                 val cur = state.values[f.name] ?: ctx.value(f.name)
                 val mode = cur.substringBefore('|').ifBlank { "auto" }
