@@ -151,6 +151,7 @@ class Editor(
             val old = state.values[name]
             restores.add { if (old == null) state.values.remove(name) else state.values[name] = old }
         }
+        var cur: LinearLayout = box
         for (f in fields) {
             if (f.type == "multi_select") continue
             headings[f.name]?.let { h ->
@@ -160,8 +161,16 @@ class Editor(
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                     letterSpacing = 0.14f
                     typeface = Typeface.DEFAULT_BOLD
-                    setPadding(dp(2), dp(14), 0, dp(2))
+                    setPadding(dp(2), dp(14), 0, dp(6))
                 })
+                val sec = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), false)
+                    setPadding(dp(12), dp(4), dp(12), dp(12))
+                }
+                box.addView(sec, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                Theme.unclip(sec)
+                cur = sec
             }
             if (f.type == "namestyle") {
                 val cur = state.values[f.name] ?: ctx.value(f.name)
@@ -173,7 +182,7 @@ class Editor(
                     onChanged()
                     NameStyleEditor(activity, layout, state, f.name, onChanged, namePreview) { open(click) }.show()
                 }
-                box.addView(b, row())
+                cur.addView(b, row())
                 continue
             }
             if (f.type == "button") {
@@ -193,17 +202,17 @@ class Editor(
                         onChanged()
                         openPanel(grp.name) { open(click) }
                     }
-                    box.addView(b, row())
+                    cur.addView(b, row())
                 }
                 continue
             }
-            box.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
+            cur.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
             val current = state.values[f.name] ?: ctx.value(f.name)
             when {
                 f.type == "image" -> {
                     val b = hotButton("Choose image…")
                     b.setOnClickListener { commitAll(commits); pickImage(f.name) }
-                    box.addView(b, row())
+                    cur.addView(b, row())
                 }
                 f.items.isNotEmpty() && f.items.size <= 8 && f.items.all { it.first.length <= 34 } -> {
                     var chosen = current
@@ -248,7 +257,7 @@ class Editor(
                     paint()
                     track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
-                    box.addView(flow, row())
+                    cur.addView(flow, row())
                 }
                 f.items.isNotEmpty() -> {
                     var chosen = current
@@ -269,7 +278,7 @@ class Editor(
                     }
                     track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
-                    box.addView(b, row())
+                    cur.addView(b, row())
                 }
                 sliderRange(f.name) != null -> {
                     val (lo, hi) = sliderRange(f.name)!!
@@ -282,7 +291,7 @@ class Editor(
                         onChanged()
                         openPanelFields(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name, listOf(f)) { open(click) }
                     }
-                    box.addView(b, row())
+                    cur.addView(b, row())
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
@@ -329,9 +338,9 @@ class Editor(
                             openPanel(gearName) { open(click) }
                         }
                         line.addView(g, LinearLayout.LayoutParams(dp(48), dp(48)).apply { leftMargin = dp(10) })
-                        box.addView(line, row())
+                        cur.addView(line, row())
                     } else {
-                        box.addView(et, row())
+                        cur.addView(et, row())
                     }
                 }
             }
