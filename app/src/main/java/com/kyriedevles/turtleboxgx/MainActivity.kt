@@ -1081,6 +1081,8 @@ class MainActivity : Activity() {
     }
 
     private var updateCount = 0
+    private var remoteItems: List<Downloader.Item> = emptyList()
+    private var expandedTpl: String? = null
     private var lastUpdateCheck = 0L
 
     /** Looks on GitHub (at most every ten minutes) for new or updated layout files and shows a count on the Layouts page. */
@@ -1090,12 +1092,12 @@ class MainActivity : Activity() {
         if (now - lastUpdateCheck < 10 * 60 * 1000L) return
         lastUpdateCheck = now
         thread {
-            val n = try { Downloader.countUpdates(this, uri) } catch (e: Exception) { -1 }
-            if (n >= 0) runOnUiThread {
-                if (n != updateCount) {
-                    updateCount = n
-                    if (tab == 1) refreshLayoutsPage()
-                }
+            val items = try { Downloader.group(Downloader.fetch(this, uri, true)) } catch (e: Exception) { null }
+            if (items != null) runOnUiThread {
+                val n = Downloader.count(this, items)
+                remoteItems = items
+                updateCount = n
+                if (tab == 1) refreshLayoutsPage()
             }
         }
     }
@@ -1169,14 +1171,13 @@ class MainActivity : Activity() {
             add(fileRow("XML", xmlName, sub, xmlError == null), 8)
         }
         if (zipName.isNotBlank()) add(fileRow("ZIP", zipName, zipInfo, zipOk), 8)
-        if (templates.isNotEmpty()) {
+        val remoteTpl = remoteItems.filter { it.templates && it.key !in templates }
+        if (templates.isNotEmpty() || remoteTpl.isNotEmpty()) {
             add(label("Templates", 12f, Theme.pink), 18)
             val baseLabel = layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)"
-            add(templateRow("BASE", baseLabel, "The base layout on its own", selectedTemplate.isBlank()) { selectTemplate("") }, 8)
-            for ((key, ti) in templates) {
-                val meta = listOf(ti.description, listOf(ti.author, ti.version).filter { it.isNotBlank() }.joinToString(" · ")).filter { it.isNotBlank() }.joinToString(" · ")
-                add(templateRow("TPL", ti.label, meta.ifBlank { key }, key == selectedTemplate) { selectTemplate(key) }, 8)
-            }
+            add(templateRow(baseLabel, "The base layout on its own", selectedTemplate.isBlank(), null, null) { selectTemplate("") }, 8)
+            for ((key, ti) in templates) add(localTemplate(key, ti), 8)
+            for (it in remoteTpl) add(remoteTemplate(it), 8)
         }
         if (xmlName.isBlank() && zipName.isBlank() && xmlError == null) {
             add(label("No files yet. Open the folder that holds your layout .xml and .zip.", 14f, Theme.muted), 8)
@@ -1206,8 +1207,86 @@ class MainActivity : Activity() {
         Theme.noClip(layoutsBox)
     }
 
-    /** One template in the Files in use list: tap to switch to it. */
-    private fun templateRow(badge: String, title: String, sub: String, inUse: Boolean, pick: () -> Unit): View {
+    private fun afterTplChange() {
+        lastUpdateCheck = 0L
+        folderUri?.let { scan(it) }
+        checkUpdates()
+    }
+
+    private fun remoteFor(key: String) = remoteItems.firstOrNull { it.templates && it.key == key }
+
+    private fun localTemplate(key: String, ti: Templates.Info): View {
+        val remote = remoteFor(key)
+        val xmlDoc = templatesDoc?.findFile("$key.xml")
+        val zipDoc = templatesDoc?.findFile("$key.zip")
+        val bak = templatesDoc?.findFile("$key.xml.bak")
+        val inUse = key == selectedTemplate
+        val update = remote?.state == "update" || remote?.state == "conflict"
+        val sub = listOf(ti.description, if (update) "Update available" else "").filter { it.isNotBlank() }.joinToString(" · ").ifBlank { key }
+        val open = expandedTpl == key
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), false)
+        }
+        box.addView(templateRow(ti.label, sub, inUse, if (open) "up" else "down", null) { selectTemplate(key) }.apply {
+            background = null
+            setOnClickListener { expandedTpl = if (open) null else key; refreshLayoutsPage() }
+        })
+        if (open) {
+            val d = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, dp(14), dp(14)) }
+            val by = listOf(if (ti.version.isNotBlank()) "v${ti.version}" else "", if (ti.author.isNotBlank()) "by ${ti.author}" else "").filter { it.isNotBlank() }.joinToString(" · ")
+            if (by.isNotBlank()) d.addView(label(by, 12f, Theme.muted))
+            val files = listOfNotNull(xmlDoc?.let { "xml ${Downloader.sizeText(it.length())}" }, zipDoc?.let { "zip ${Downloader.sizeText(it.length())}" }).joinToString(" · ")
+            if (files.isNotBlank()) d.addView(label(files, 12f, Theme.muted).apply { setPadding(0, dp(2), 0, 0) })
+            if (update) d.addView(label("UPDATE${if (remote?.ver?.isNotBlank() == true) " v${remote.ver}" else ""} available", 12f, Theme.pink, bold = true).apply { setPadding(0, dp(6), 0, 0) })
+            if (bak != null) d.addView(label("Backup: $key.xml.bak", 12f, Theme.muted).apply { setPadding(0, dp(2), 0, 0) })
+            val acts = FlowLayout(this, dp(8))
+            if (!inUse) acts.addView(pill("USE", true) { selectTemplate(key) })
+            if (update && remote != null) acts.addView(pill("UPDATE", true) {
+                folderUri?.let { u -> Downloader(this, u) {}.downloadWithDialog(remote.todo) { afterTplChange() } }
+            })
+            if (bak != null && xmlDoc != null) acts.addView(pill("RESTORE BACKUP", false) {
+                ThemedBuilder(this).setTitle("Restore backup?").setMessage("Your saved copy replaces the current $key.xml.")
+                    .setPositiveButton("Restore") { _, _ ->
+                        try {
+                            contentResolver.openInputStream(bak.uri)!!.use { i -> contentResolver.openOutputStream(xmlDoc.uri, "wt")!!.use { o -> i.copyTo(o) } }
+                        } catch (e: Exception) { Toast.makeText(this, "Could not restore: ${e.message}", Toast.LENGTH_LONG).show() }
+                        afterTplChange()
+                    }.setNegativeButton("Cancel", null).show()
+            })
+            if (remote != null) acts.addView(pill("RE-DOWNLOAD", false) {
+                folderUri?.let { u -> Downloader(this, u) {}.downloadWithDialog(remote.files) { afterTplChange() } }
+            })
+            acts.addView(pill("DELETE", false) {
+                ThemedBuilder(this).setTitle("Delete ${ti.label}?").setMessage("Removes $key.xml and $key.zip from your folder.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        val e = Downloader.prefs(this).edit()
+                        for (n in listOf("$key.xml", "$key.zip", "$key.xml.bak")) {
+                            templatesDoc?.findFile(n)?.delete()
+                            e.remove("rec:$n")
+                        }
+                        e.apply()
+                        if (inUse) selectTemplate("")
+                        expandedTpl = null
+                        afterTplChange()
+                    }.setNegativeButton("Cancel", null).show()
+            }.apply { setTextColor(Color.parseColor("#ff6b6b")) })
+            d.addView(acts, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+            box.addView(d)
+        }
+        return box
+    }
+
+    private fun remoteTemplate(it: Downloader.Item): View {
+        val r = templateRow(it.title, "Not installed · ${Downloader.sizeText(it.size)}", false, null, "GET") {
+            folderUri?.let { u -> Downloader(this, u) {}.downloadWithDialog(it.todo) { afterTplChange() } }
+        }
+        r.alpha = 0.6f
+        return r
+    }
+
+    /** One template in the Files in use list. `chev` shows a fold arrow; `pillText` overrides the USE/IN USE tag. */
+    private fun templateRow(title: String, sub: String, inUse: Boolean, chev: String?, pillText: String?, pick: () -> Unit): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1216,23 +1295,18 @@ class MainActivity : Activity() {
             isClickable = true
             setOnClickListener { if (!inUse) pick() }
         }
-        row.addView(
-            label(badge, 12f, Hot.pinkLight, bold = true).apply {
-                gravity = Gravity.CENTER
-                background = Theme.off(cut = dp(8).toFloat())
-            },
-            LinearLayout.LayoutParams(dp(40), dp(40)),
-        )
         val mid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         mid.addView(label(title, 15f, Color.WHITE, bold = true))
         mid.addView(label(sub, 12f, Theme.muted))
-        row.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(12), 0, dp(8), 0) })
+        row.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dp(8), 0) })
         row.addView(
-            label(if (inUse) "IN USE" else "USE", 12f, if (inUse) Theme.onPink else Theme.pink, bold = true).apply {
+            label(pillText ?: if (inUse) "IN USE" else "USE", 12f, if (inUse) Theme.onPink else Theme.pink, bold = true).apply {
                 setPadding(dp(10), dp(4), dp(10), dp(4))
                 background = Theme.choice(inUse, dp(6).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
+                if (chev != null || pillText != null) setOnClickListener { if (!inUse) pick() }
             },
         )
+        if (chev != null) row.addView(label(if (chev == "up") "▴" else "▾", 16f, Theme.muted).apply { setPadding(dp(10), 0, 0, 0) })
         return row
     }
 
