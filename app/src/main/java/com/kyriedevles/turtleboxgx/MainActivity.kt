@@ -544,16 +544,16 @@ class MainActivity : Activity() {
         )
         dockPill = TextView(this).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(20), 0, dp(20), 0)
+            setPadding(dp(16), 0, dp(16), 0)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             typeface = Typeface.DEFAULT_BOLD
             isAllCaps = true
-            letterSpacing = 0.12f
+            letterSpacing = 0.1f
             setTextColor(Theme.pink)
             maxLines = 1
-            maxWidth = dp(160)
+            maxWidth = dp(230)
             ellipsize = android.text.TextUtils.TruncateAt.END
-            background = Theme.chip(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
+            background = Theme.choice(false, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             setOnClickListener { showTemplateDialog() }
         }
         handle.addView(dockPill, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(28), Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin = dp(12) })
@@ -791,7 +791,7 @@ class MainActivity : Activity() {
         dockHandle.contentDescription = if (m != 0) "Drag or tap to collapse the edit tiles" else "Drag or tap to expand the edit tiles"
 
         // Template pill (left) and two-state chevron (right) live in the handle row.
-        dockPill.text = tlabel
+        dockPill.text = "Template  ›  $tlabel"
         dockPill.visibility = if (templates.isEmpty()) View.GONE else View.VISIBLE
         dockChev.removeAllViews()
         dockChev.contentDescription = if (m != 0) "Collapse the edit tiles" else "Expand the edit tiles"
