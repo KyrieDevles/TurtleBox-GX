@@ -198,7 +198,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
 
         // Same rules as the old app: align tokens become Android gravity flags. Without a vertical token the
         // text sits at the top (TextView adds TOP), and "top"/"bottom" are not recognised, so they count as top.
-        val flags = (pick(e.aligns) ?: "left").lowercase().split('|').map { it.trim() }
+        val flags = ctx.sub(pick(e.aligns) ?: "left").lowercase().split('|').map { it.trim() }
         val h = when {
             "right" in flags -> 2
             "left" in flags -> 0
