@@ -318,11 +318,12 @@ class MainActivity : Activity() {
             val uri = Uri.parse(saved)
             val stillAllowed = contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
             if (stillAllowed) scan(uri)
-        } else if (!prefs.getBoolean("setupAsked", false) && bundledFiles().isNotEmpty()) {
+        } else if (!prefs.getBoolean("setupAsked", false)) {
             prefs.edit().putBoolean("setupAsked", true).apply()
             handler.post {
                 ThemedBuilder(this).setTitle("Set up TurtleBox GX")
-                    .setMessage("Choose or create a folder (for example “Turtlebox GX”). The app puts its layout files and an empty templates folder there; you can add your own templates later.")
+                    .setMessage(if (bundledFiles().isNotEmpty()) "Choose or create a folder (for example “Turtlebox GX”). The app puts its layout files and an empty templates folder there; you can add your own templates later."
+                        else "Choose or create a folder (for example “Turtlebox GX”). The app then offers to download the layout files from GitHub into it. Already have the files? Choose the folder that holds them.")
                     .setPositiveButton("Set up") { _, _ -> setupFolder() }
                     .setNegativeButton("Later", null).show()
             }
@@ -1076,7 +1077,8 @@ class MainActivity : Activity() {
         folder.addView(buttons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         add(folder)
 
-        if (bundledFiles().isNotEmpty()) {
+        run {
+            val bundled = bundledFiles().isNotEmpty()
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
@@ -1084,12 +1086,17 @@ class MainActivity : Activity() {
             }
             if (folderUri == null) {
                 card.addView(label("Set up", 12f, Theme.pink))
-                card.addView(label("The app carries a built-in layout. Choose or create a folder (for example “Turtlebox GX”) and it puts the layout files and an empty templates folder there. Files already in the folder are kept.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
+                card.addView(label(if (bundled) "The app carries a built-in layout. Choose or create a folder (for example “Turtlebox GX”) and it puts the layout files and an empty templates folder there. Files already in the folder are kept."
+                    else "Choose or create a folder (for example “Turtlebox GX”). The app then downloads the layout files from GitHub into it. Files already in the folder are kept.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
                 card.addView(pill("Set up", true) { setupFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
             } else {
-                card.addView(label("Built-in layout", 12f, Theme.pink))
-                card.addView(label("Put the layout XML or the zip back to the version the app came with.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
-                card.addView(pill("Restore…", false) { restoreDialog() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
+                card.addView(label(if (bundled) "Layout files" else "Layout files from GitHub", 12f, Theme.pink))
+                card.addView(label(if (bundled) "Put the layout XML or the zip back to the version the app came with, or download newer files and the DLC templates."
+                    else "Download the layout, its zip, and the DLC templates, or update the ones you have.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
+                val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                row.addView(pill("Download…", true) { folderUri?.let { Downloader(this@MainActivity, it) { scan(it) }.show() } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
+                if (bundled) row.addView(pill("Restore…", false) { restoreDialog() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
+                card.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
             }
             add(card, 12)
         }
@@ -1611,7 +1618,11 @@ class MainActivity : Activity() {
                     // Some providers refuse persistence; the copy below still works this session.
                 }
                 prefs.edit().putString("tree", uri.toString()).apply()
-                copyBundled(uri, bundledFiles(), false)
+                if (bundledFiles().isNotEmpty()) copyBundled(uri, bundledFiles(), false)
+                else {
+                    scan(uri)
+                    Downloader(this, uri) { scan(uri) }.show()
+                }
             }
             REQ_TREE -> {
                 try {

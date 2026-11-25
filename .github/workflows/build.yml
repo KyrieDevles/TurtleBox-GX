@@ -70,8 +70,8 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk TurtleBox-GX-newlook.apk
           gh release delete newlook --cleanup-tag --yes || true
           gh release create newlook TurtleBox-GX-newlook.apk \
-            --title "New look (lean build)" \
-            --notes "Built from commit ${GITHUB_SHA::7}. No layout XML or zip bundled, so it is small. Installs over the existing app and keeps your folder and settings." \
+            --title "TurtleBox GX 0.2.0 (new look)" \
+            --notes "Built from commit ${GITHUB_SHA::7}. Small download. On first set-up the app downloads the layout files and optional DLC templates from GitHub into the folder you choose. Installs over the existing app and keeps your folder and settings. The big package with the files bundled is on the latest release." \
             --prerelease
 
       # The full package, only when asked for.
