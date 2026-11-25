@@ -1041,7 +1041,7 @@ class MainActivity : Activity() {
                 } else {
                     val loc = IntArray(2)
                     cardView.getLocationOnScreen(loc)
-                    cardView.insetBottom = maxOf(0, loc[1] + cardView.height - topY)
+                    cardView.insetBottom = (loc[1] + cardView.height - topY).coerceIn(0, maxOf(0, cardView.height - dp(60)))
                 }
                 cardView.invalidate()
             },

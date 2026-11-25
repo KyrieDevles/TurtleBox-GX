@@ -97,6 +97,11 @@ class Editor(
     /** Called with the screen y where a docked menu starts (so the card can fit above it), or -1 when it closes. */
     private val onTop: ((Int) -> Unit)? = null,
 ) {
+    companion object {
+        /** The height the user last dragged a docked menu to, kept for the session (0 = half the screen). */
+        var dockH = 0
+    }
+
     private val pink = Theme.pink
     private val hot = Theme.hot
 
@@ -346,9 +351,7 @@ class Editor(
             }
         }
 
-        val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle(d.desc?.takeIf { it.isNotBlank() } ?: d.name)
-            .setView(object : ScrollView(activity) {
+        val scroll = object : ScrollView(activity) {
                 // Content may spill sideways (glow) but not into the top and bottom padding, where an off-screen row's glow would show without its row.
                 override fun dispatchDraw(canvas: android.graphics.Canvas) {
                     canvas.save()
@@ -357,7 +360,21 @@ class Editor(
                     super.dispatchDraw(canvas)
                     canvas.restore()
                 }
-            }.apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = false })
+            }.apply { clipChildren = false; clipToPadding = false; setPadding(dp(8), dp(6), dp(8), dp(6)); addView(box); isVerticalFadingEdgeEnabled = false }
+        // A docked menu has a pill handle on top: drag it up or down to resize, all the way up to cover the card.
+        val gripBox = LinearLayout(activity).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, dp(6))
+            addView(View(activity).apply { background = android.graphics.drawable.GradientDrawable().apply { setColor(pink); cornerRadius = dp(3).toFloat() } }, LinearLayout.LayoutParams(dp(44), dp(5)))
+        }
+        val content: View = if (restores.isNotEmpty()) LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(gripBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        } else scroll
+        val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(d.desc?.takeIf { it.isNotBlank() } ?: d.name)
+            .setView(content)
             .setPositiveButton("Done") { _, _ ->
                 commitAll(commits)
                 onChanged()
@@ -374,12 +391,30 @@ class Editor(
         dlg.show()
         // Docked at the bottom, half height, no dimming: the card stays visible above while sliders apply live.
         if (restores.isNotEmpty()) {
-            val top = activity.resources.displayMetrics.heightPixels - (activity.resources.displayMetrics.heightPixels * 0.5f).toInt()
-            onTop?.invoke(top)
+            val screenH = activity.resources.displayMetrics.heightPixels
+            val h0 = if (dockH > 0) dockH else (screenH * 0.5f).toInt()
+            onTop?.invoke(screenH - h0)
             dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             dlg.window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
             dlg.window?.setGravity(android.view.Gravity.BOTTOM)
-            dlg.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, (activity.resources.displayMetrics.heightPixels * 0.5f).toInt())
+            dlg.window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, h0)
+            var startY = 0f
+            var startH = 0
+            val dragWin = dlg.window
+            val drag = View.OnTouchListener { _, ev ->
+                when (ev.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> { startY = ev.rawY; startH = dragWin?.decorView?.height ?: h0 }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val h = (startH + (startY - ev.rawY)).toInt().coerceIn(dp(190), (screenH * 0.94f).toInt())
+                        dockH = h
+                        dragWin?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, h)
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> onTop?.invoke(screenH - dockH)
+                }
+                true
+            }
+            gripBox.setOnTouchListener(drag)
+            dlg.findViewById<TextView>(activity.resources.getIdentifier("alertTitle", "id", "android"))?.setOnTouchListener(drag)
         }
         dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)
         dlg.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
