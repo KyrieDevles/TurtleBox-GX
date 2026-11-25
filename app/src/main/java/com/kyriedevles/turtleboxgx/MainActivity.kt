@@ -1171,13 +1171,11 @@ class MainActivity : Activity() {
             add(fileRow("XML", xmlName, sub, xmlError == null), 8)
         }
         if (zipName.isNotBlank()) add(fileRow("ZIP", zipName, zipInfo, zipOk), 8)
-        val remoteTpl = remoteItems.filter { it.templates && it.key !in templates }
-        if (templates.isNotEmpty() || remoteTpl.isNotEmpty()) {
+        if (templates.isNotEmpty()) {
             add(label("Templates", 12f, Theme.pink), 18)
             val baseLabel = layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)"
             add(templateRow(baseLabel, "The base layout on its own", selectedTemplate.isBlank(), null, null) { selectTemplate("") }, 8)
             for ((key, ti) in templates) add(localTemplate(key, ti), 8)
-            for (it in remoteTpl) add(remoteTemplate(it), 8)
         }
         if (xmlName.isBlank() && zipName.isBlank() && xmlError == null) {
             add(label("No files yet. Open the folder that holds your layout .xml and .zip.", 14f, Theme.muted), 8)
@@ -1276,14 +1274,6 @@ class MainActivity : Activity() {
             box.addView(d)
         }
         return box
-    }
-
-    private fun remoteTemplate(it: Downloader.Item): View {
-        val r = templateRow(it.title, "Not installed · ${Downloader.sizeText(it.size)}", false, null, "GET") {
-            folderUri?.let { u -> Downloader(this, u) {}.downloadWithDialog(it.todo) { afterTplChange() } }
-        }
-        r.alpha = 0.6f
-        return r
     }
 
     /** One template in the Files in use list. `chev` shows a fold arrow; `pillText` overrides the USE/IN USE tag. */
