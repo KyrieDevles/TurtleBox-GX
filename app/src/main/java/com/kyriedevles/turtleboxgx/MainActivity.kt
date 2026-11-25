@@ -1082,6 +1082,7 @@ class MainActivity : Activity() {
         buttons.addView(pill("Open folder", true) { pickFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         buttons.addView(pill("Reload", false) { folderUri?.let { scan(it) } ?: toast("Choose a folder first.") }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folder.addView(buttons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        folder.addView(label("How to choose: tap Open folder, go to the folder that holds your layout .xml and .zip (or make a new one), then tap “Use this folder” at the bottom and allow access. Templates go in a folder called templates inside it.", 12f, Theme.muted).apply { setPadding(0, dp(10), 0, 0) })
         add(folder)
 
         run {
@@ -1270,6 +1271,7 @@ class MainActivity : Activity() {
         fr.addView(pill(if (sfSaved == null) "Choose folder" else "Change", true) { pickSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
         if (sfSaved != null) fr.addView(pill("Rescan", false) { scanSetsFolder() }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { leftMargin = dp(8) })
         folderCard.addView(fr, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        folderCard.addView(label("How to choose: tap Choose folder, open the folder that holds your .msoe-set files (folders inside it are included), then tap “Use this folder” at the bottom and allow access.", 12f, Theme.muted).apply { setPadding(0, dp(10), 0, 0) })
         box.addView(folderCard, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
         box.addView(label("Recent sets", 12f, Theme.pink), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
         val list = recents()
