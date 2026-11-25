@@ -134,6 +134,11 @@ class Editor(
             livePending = true
             liveHandler.postDelayed({ livePending = false; onChanged() }, 90)
         }
+        // Changes show on the card at once; Cancel puts the old values back.
+        fun track(name: String) {
+            val old = state.values[name]
+            restores.add { if (old == null) state.values.remove(name) else state.values[name] = old }
+        }
         for (f in fields) {
             if (f.type == "multi_select") continue
             if (f.type == "namestyle") {
@@ -210,6 +215,8 @@ class Editor(
                             setOnClickListener {
                                 chosen = v
                                 paint()
+                                state.values[f.name] = chosen
+                                liveApply()
                             }
                         }
                         chips.add(tv to v)
@@ -217,6 +224,7 @@ class Editor(
                         else flow.addView(tv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
                     }
                     paint()
+                    track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
                     box.addView(flow, row())
                 }
@@ -230,11 +238,14 @@ class Editor(
                             .setSingleChoiceItems(names, at) { dd, which ->
                                 chosen = f.items[which].second
                                 b.text = f.items[which].first
+                                state.values[f.name] = chosen
+                                liveApply()
                                 dd.dismiss()
                             }.create()
                         dlg.show()
                         style(dlg)
                     }
+                    track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
                     box.addView(b, row())
                 }
@@ -262,7 +273,7 @@ class Editor(
                         setPadding(dp(14), dp(12), dp(14), dp(12))
                         if (multi) {
                             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                            minLines = 6
+                            minLines = 4
                             gravity = android.view.Gravity.TOP
                             setSingleLine(false)
                         } else {
@@ -271,6 +282,15 @@ class Editor(
                         }
                     }
                     if (firstEdit == null) firstEdit = et
+                    track(f.name)
+                    et.addTextChangedListener(object : TextWatcher {
+                        override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                        override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+                        override fun afterTextChanged(e: Editable?) {
+                            state.values[f.name] = e?.toString() ?: ""
+                            liveApply()
+                        }
+                    })
                     commits.add {
                         val v = et.text.toString()
                         if (v != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = v
