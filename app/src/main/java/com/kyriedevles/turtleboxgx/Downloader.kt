@@ -101,8 +101,9 @@ class Downloader(private val activity: Activity, private val tree: Uri, private 
                             outdated = rec[0] != r.size.toString() || rec[1] != r.updated
                         } else {
                             // Not downloaded by this app: the same size counts as the same file, anything else may be the user's own.
+                            // A different size is most likely the user's edit, so it is not flagged as an update.
                             edited = local != r.size
-                            outdated = local != r.size
+                            outdated = false
                         }
                         r.state = when {
                             !outdated && !edited -> "current"
