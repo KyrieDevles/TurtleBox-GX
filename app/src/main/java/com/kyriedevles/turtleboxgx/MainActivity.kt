@@ -761,7 +761,7 @@ class MainActivity : Activity() {
         val tiles = dockTiles()
         val m = mode ?: dockMode
         val info = tiles.map { Triple(it, tileStatus(it), menuChanged(it.menu)) }
-        val tlabel = if (templates.isEmpty()) "" else (templates[selectedTemplate]?.label ?: layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default")
+        val tlabel = templates[selectedTemplate]?.label ?: layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default"
         val struct = m.toString() + "|" + tlabel + "|" + selectedTemplate + "|" + info.joinToString(";") { "${it.first.menu}/${it.first.label}/${it.first.icon}/${it.first.fromTemplate}" }
         val sig = struct + "#" + info.joinToString(";") { "${it.second}/${it.third}" }
         if (!force && sig == dockSig) return
@@ -786,7 +786,7 @@ class MainActivity : Activity() {
 
         // Template pill (left) and two-state chevron (right) live in the handle row.
         dockPill.text = "Template  ›  $tlabel"
-        dockPill.visibility = if (templates.isEmpty()) View.GONE else View.VISIBLE
+        dockPill.visibility = View.VISIBLE
         dockChev.removeAllViews()
         dockChev.contentDescription = when (m) { 0 -> "Show the edit tiles in a row"; 1 -> "Show the edit tiles in a grid"; else -> "Close the edit tiles" } + ". Drag to resize."
         dockChev.addView(HotIcon(this, when (m) { 0 -> "up"; 1 -> "right"; else -> "down" }), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
