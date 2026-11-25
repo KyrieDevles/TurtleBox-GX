@@ -803,7 +803,7 @@ class MainActivity : Activity() {
             val cols = maxOf(3, (resources.displayMetrics.widthPixels / resources.displayMetrics.density / 130f).toInt())
             val grid = android.widget.GridLayout(this).apply {
                 columnCount = cols
-                setPadding(dp(10), 0, dp(10), dp(10))
+                setPadding(dp(10), dp(6), dp(10), dp(10))
             }
             for ((t, status, changed) in info) {
                 val lp = android.widget.GridLayout.LayoutParams(
@@ -813,6 +813,13 @@ class MainActivity : Activity() {
                 grid.addView(tileView(t, status, changed, icons, refs), lp)
             }
             val sv = object : ScrollView(this) {
+                // Tiles may glow sideways but must not scroll out over the card or the template button.
+                override fun dispatchDraw(canvas: android.graphics.Canvas) {
+                    canvas.save()
+                    canvas.clipRect(-dp(16), scrollY, width + dp(16), scrollY + height)
+                    super.dispatchDraw(canvas)
+                    canvas.restore()
+                }
                 override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = t }
             }
             sv.addView(grid)
@@ -828,6 +835,12 @@ class MainActivity : Activity() {
                 row.addView(tileView(t, status, changed, icons, refs), LinearLayout.LayoutParams(dp(92), dp(76)).apply { rightMargin = dp(8) })
             }
             val hs = object : HorizontalScrollView(this) {
+                override fun dispatchDraw(canvas: android.graphics.Canvas) {
+                    canvas.save()
+                    canvas.clipRect(scrollX, -dp(16), scrollX + width, height + dp(16))
+                    super.dispatchDraw(canvas)
+                    canvas.restore()
+                }
                 override fun onScrollChanged(l: Int, t: Int, ol: Int, ot: Int) { super.onScrollChanged(l, t, ol, ot); dockScroll = l }
             }
             hs.isHorizontalScrollBarEnabled = false
