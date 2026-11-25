@@ -151,7 +151,7 @@ class Editor(
             val old = state.values[name]
             restores.add { if (old == null) state.values.remove(name) else state.values[name] = old }
         }
-        var cur: LinearLayout = box
+        var into: LinearLayout = box
         for (f in fields) {
             if (f.type == "multi_select") continue
             headings[f.name]?.let { h ->
@@ -170,7 +170,7 @@ class Editor(
                 }
                 box.addView(sec, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 Theme.unclip(sec)
-                cur = sec
+                into = sec
             }
             if (f.type == "namestyle") {
                 val cur = state.values[f.name] ?: ctx.value(f.name)
@@ -182,7 +182,7 @@ class Editor(
                     onChanged()
                     NameStyleEditor(activity, layout, state, f.name, onChanged, namePreview) { open(click) }.show()
                 }
-                cur.addView(b, row())
+                into.addView(b, row())
                 continue
             }
             if (f.type == "button") {
@@ -202,17 +202,17 @@ class Editor(
                         onChanged()
                         openPanel(grp.name) { open(click) }
                     }
-                    cur.addView(b, row())
+                    into.addView(b, row())
                 }
                 continue
             }
-            cur.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
+            into.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
             val current = state.values[f.name] ?: ctx.value(f.name)
             when {
                 f.type == "image" -> {
                     val b = hotButton("Choose image…")
                     b.setOnClickListener { commitAll(commits); pickImage(f.name) }
-                    cur.addView(b, row())
+                    into.addView(b, row())
                 }
                 f.items.isNotEmpty() && f.items.size <= 8 && f.items.all { it.first.length <= 34 } -> {
                     var chosen = current
@@ -257,7 +257,7 @@ class Editor(
                     paint()
                     track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
-                    cur.addView(flow, row())
+                    into.addView(flow, row())
                 }
                 f.items.isNotEmpty() -> {
                     var chosen = current
@@ -278,7 +278,7 @@ class Editor(
                     }
                     track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
-                    cur.addView(b, row())
+                    into.addView(b, row())
                 }
                 sliderRange(f.name) != null -> {
                     val (lo, hi) = sliderRange(f.name)!!
@@ -291,7 +291,7 @@ class Editor(
                         onChanged()
                         openPanelFields(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name, listOf(f)) { open(click) }
                     }
-                    cur.addView(b, row())
+                    into.addView(b, row())
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
@@ -338,9 +338,9 @@ class Editor(
                             openPanel(gearName) { open(click) }
                         }
                         line.addView(g, LinearLayout.LayoutParams(dp(48), dp(48)).apply { leftMargin = dp(10) })
-                        cur.addView(line, row())
+                        into.addView(line, row())
                     } else {
-                        cur.addView(et, row())
+                        into.addView(et, row())
                     }
                 }
             }
