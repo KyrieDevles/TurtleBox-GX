@@ -335,6 +335,7 @@ class Downloader(private val activity: Activity, private val tree: Uri, private 
             background = Theme.choice(false, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             setOnClickListener { dlg.dismiss() }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)))
+        Theme.unclip(head)
         root.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val list = LinearLayout(activity).apply {
@@ -468,6 +469,7 @@ class Downloader(private val activity: Activity, private val tree: Uri, private 
                     else if (item.state == "new" || item.state == "update") start(item.todo)
                 }
                 r.addView(btn, LinearLayout.LayoutParams(dp(104), dp(38)))
+                Theme.unclip(r)
                 list.addView(r, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
                 refs.add(RowRef(item, sub, bar, btn))
             }

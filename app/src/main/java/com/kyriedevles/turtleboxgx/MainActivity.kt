@@ -242,10 +242,10 @@ class MainActivity : Activity() {
         typeface = Typeface.DEFAULT_BOLD
         if (filled) {
             setTextColor(Theme.onPink)
-            background = Theme.on(cut = dp(10).toFloat(), shadow = dp(6).toFloat())
+            background = Theme.on(cut = dp(7).toFloat(), shadow = dp(4).toFloat())
         } else {
             setTextColor(Theme.pink)
-            background = Theme.field(dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(6).toFloat())
+            background = Theme.field(dp(7).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
         }
         setOnClickListener { onClick() }
     }
@@ -1222,7 +1222,7 @@ class MainActivity : Activity() {
         val bak = templatesDoc?.findFile("$key.xml.bak")
         val inUse = key == selectedTemplate
         val update = remote?.state == "update" || remote?.state == "conflict"
-        val sub = listOf(ti.description, if (update) "Update available" else "").filter { it.isNotBlank() }.joinToString(" · ").ifBlank { key }
+        val sub = listOf(ti.description, if (update) "Update available" else "").filter { it.isNotBlank() }.joinToString(" · ")
         val open = expandedTpl == key
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1230,6 +1230,7 @@ class MainActivity : Activity() {
         }
         box.addView(templateRow(ti.label, sub, inUse, if (open) "up" else "down", null) { selectTemplate(key) }.apply {
             background = null
+            setPadding(dp(14), dp(12), dp(14), if (open) dp(6) else dp(12))
             setOnClickListener { expandedTpl = if (open) null else key; refreshLayoutsPage() }
         })
         if (open) {
@@ -1297,7 +1298,7 @@ class MainActivity : Activity() {
         }
         val mid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         mid.addView(label(title, 15f, Color.WHITE, bold = true))
-        mid.addView(label(sub, 12f, Theme.muted))
+        if (sub.isNotBlank()) mid.addView(label(sub, 12f, Theme.muted))
         row.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dp(8), 0) })
         row.addView(
             label(pillText ?: if (inUse) "IN USE" else "USE", 12f, if (inUse) Theme.onPink else Theme.pink, bold = true).apply {
