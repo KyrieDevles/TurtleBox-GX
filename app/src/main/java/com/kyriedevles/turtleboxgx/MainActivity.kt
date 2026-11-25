@@ -556,7 +556,7 @@ class MainActivity : Activity() {
             background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             isClickable = true
         }
-        handle.addView(dockChev, FrameLayout.LayoutParams(dp(40), dp(32), Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(12) })
+        handle.addView(dockChev, FrameLayout.LayoutParams(dp(36), dp(28), Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(12) })
         var downY = 0f
         var startH = 0
         var moving = false
