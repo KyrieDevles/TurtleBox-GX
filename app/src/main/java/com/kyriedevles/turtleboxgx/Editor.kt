@@ -94,6 +94,8 @@ class Editor(
     private val onChanged: () -> Unit,
     private val pickImage: (String) -> Unit,
     private val namePreview: ((List<Map<String, String>?>) -> List<android.graphics.Bitmap>)? = null,
+    /** Called with the screen y where a docked menu starts (so the card can fit above it), or -1 when it closes. */
+    private val onTop: ((Int) -> Unit)? = null,
 ) {
     private val pink = Theme.pink
     private val hot = Theme.hot
@@ -339,9 +341,12 @@ class Editor(
             }
             .create()
         dlgRef = dlg
+        if (restores.isNotEmpty()) dlg.setOnDismissListener { onTop?.invoke(-1) }
         dlg.show()
         // Docked at the bottom, half height, no dimming: the card stays visible above while sliders apply live.
         if (restores.isNotEmpty()) {
+            val top = activity.resources.displayMetrics.heightPixels - (activity.resources.displayMetrics.heightPixels * 0.5f).toInt()
+            onTop?.invoke(top)
             dlg.window?.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             dlg.window?.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
             dlg.window?.setGravity(android.view.Gravity.BOTTOM)

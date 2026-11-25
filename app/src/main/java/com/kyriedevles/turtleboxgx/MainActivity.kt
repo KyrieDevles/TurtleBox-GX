@@ -1035,6 +1035,16 @@ class MainActivity : Activity() {
                     REQ_IMAGE,
                 )
             },
+            onTop = { topY ->
+                if (topY < 0) {
+                    cardView.insetBottom = 0
+                } else {
+                    val loc = IntArray(2)
+                    cardView.getLocationOnScreen(loc)
+                    cardView.insetBottom = maxOf(0, loc[1] + cardView.height - topY)
+                }
+                cardView.invalidate()
+            },
             namePreview = { maps ->
                 val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                 try {
