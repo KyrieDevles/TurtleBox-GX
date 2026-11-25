@@ -15,7 +15,9 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.os.Bundle
+import android.graphics.RectF
 import android.os.Handler
+import android.view.WindowManager
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
