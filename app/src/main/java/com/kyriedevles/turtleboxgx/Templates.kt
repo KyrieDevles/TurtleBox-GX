@@ -21,7 +21,7 @@ import javax.xml.transform.stream.StreamResult
  *  - `<hide target="id"/>`: the element is never visible.
  *  - `<add>`: new `<image>`/`<text>` elements (added to the layout) and `<data>`/`<bool>` entries (added to the base).
  *  - `<hide-data name="x"/>`: removes the field from every settings menu that lists it; `<default name="x" value="y"/>`: changes a data's default.
- *  - `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y); `name="Label"` sets the text shown.
+ *  - `<add-item menu="m" value="#" name="Heading"/>` adds a section heading (can repeat); `<add-item menu="m" value="x" before="y"/>` adds option x to menu m (at the end, or before y); `name="Label"` sets the text shown.
  *  - `<patch>` children may carry mode="prepend" / "append" to add entries above/below the existing ones instead of replacing them.
  *  - `<set>` holds `<data>`/`<bool>` that replace a same-named one in the base (or add it).
  *  - `<add-tile menu label icon status before/>` / `<hide-tile menu/>` change the Card page's edit dock tiles.
@@ -223,7 +223,7 @@ object Templates {
                     val m = kids(root).firstOrNull { it.tagName == "data" && it.getAttribute("name") == menuName }
                     if (m == null || v.isBlank()) {
                         notes.add("template ${t.name}: no menu '$menuName' for add-item")
-                    } else if (kids(m).none { it.tagName == "item" && it.getAttribute("value") == v }) {
+                    } else if (v.startsWith("#") || kids(m).none { it.tagName == "item" && it.getAttribute("value") == v }) {
                         val item = doc.createElement("item")
                         item.setAttribute("name", c.getAttribute("name").ifBlank { v })
                         item.setAttribute("value", v)
