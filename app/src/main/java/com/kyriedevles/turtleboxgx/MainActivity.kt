@@ -481,7 +481,6 @@ class MainActivity : Activity() {
             col.addView(tx, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             wrap.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             val mark = View(this).apply { background = Theme.on(slant = dp(3).toFloat()) }
-            wrap.addView(mark, FrameLayout.LayoutParams(dp(44), dp(3), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
             icons.add(ic)
             labels.add(tx)
             marks.add(mark)
@@ -538,10 +537,6 @@ class MainActivity : Activity() {
         }
         // The handle stays put while the body is rebuilt, so a drag is never interrupted.
         val handle = FrameLayout(this)
-        handle.addView(
-            View(this).apply { background = Theme.on(slant = dp(3).toFloat()) },
-            FrameLayout.LayoutParams(dp(44), dp(5), Gravity.CENTER),
-        )
         dockPill = TextView(this).apply {
             gravity = Gravity.CENTER
             setPadding(dp(16), 0, dp(16), 0)
@@ -560,15 +555,14 @@ class MainActivity : Activity() {
         dockChev = FrameLayout(this).apply {
             background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
             isClickable = true
-            setOnClickListener { flipDock() }
         }
-        handle.addView(dockChev, FrameLayout.LayoutParams(dp(36), dp(28), Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(12) })
+        handle.addView(dockChev, FrameLayout.LayoutParams(dp(40), dp(32), Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(12) })
         var downY = 0f
         var startH = 0
         var moving = false
         var lastH = 0
         var lastM = 1
-        handle.setOnTouchListener { v, e ->
+        dockChev.setOnTouchListener { v, e ->
             val pageH = (dockPage?.height ?: 0).let { if (it > 0) it else (resources.displayMetrics.heightPixels * 0.8f).toInt() }
             val maxH = (pageH * 0.62f).toInt()
             val miniH = dp(44)
@@ -687,9 +681,9 @@ class MainActivity : Activity() {
         refreshDock(true)
     }
 
-    /** Chevron and handle tap: the handle row alone, or back to the row / grid you had open. */
+    /** Chevron tap: closed, then the tile row, then the grid, then closed again. */
     private fun flipDock() {
-        setDockMode(if (dockMode == 0) prefs.getInt("dock_last", 1) else 0)
+        setDockMode((dockMode + 1) % 3)
     }
 
     private fun showTemplateDialog() {
@@ -788,14 +782,14 @@ class MainActivity : Activity() {
         (statusLine.parent as? ViewGroup)?.removeView(statusLine)
         dockBody.removeAllViews()
         if (mode == null) applyDockSize(m)
-        dockHandle.contentDescription = if (m != 0) "Drag or tap to collapse the edit tiles" else "Drag or tap to expand the edit tiles"
+        dockHandle.contentDescription = "Edit tiles"
 
         // Template pill (left) and two-state chevron (right) live in the handle row.
         dockPill.text = "Template  ›  $tlabel"
         dockPill.visibility = if (templates.isEmpty()) View.GONE else View.VISIBLE
         dockChev.removeAllViews()
-        dockChev.contentDescription = if (m != 0) "Collapse the edit tiles" else "Expand the edit tiles"
-        dockChev.addView(HotIcon(this, if (m != 0) "down" else "up"), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
+        dockChev.contentDescription = when (m) { 0 -> "Show the edit tiles in a row"; 1 -> "Show the edit tiles in a grid"; else -> "Close the edit tiles" } + ". Drag to resize."
+        dockChev.addView(HotIcon(this, when (m) { 0 -> "up"; 1 -> "right"; else -> "down" }), FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER))
 
         if (m == 0) {
             tileRefs = emptyList()

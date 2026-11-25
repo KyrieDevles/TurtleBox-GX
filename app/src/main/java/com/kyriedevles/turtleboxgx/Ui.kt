@@ -135,6 +135,9 @@ class HotIcon(context: Context, private val kind: String) : View(context) {
             "down" -> {
                 moveTo(6f, 9f); lineTo(12f, 15f); lineTo(18f, 9f)
             }
+            "right" -> {
+                moveTo(9f, 6f); lineTo(15f, 12f); lineTo(9f, 18f)
+            }
             "sets" -> {
                 addRoundRect(RectF(3f, 3f, 11f, 11f), 1f, 1f, Path.Direction.CW)
                 addRoundRect(RectF(13f, 3f, 21f, 11f), 1f, 1f, Path.Direction.CW)
