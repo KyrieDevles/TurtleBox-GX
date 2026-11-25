@@ -29,6 +29,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** Areas that react to a tap, in drawing order (the last one is on top). */
     val hits = ArrayList<Hit>()
 
+    /** The natural (layout) rectangle of every text box that can be moved, by its boxdata name. */
+    val boxes = HashMap<String, RectF>()
+
     /** Debug notes shown under the card. */
     val notes = ArrayList<String>()
 
@@ -156,8 +159,19 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         drawn++
     }
 
+    /** "left,top,width,height" as typed into a box option, or null. */
+    private fun parseBox(v: String?): Rect4? {
+        val p = v?.split(',')?.mapNotNull { it.trim().toFloatOrNull() } ?: return null
+        return if (p.size == 4 && p[2] > 0f && p[3] > 0f) Rect4(p[0], p[1], p[2], p[3]) else null
+    }
+
     private fun drawText(c: Canvas, e: Element) {
-        val size = pick(e.sizes) ?: return
+        var size = pick(e.sizes) ?: return
+        // A text element with boxdata="name" can be moved and resized by the user; the card keeps the new box.
+        e.attrs["boxdata"]?.let { bd ->
+            boxes[bd] = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
+            parseBox(values[bd])?.let { size = it }
+        }
         e.attrs["click"]?.let { hits.add(Hit(it, RectF(size.left, size.top, size.left + size.width, size.top + size.height))) }
         val text = ctx.sub(e.text)
         if (text.isBlank()) return

@@ -96,10 +96,15 @@ class Editor(
     private val namePreview: ((List<Map<String, String>?>) -> List<android.graphics.Bitmap>)? = null,
     /** Called with the screen y where a docked menu starts (so the card can fit above it), or -1 when it closes. */
     private val onTop: ((Int) -> Unit)? = null,
+    /** Starts moving and resizing a text box on the card (data name, what to run when finished). */
+    private val onBox: ((String, () -> Unit) -> Unit)? = null,
 ) {
     companion object {
         /** The height the user last dragged a docked menu to, kept for the session (0 = half the screen). */
         var dockH = 0
+
+        /** Collapsible sections (nested menus) that are open, kept for the session. */
+        val openSections = HashSet<String>()
     }
 
     private val pink = Theme.pink
@@ -157,8 +162,53 @@ class Editor(
             restores.add { if (old == null) state.values.remove(name) else state.values[name] = old }
         }
         var into: LinearLayout = box
-        for (f in fields) {
-            if (f.type == "multi_select") continue
+        fun changedIn(g: DataDef): Boolean = g.items.mapNotNull { find(it.second) }.any { m ->
+            if (m.type == "multi_select") changedIn(m)
+            else if (m.type == "box") (state.values[m.name] ?: "").isNotBlank()
+            else {
+                val v = state.values[m.name] ?: ctx.value(m.name)
+                val def = m.default ?: ""
+                v.toFloatOrNull()?.let { a -> def.toFloatOrNull()?.let { b -> a != b } ?: false } ?: (v != def && def.isNotEmpty() && m.items.isNotEmpty())
+            }
+        }
+        fun build(f: DataDef) {
+            if (f.type == "multi_select") {
+                // A menu inside a menu is a collapsible section (like the tabs in Name Style).
+                val card = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), false)
+                    setPadding(dp(14), dp(2), dp(14), dp(2))
+                }
+                val body = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(12)) }
+                val title = f.desc?.takeIf { it.isNotBlank() } ?: f.name
+                val head = TextView(activity).apply {
+                    setTextColor(Theme.pink)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    letterSpacing = 0.12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setPadding(0, dp(14), 0, dp(14))
+                }
+                fun paintHead() {
+                    val open = f.name in openSections
+                    head.text = (if (open) "▾   " else "▸   ") + title.uppercase() + if (changedIn(f)) "   ●" else ""
+                    body.visibility = if (open) View.VISIBLE else View.GONE
+                }
+                head.setOnClickListener {
+                    if (!openSections.remove(f.name)) openSections.add(f.name)
+                    paintHead()
+                }
+                card.addView(head, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                card.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                box.addView(card, row())
+                Theme.unclip(card)
+                Theme.unclip(body)
+                val saved = into
+                into = body
+                for (m in f.items.mapNotNull { find(it.second) }) build(m)
+                into = saved
+                paintHead()
+                return
+            }
             headings[f.name]?.let { h ->
                 box.addView(TextView(activity).apply {
                     text = h.uppercase()
@@ -188,7 +238,18 @@ class Editor(
                     NameStyleEditor(activity, layout, state, f.name, onChanged, namePreview) { open(click) }.show()
                 }
                 into.addView(b, row())
-                continue
+                return
+            }
+            if (f.type == "box") {
+                val b = hotButton((f.desc?.takeIf { it.isNotBlank() } ?: "Move / resize text box…") + if ((state.values[f.name] ?: "").isNotBlank()) "   ●  moved" else "")
+                b.setOnClickListener {
+                    commitAll(commits)
+                    dlgRef?.dismiss()
+                    onChanged()
+                    onBox?.invoke(f.name) { open(click) }
+                }
+                into.addView(b, row())
+                return
             }
             if (f.type == "button") {
                 // A button that opens a settings panel (gear = the multi_select group it shows).
@@ -209,9 +270,10 @@ class Editor(
                     }
                     into.addView(b, row())
                 }
-                continue
+                return
             }
-            into.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
+            val inlineSlider = f.items.isEmpty() && f.type != "image" && sliderRange(f.name) != null
+            if (!inlineSlider) into.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
             val current = state.values[f.name] ?: ctx.value(f.name)
             when {
                 f.type == "image" -> {
@@ -287,16 +349,9 @@ class Editor(
                 }
                 sliderRange(f.name) != null -> {
                     val (lo, hi) = sliderRange(f.name)!!
-                    val start = (current.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
-                    val shown = if (f.name.startsWith("fontscale") && start == 0f) "Auto" else fmt(start) + "%"
-                    val b = hotButton("$shown   ·   tap to adjust")
-                    b.setOnClickListener {
-                        commitAll(commits)
-                        dlgRef?.dismiss()
-                        onChanged()
-                        openPanelFields(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name, listOf(f)) { open(click) }
-                    }
-                    into.addView(b, row())
+                    val start = (current.toFloatOrNull() ?: f.default?.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
+                    track(f.name)
+                    sliderRow(into, f, start, { v -> state.values[f.name] = fmt(v); liveApply() }, { }, dp(8))
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
@@ -350,6 +405,7 @@ class Editor(
                 }
             }
         }
+        for (f in fields) build(f)
 
         val scroll = object : ScrollView(activity) {
                 // Content may spill sideways (glow) but not into the top and bottom padding, where an off-screen row's glow would show without its row.
@@ -564,6 +620,94 @@ class Editor(
         openPanelFields(g.desc?.takeIf { it.isNotBlank() } ?: g.name, fields, after)
     }
 
+    /** One number option as a name, a typed value, a reset button and a slider. Returns what resets it. */
+    private fun sliderRow(parent: LinearLayout, f: DataDef, startV: Float, onValue: (Float) -> Unit, onDone: () -> Unit, gap: Int = 0): () -> Unit {
+        val (lo, hi) = sliderRange(f.name) ?: (0 to 200)
+        val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, gap, 0, 0) }
+        val name = label(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name)
+        head.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val num = EditText(activity).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
+            setSingleLine(true)
+            setText(fmt(startV))
+            setTextColor(pink)
+            typeface = Typeface.DEFAULT_BOLD
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(Color.BLACK)
+                setStroke(dp(2), hot)
+                cornerRadius = dp(10).toFloat()
+            }
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setSelectAllOnFocus(true)
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+        }
+        head.addView(num, LinearLayout.LayoutParams(dp(90), dp(40)))
+        val one = Button(activity).apply {
+            text = "↺"
+            setAllCaps(false)
+            setTextColor(pink)
+            setPadding(0, 0, 0, 0)
+            minWidth = 0
+            minimumWidth = 0
+            background = GradientDrawable().apply {
+                setColor(Color.BLACK)
+                setStroke(dp(2), hot)
+                cornerRadius = dp(10).toFloat()
+            }
+            contentDescription = "Reset this option"
+            setOnClickListener { num.setText(fmt(f.default?.toFloatOrNull() ?: 100f)) }
+        }
+        head.addView(one, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(6) })
+        parent.addView(head)
+        val bar = SeekBar(activity).apply {
+            max = (hi - lo) * 10
+            progress = Math.round((startV - lo) * 10f).coerceIn(0, max)
+            progressTintList = android.content.res.ColorStateList.valueOf(pink)
+            thumbTintList = android.content.res.ColorStateList.valueOf(pink)
+        }
+        var busy = false
+        fun apply(v: Float) = onValue(v)
+        bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                if (!fromUser || busy) return
+                val v = lo + p / 10f
+                busy = true
+                num.setText(fmt(v))
+                busy = false
+                apply(v)
+            }
+
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        num.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (busy) return
+                val v = s?.toString()?.toFloatOrNull() ?: return
+                busy = true
+                bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
+                busy = false
+                apply(v)
+            }
+        })
+        num.setOnEditorActionListener { v, act, _ ->
+            if (act == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                (v.text?.toString()?.toFloatOrNull())?.let { apply(it); onDone() }
+                v.clearFocus()
+                true
+            } else false
+        }
+        parent.addView(bar, row())
+        return {
+            val d = (f.default?.toFloatOrNull() ?: 100f)
+            num.setText(fmt(d))
+        }
+    }
+
     private fun openPanelFields(title: String, fields: List<DataDef>, after: () -> Unit) {
         val ctx = Ctx(layout, state.values)
         val before = fields.associate { it.name to (state.values[it.name] ?: ctx.value(it.name)) }
@@ -580,95 +724,10 @@ class Editor(
         }
         val resetters = ArrayList<() -> Unit>()
         for (f in fields) {
-            val (lo, hi) = sliderRange(f.name) ?: (0 to 200)
+            val (lo, _) = sliderRange(f.name) ?: (0 to 200)
             val defText = f.default ?: before[f.name] ?: lo.toString()
             val startV = (before[f.name]?.toFloatOrNull() ?: defText.toFloatOrNull() ?: lo.toFloat())
-            val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            val name = label(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name)
-            head.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            val num = EditText(activity).apply {
-                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
-                setSingleLine(true)
-                setText(fmt(startV))
-                setTextColor(pink)
-                typeface = Typeface.DEFAULT_BOLD
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(Color.BLACK)
-                    setStroke(dp(2), hot)
-                    cornerRadius = dp(10).toFloat()
-                }
-                setPadding(dp(8), dp(4), dp(8), dp(4))
-                setSelectAllOnFocus(true)
-                imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
-            }
-            head.addView(num, LinearLayout.LayoutParams(dp(90), dp(40)))
-            val one = Button(activity).apply {
-                text = "↺"
-                setAllCaps(false)
-                setTextColor(pink)
-                setPadding(0, 0, 0, 0)
-                minWidth = 0
-                minimumWidth = 0
-                background = GradientDrawable().apply {
-                    setColor(Color.BLACK)
-                    setStroke(dp(2), hot)
-                    cornerRadius = dp(10).toFloat()
-                }
-                contentDescription = "Reset this option"
-                setOnClickListener { num.setText(fmt(f.default?.toFloatOrNull() ?: 100f)) }
-            }
-            head.addView(one, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(6) })
-            box.addView(head)
-            val bar = SeekBar(activity).apply {
-                max = (hi - lo) * 10
-                progress = Math.round((startV - lo) * 10f).coerceIn(0, max)
-                progressTintList = android.content.res.ColorStateList.valueOf(pink)
-                thumbTintList = android.content.res.ColorStateList.valueOf(pink)
-            }
-            var busy = false
-            fun apply(v: Float) {
-                state.values[f.name] = fmt(v)
-                live()
-            }
-            bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                    if (!fromUser || busy) return
-                    val v = lo + p / 10f
-                    busy = true
-                    num.setText(fmt(v))
-                    busy = false
-                    apply(v)
-                }
-
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
-            num.addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(s: Editable?) {
-                    if (busy) return
-                    val v = s?.toString()?.toFloatOrNull() ?: return
-                    busy = true
-                    bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
-                    busy = false
-                    apply(v)
-                }
-            })
-            num.setOnEditorActionListener { v, act, _ ->
-                if (act == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
-                    (v.text?.toString()?.toFloatOrNull())?.let { apply(it); handler.removeCallbacksAndMessages(null); pending = false; onChanged() }
-                    v.clearFocus()
-                    true
-                } else false
-            }
-            resetters.add {
-                val d = (f.default?.toFloatOrNull() ?: 100f)
-                num.setText(fmt(d))
-            }
-            box.addView(bar, row())
+            resetters.add(sliderRow(box, f, startV, { v -> state.values[f.name] = fmt(v); live() }, { handler.removeCallbacksAndMessages(null); pending = false; onChanged() }))
         }
 
         var finished = false

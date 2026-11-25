@@ -1018,6 +1018,68 @@ class MainActivity : Activity() {
         win.show()
     }
 
+    /** Moves and resizes a text box (the element with boxdata="name") on the card; the new box is kept in the card's values. */
+    private fun beginBoxEdit(name: String, after: () -> Unit) {
+        val l = layout ?: return after()
+        val st = state ?: return after()
+        val old = st.values[name]
+        val natural = lastBoxes[name]
+        val cur = old?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 4 && it[2] > 0f && it[3] > 0f }
+            ?.let { RectF(it[0], it[1], it[0] + it[2], it[1] + it[3]) } ?: natural?.let { RectF(it) }
+        if (cur == null) {
+            toast("This card has no text box to move.")
+            return after()
+        }
+        val ed = BoxEditor(cur, l.width, l.height)
+        val handler = Handler(Looper.getMainLooper())
+        var pending = false
+        fun write() { st.values[name] = listOf(cur.left, cur.top, cur.width(), cur.height()).joinToString(",") { Math.round(it).toString() } }
+        ed.onChange = {
+            write()
+            if (!pending) {
+                pending = true
+                handler.postDelayed({ pending = false; renderState(st) }, 100)
+            }
+        }
+        showTab(0)
+        cardView.boxEditor = ed
+        var kept = true
+        val dlg = ThemedBuilder(this).setTitle("Text box")
+            .setMessage("Drag inside the box to move it. Drag a corner or edge handle to resize it.")
+            .setPositiveButton("Done", null)
+            .setNeutralButton("Reset") { _, _ -> }
+            .setNegativeButton("Cancel") { _, _ -> kept = false }
+            .create()
+        dlg.setOnDismissListener {
+            handler.removeCallbacksAndMessages(null)
+            if (!kept) { if (old == null) st.values.remove(name) else st.values[name] = old }
+            cardView.boxEditor = null
+            cardView.insetBottom = 0
+            renderState(st)
+            after()
+        }
+        dlg.show()
+        dlg.window?.apply {
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+            setGravity(Gravity.BOTTOM)
+        }
+        // Reset puts the box back to the layout's own place and keeps the dialog open.
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+            st.values.remove(name)
+            natural?.let { cur.set(it) }
+            cardView.invalidate()
+            renderState(st)
+        }
+        dlg.window?.decorView?.post {
+            val loc = IntArray(2)
+            dlg.window?.decorView?.getLocationOnScreen(loc)
+            val cl = IntArray(2)
+            cardView.getLocationOnScreen(cl)
+            cardView.insetBottom = (cl[1] + cardView.height - loc[1]).coerceIn(0, maxOf(0, cardView.height - dp(60)))
+        }
+    }
+
     private fun openEditor(click: String) {
         val l = layout
         val st = state
@@ -1035,6 +1097,7 @@ class MainActivity : Activity() {
                     REQ_IMAGE,
                 )
             },
+            onBox = { name, after -> beginBoxEdit(name, after) },
             onTop = { topY ->
                 if (topY < 0) {
                     cardView.insetBottom = 0
@@ -1092,6 +1155,8 @@ class MainActivity : Activity() {
 
     private var updateCount = 0
     private var remoteItems: List<Downloader.Item> = emptyList()
+    /** Natural rectangles of movable text boxes from the last render, by boxdata name. */
+    private var lastBoxes: Map<String, RectF> = emptyMap()
     private var expandedTpl: String? = null
     private var lastUpdateCheck = 0L
 
@@ -2031,6 +2096,7 @@ class MainActivity : Activity() {
             val msg = StringBuilder()
             var assets: Assets? = null
             var newHits: List<Hit> = emptyList()
+            var newBoxes: Map<String, RectF> = emptyMap()
             try {
                 val ctx = Ctx(l, st.values)
                 assets = Assets(z, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
@@ -2063,6 +2129,7 @@ class MainActivity : Activity() {
                 if (real.isNotEmpty()) msg.append(" · ${real.size} not found (tap for details)")
                 msg.append("\n")
                 newHits = r.hits
+                newBoxes = HashMap(r.boxes)
                 r.notes.forEach { msg.append(it).append('\n') }
                 if (blank.isNotEmpty()) msg.append("Blank on purpose (none/off images): ${blank.size}\n")
                 if (real.isNotEmpty()) {
@@ -2084,6 +2151,7 @@ class MainActivity : Activity() {
                     cardView.editor?.above = editAbove
                     cardView.invalidate()
                     hits = newHits
+                    lastBoxes = newBoxes
                     prefs.edit().putBoolean("restoring", false).apply()
                 }
                 thread { autosave() }

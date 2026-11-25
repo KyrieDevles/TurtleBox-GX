@@ -225,6 +225,14 @@ class CardView(context: Context) : View(context) {
             invalidate()
         }
 
+    /** A text box being moved or resized on the card. */
+    var boxEditor: BoxEditor? = null
+        set(v) {
+            field = v
+            v?.redraw = { invalidate() }
+            invalidate()
+        }
+
     private val dest = RectF()
     private val bgPaint = Paint()
     private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -268,9 +276,13 @@ class CardView(context: Context) : View(context) {
         dest.set((width - w) / 2f, (height - insetBottom - h) / 2f, (width + w) / 2f, (height - insetBottom + h) / 2f)
         c.drawBitmap(b, null, dest, bmpPaint)
         editor?.draw(c, dest, resources.displayMetrics.density)
+        boxEditor?.draw(c, dest, resources.displayMetrics.density)
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        boxEditor?.let { e ->
+            if (bitmap != null) return e.touch(ev, dest, resources.displayMetrics.density)
+        }
         editor?.let { e ->
             if (bitmap != null) {
                 return e.touch(ev, dest, resources.displayMetrics.density)
