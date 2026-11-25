@@ -9,6 +9,10 @@ on:
         description: "Also bundle the layout XML and zip (about 77 MB) and publish it as the 'latest' release"
         type: boolean
         default: false
+      dlc:
+        description: "Also bundle the DLC templates (rush, ymo) from the 'Templates' release and publish it as the 'latest' release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -40,6 +44,15 @@ jobs:
           gh release download Assets --dir app/src/main/assets --clobber || echo "No Assets release; building without a built-in layout."
           ls -la app/src/main/assets
 
+      - name: Fetch the DLC templates
+        if: ${{ inputs.dlc }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p app/src/main/assets/templates
+          gh release download Templates --dir app/src/main/assets/templates --clobber || echo "No Templates release; building without DLC templates."
+          ls -la app/src/main/assets/templates
+
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
@@ -50,7 +63,7 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Publish the lean build to the "newlook" release
-        if: ${{ !inputs.full }}
+        if: ${{ !inputs.full && !inputs.dlc }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -63,7 +76,7 @@ jobs:
 
       # The full package, only when asked for.
       - name: Publish the full package to the "latest" release
-        if: ${{ inputs.full }}
+        if: ${{ inputs.full || inputs.dlc }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,5 +84,5 @@ jobs:
           gh release delete latest --cleanup-tag --yes || true
           gh release create latest TurtleBox-GX.apk \
             --title "Latest build" \
-            --notes "Full package built from commit ${GITHUB_SHA::7}, with the layout XML and zip bundled. Download TurtleBox-GX.apk and install it." \
+            --notes "Full package built from commit ${GITHUB_SHA::7}, with the layout XML and zip bundled (and the DLC templates if that option was ticked). Download TurtleBox-GX.apk and install it." \
             --prerelease

@@ -1338,7 +1338,10 @@ class MainActivity : Activity() {
     // ---- built-in layout: the APK can carry the layout XML and zip; Set up copies them into a folder the user picks ----
 
     private fun bundledFiles(): List<String> = try {
-        assets.list("")?.filter { it.endsWith(".xml") || it.endsWith(".zip") }?.sorted() ?: emptyList()
+        val base = assets.list("")?.filter { it.endsWith(".xml") || it.endsWith(".zip") }?.sorted() ?: emptyList()
+        // DLC templates ride along in assets/templates and are copied into the folder's templates folder.
+        val dlc = assets.list("templates")?.filter { it.endsWith(".xml") || it.endsWith(".zip") }?.sorted()?.map { "templates/$it" } ?: emptyList()
+        base + dlc
     } catch (e: Exception) {
         emptyList()
     }
@@ -1362,14 +1365,17 @@ class MainActivity : Activity() {
             var failed: String? = null
             try {
                 val dir = DocumentFile.fromTreeUri(this, tree) ?: throw IllegalStateException("Cannot open that folder.")
-                if (dir.findFile("templates") == null) dir.createDirectory("templates")
+                val tdir = dir.findFile("templates") ?: dir.createDirectory("templates") ?: throw IllegalStateException("Could not create the templates folder.")
                 for (n in names) {
-                    val existing = dir.findFile(n)
+                    val inTemplates = n.startsWith("templates/")
+                    val target = if (inTemplates) tdir else dir
+                    val fname = n.substringAfterLast('/')
+                    val existing = target.findFile(fname)
                     if (existing != null && !overwrite) {
                         notes.add("kept $n")
                         continue
                     }
-                    val f = existing ?: dir.createFile(if (n.endsWith(".xml")) "text/xml" else "application/zip", n)
+                    val f = existing ?: target.createFile(if (n.endsWith(".xml")) "text/xml" else "application/zip", fname)
                         ?: throw IllegalStateException("Could not create $n.")
                     assets.open(n).use { input ->
                         (contentResolver.openOutputStream(f.uri, "wt") ?: throw IllegalStateException("Could not write $n.")).use { out ->
@@ -1406,9 +1412,11 @@ class MainActivity : Activity() {
                 .setPositiveButton("Choose folder") { _, _ -> setupFolder() }.setNegativeButton("Cancel", null).show()
             return
         }
-        val xml = names.filter { it.endsWith(".xml") }
-        val zip = names.filter { it.endsWith(".zip") }
-        val options = listOf("Layout XML only" to xml, "Pictures and fonts (zip) only" to zip, "Both" to names).filter { it.second.isNotEmpty() }
+        val dlc = names.filter { it.startsWith("templates/") }
+        val baseNames = names.filter { !it.startsWith("templates/") }
+        val xml = baseNames.filter { it.endsWith(".xml") }
+        val zip = baseNames.filter { it.endsWith(".zip") }
+        val options = listOf("Layout XML only" to xml, "Pictures and fonts (zip) only" to zip, "DLC templates only" to dlc, "Everything" to names).filter { it.second.isNotEmpty() }
         ThemedBuilder(this).setTitle("Restore built-in files")
             .setItems(options.map { it.first }.toTypedArray()) { _, i ->
                 ThemedBuilder(this).setTitle("Replace your copy?")
