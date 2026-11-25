@@ -173,8 +173,11 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             parseBox(values[bd])?.let { size = it }
         }
         e.attrs["click"]?.let { hits.add(Hit(it, RectF(size.left, size.top, size.left + size.width, size.top + size.height))) }
-        val text = ctx.sub(e.text)
+        var text = ctx.sub(e.text)
         if (text.isBlank()) return
+        // Whole-box character styles from <allcaps> and <italic> children (values "on" or "off").
+        fun flag(key: String) = ctx.sub(e.options[key] ?: "").trim().equals("on", ignoreCase = true)
+        if (flag("allcaps")) text = text.uppercase()
         val font = pick(e.fonts)
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG)
         if (android.os.Build.VERSION.SDK_INT >= 33) paint.hinting = Paint.HINTING_OFF
@@ -184,7 +187,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             if (f.name.contains("LINK", ignoreCase = true)) notes.add("LINK font ${f.name}: ${if (tf != null) "loaded" else "NOT loaded"}, text \"$text\"")
         }
         if (font?.style?.contains("bold", ignoreCase = true) == true) paint.isFakeBoldText = true
-        if (font?.style?.contains("italic", ignoreCase = true) == true) paint.textSkewX = -0.25f
+        if (font?.style?.contains("italic", ignoreCase = true) == true || flag("italic")) paint.textSkewX = -0.25f
         paint.color = try {
             Color.parseColor(ctx.sub(pick(e.colors) ?: "#000000").trim())
         } catch (ex: IllegalArgumentException) {
