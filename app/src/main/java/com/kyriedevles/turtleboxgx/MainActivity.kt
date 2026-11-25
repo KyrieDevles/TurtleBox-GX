@@ -1101,23 +1101,6 @@ class MainActivity : Activity() {
             add(card, 12)
         }
 
-        if (templates.isNotEmpty()) {
-            val tcard = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-            }
-            tcard.addView(label("Template", 12f, Theme.pink))
-            tcard.addView(label(templates[selectedTemplate]?.label ?: layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
-            templates[selectedTemplate]?.let { ti ->
-                val meta = listOf(ti.description, listOf(ti.author, ti.version).filter { it.isNotBlank() }.joinToString(" · ")).filter { it.isNotBlank() }.joinToString("\n")
-                if (meta.isNotBlank()) tcard.addView(label(meta, 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
-            }
-            tcard.addView(pill("Change", false) {
-                showTemplateDialog()
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
-            add(tcard, 12)
-        }
 
                 val bgCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1141,6 +1124,15 @@ class MainActivity : Activity() {
             add(fileRow("XML", xmlName, sub, xmlError == null), 8)
         }
         if (zipName.isNotBlank()) add(fileRow("ZIP", zipName, zipInfo, zipOk), 8)
+        if (templates.isNotEmpty()) {
+            add(label("Templates", 12f, Theme.pink), 18)
+            val baseLabel = layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)"
+            add(templateRow("BASE", baseLabel, "The base layout on its own", selectedTemplate.isBlank()) { selectTemplate("") }, 8)
+            for ((key, ti) in templates) {
+                val meta = listOf(ti.description, listOf(ti.author, ti.version).filter { it.isNotBlank() }.joinToString(" · ")).filter { it.isNotBlank() }.joinToString(" · ")
+                add(templateRow("TPL", ti.label, meta.ifBlank { key }, key == selectedTemplate) { selectTemplate(key) }, 8)
+            }
+        }
         if (xmlName.isBlank() && zipName.isBlank() && xmlError == null) {
             add(label("No files yet. Open the folder that holds your layout .xml and .zip.", 14f, Theme.muted), 8)
         }
@@ -1167,6 +1159,36 @@ class MainActivity : Activity() {
 
         add(label("Edit the XML with any text editor on your phone. Add a <data> option, a dropdown or a text box and it appears in the menu, with no rebuild and no install. The app checks the file every few seconds and reloads it when it changes.", 13f, Theme.muted), 18)
         Theme.noClip(layoutsBox)
+    }
+
+    /** One template in the Files in use list: tap to switch to it. */
+    private fun templateRow(badge: String, title: String, sub: String, inUse: Boolean, pick: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Theme.card(dp(14).toFloat(), dp(4).toFloat(), dp(3).toFloat(), false)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            isClickable = true
+            setOnClickListener { if (!inUse) pick() }
+        }
+        row.addView(
+            label(badge, 12f, Hot.pinkLight, bold = true).apply {
+                gravity = Gravity.CENTER
+                background = Theme.off(cut = dp(8).toFloat())
+            },
+            LinearLayout.LayoutParams(dp(40), dp(40)),
+        )
+        val mid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        mid.addView(label(title, 15f, Color.WHITE, bold = true))
+        mid.addView(label(sub, 12f, Theme.muted))
+        row.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(12), 0, dp(8), 0) })
+        row.addView(
+            label(if (inUse) "IN USE" else "USE", 12f, if (inUse) Theme.onPink else Theme.pink, bold = true).apply {
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                background = Theme.choice(inUse, dp(6).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
+            },
+        )
+        return row
     }
 
     private fun fileRow(badge: String, title: String, sub: String, ok: Boolean): View {
