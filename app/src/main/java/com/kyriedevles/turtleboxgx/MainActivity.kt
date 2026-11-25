@@ -688,7 +688,7 @@ class MainActivity : Activity() {
 
     private fun showTemplateDialog() {
         val names = listOf("") + templates.keys
-        val labels = (listOf(layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)") + templates.values.map { it.label + if (it.description.isNotBlank()) "\n" + it.description else "" }).toTypedArray()
+        val labels = (listOf(layout?.styleInfo?.get("label")?.ifBlank { null } ?: "Default (base layout)") + templates.values.map { it.label }).toTypedArray()
         ThemedBuilder(this).setTitle("Template")
             .setSingleChoiceItems(labels, names.indexOf(selectedTemplate).coerceAtLeast(0)) { d, i -> d.dismiss(); selectTemplate(names[i]) }
             .setNegativeButton("Cancel", null).show()
