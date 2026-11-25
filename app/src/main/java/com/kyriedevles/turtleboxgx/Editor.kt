@@ -643,6 +643,7 @@ class Editor(
             handler.removeCallbacksAndMessages(null)
             // Closing any way other than Cancel keeps what was typed or dragged.
             if (!finished) onChanged()
+            onTop?.invoke(-1)
             after()
         }
         dlg.show()
@@ -653,6 +654,12 @@ class Editor(
         w?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
         w?.setGravity(Gravity.BOTTOM)
         style(dlg)
+        // Fit the card above the panel where it opens (dragging the panel afterwards leaves the card as it is).
+        w?.decorView?.post {
+            val loc = IntArray(2)
+            w.decorView.getLocationOnScreen(loc)
+            onTop?.invoke(loc[1])
+        }
         dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.apply {
             setTextColor(Color.parseColor("#e7c3d6"))
             setOnClickListener { resetters.forEach { it() } }
