@@ -1,0 +1,184 @@
+package com.kyriedevles.turtleboxgx.text
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.util.Random
+
+/** Fake font: every character is half the font size wide, bold is 20% wider, tracking adds em * size per character. */
+private class FakeMetrics(val size: Float, val scaleX: Float) : Metrics {
+    override fun advance(text: String, from: Int, to: Int, style: Int, letterEm: Float): Float {
+        var n = 0
+        for (i in from until to) if (text[i] != '⁠') n++
+        val bold = if ((style and 1) != 0) 1.2f else 1f
+        return n * (size * 0.5f * scaleX * bold + letterEm * size)
+    }
+    override val top = -size * 1.0f
+    override val ascent = -size * 0.9f
+    override val descent = size * 0.2f
+    override val bottom = size * 0.3f
+}
+
+private val fake = MetricsFactory { s, x -> FakeMetrics(s, x) }
+
+private fun source(t: String) = Source(t, IntArray(t.length))
+
+private fun core(
+    t: String,
+    w: Float,
+    h: Float = 10000f,
+    opt: LayoutOptions = LayoutOptions(),
+    base: Float = 20f,
+    align: Int = 0,
+): LayoutCore = LayoutCore(source(t), fake, w, h, opt, { 0f }, base).also { it.align = align }
+
+private fun right(r: LayoutResult, p: Placed, text: String): Float {
+    val m = FakeMetrics(r.size, r.scaleX)
+    return p.x + m.advance(text, p.start, p.end, 0, 0f)
+}
+
+class LayoutCoreTest {
+    private val words = listOf("Once", "per", "turn,", "you", "can", "Tribute", "1", "monster", "you", "control;", "Special", "Summon", "1", "Fiend-Type", "monster", "from", "your", "Deck.", "A/B", "testing")
+
+    private fun randomText(rnd: Random, n: Int): String {
+        val sb = StringBuilder()
+        for (i in 0 until n) {
+            if (i > 0) sb.append(if (rnd.nextInt(12) == 0) "\n" else " ")
+            sb.append(words[rnd.nextInt(words.size)])
+        }
+        return sb.toString()
+    }
+
+    @Test
+    fun noLineIsWiderThanTheBoxAtAnyWordSpacing() {
+        val rnd = Random(7)
+        for (ws in 30..320 step 10) {
+            for (round in 0 until 20) {
+                val t = randomText(rnd, 5 + rnd.nextInt(40))
+                val r = core(t, 300f, opt = LayoutOptions(wordSpace = ws.toFloat())).place(20f, 1f)
+                for (p in r.words) {
+                    val e = right(r, p, t)
+                    assertTrue("word ends at $e past 300 (ws=$ws, text=$t)", e <= 300.5f)
+                }
+                assertTrue("widest ${r.widest} (ws=$ws)", r.widest <= 300.5f)
+            }
+        }
+    }
+
+    @Test
+    fun everyCharacterIsPlacedOnceInOrder() {
+        val rnd = Random(3)
+        for (round in 0 until 50) {
+            val t = randomText(rnd, 30)
+            val r = core(t, 220f, opt = LayoutOptions(wordSpace = 180f)).place(20f, 1f)
+            val joined = r.words.joinToString("") { t.substring(it.start, it.end) }
+            val expected = t.replace(" ", "").replace("\n", "")
+            assertEquals(expected, joined)
+        }
+    }
+
+    @Test
+    fun widerWordSpacingNeverGivesFewerLines() {
+        val t = words.joinToString(" ")
+        var last = 0
+        for (ws in listOf(50f, 100f, 150f, 200f, 300f)) {
+            val n = core(t, 260f, opt = LayoutOptions(wordSpace = ws)).place(20f, 1f).lines.size
+            assertTrue("lines $n at $ws, before $last", n >= last)
+            last = n
+        }
+    }
+
+    @Test
+    fun fullLinesAreStretchedToTheBoxWidth() {
+        val t = words.joinToString(" ")
+        val r = core(t, 260f).place(20f, 1f)
+        assertTrue(r.lines.size > 2)
+        for (li in 0 until r.lines.size - 1) {
+            val line = r.words.filter { it.line == li }
+            val end = right(r, line.last(), t)
+            assertEquals("line $li", 260f, end, 0.6f)
+        }
+    }
+
+    @Test
+    fun rightAlignedLinesEndAtTheBox() {
+        val r = core("Hello world and more words here", 200f, align = 2).place(20f, 1f)
+        for (li in 0 until r.lines.size) {
+            val line = r.words.filter { it.line == li }
+            assertEquals(200f, right(r, line.last(), "Hello world and more words here"), 0.6f)
+        }
+    }
+
+    @Test
+    fun aWordLongerThanTheBoxIsCutNotOverflowed() {
+        val t = "short supercalifragilisticexpialidocious end"
+        val r = core(t, 120f).place(20f, 1f)
+        for (p in r.words) assertTrue(right(r, p, t) <= 120.5f)
+        assertEquals(t.replace(" ", ""), r.words.joinToString("") { t.substring(it.start, it.end) })
+    }
+
+    @Test
+    fun paragraphBreaksAndBlankLinesAreKept() {
+        assertEquals(2, core("a\nb", 100f).place(20f, 1f).lines.size)
+        assertEquals(3, core("a\n\nb", 100f).place(20f, 1f).lines.size)
+        assertEquals(2, core("a\n", 100f).place(20f, 1f).lines.size)
+        assertEquals(1, core("", 100f).place(20f, 1f).lines.size)
+    }
+
+    @Test
+    fun aWordJoinerStopsTheBreakAfterASlash() {
+        val t = "xx ab/⁠cd"
+        val r = core(t, 70f).place(20f, 1f)
+        assertEquals(2, r.lines.size)
+        val second = r.words.filter { it.line == 1 }
+        assertEquals(1, second.size)
+        assertEquals("ab/⁠cd", t.substring(second[0].start, second[0].end))
+    }
+
+    @Test
+    fun theFitShrinksTheTextUntilItIsTallEnoughForTheBox() {
+        val t = (words + words + words).joinToString(" ")
+        val c = core(t, 300f, h = 200f, base = 30f)
+        val r = c.layout()
+        assertTrue("size ${r.size}", r.size < 30f)
+        assertTrue("height ${r.textHeight}", r.textHeight <= 200f + 0.01f)
+        for (p in r.words) assertTrue(right(r, p, t) <= 300.5f)
+    }
+
+    @Test
+    fun theFitKeepsTheBaseSizeWhenTheTextAlreadyFits() {
+        val r = core("Short text.", 300f, h = 200f, base = 30f).layout()
+        assertEquals(30f, r.size, 0.01f)
+        assertEquals(1f, r.scaleX, 0.001f)
+    }
+
+    @Test
+    fun theFitHoldsAtExtremeWordSpacing() {
+        val t = (words + words).joinToString(" ")
+        for (ws in listOf(170f, 240f, 400f)) {
+            val r = core(t, 300f, h = 260f, base = 30f, opt = LayoutOptions(wordSpace = ws)).layout()
+            for (p in r.words) assertTrue("ws=$ws", right(r, p, t) <= 300.5f)
+            assertTrue("ws=$ws height ${r.textHeight}", r.textHeight <= 260.01f)
+        }
+    }
+
+    @Test
+    fun lastLineStretchClosesTheGapToTheBox() {
+        val t = words.joinToString(" ")
+        val r = core(t, 260f, opt = LayoutOptions(lastStretch = 100f)).place(20f, 1f)
+        val line = r.words.filter { it.line == r.lines.size - 1 }
+        val m = FakeMetrics(r.size, r.scaleX)
+        val em = r.lines.last().letterExtraEm
+        val end = line.last().x + m.advance(t, line.last().start, line.last().end, 0, em)
+        assertEquals(260f, end, 1.0f)
+    }
+
+    @Test
+    fun horizontalScaleWrapsAtTheScaledWidth() {
+        val t = words.joinToString(" ")
+        val plain = core(t, 300f).place(20f, 1f)
+        val wide = core(t, 300f, opt = LayoutOptions(hScale = 150f)).place(20f, 1f)
+        assertTrue(wide.lines.size >= plain.lines.size)
+        assertEquals(200f, wide.wrapWidth, 0.01f)
+    }
+}

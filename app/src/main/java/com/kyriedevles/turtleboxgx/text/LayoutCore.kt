@@ -1,0 +1,390 @@
+package com.kyriedevles.turtleboxgx.text
+
+/**
+ * The layout core of the new text engine. Pure Kotlin: no Android classes, so it runs in plain JVM tests.
+ *
+ * One rule runs through it: every width that decides a line break, a justified gap or a drawn position comes from the
+ * same [Metrics.advance] call. Nothing is measured a second way, so a line can never be drawn wider than it was wrapped.
+ */
+
+/** Font measurements at one size and horizontal squeeze. Heights are in px, ascent and top are negative like Android's. */
+interface Metrics {
+    /** Advance of text[from, to) in one [style] (bit 0 bold, bit 1 italic) with [letterEm] tracking added after every character. */
+    fun advance(text: String, from: Int, to: Int, style: Int, letterEm: Float): Float
+    val top: Float
+    val ascent: Float
+    val descent: Float
+    val bottom: Float
+}
+
+fun interface MetricsFactory {
+    fun at(size: Float, scaleX: Float): Metrics
+}
+
+/** The options the layout needs, already as numbers. Zero means "not set" where it says so. Same meaning as TextOptions. */
+class LayoutOptions(
+    val condense: Float = 0f,
+    val fitMode: Int = 1,
+    val minSizePct: Float = 0f,
+    val maxSizePct: Float = 0f,
+    val minLines: Float = 0f,
+    val justify: Float = 0f,
+    val letterSpace: Float = 0f,
+    val lastStretch: Float = 0f,
+    val hScale: Float = 100f,
+    val wordSpace: Float = 100f,
+    val leadingPx: Float = 0f,
+    val fontScale: Float = 0f,
+    val flow: Float = 0f,
+    val spacing: Float = 1f,
+)
+
+/** One word (or any unbreakable piece) of a line: text[start, end) drawn at [x] from the box's left edge. */
+class Placed(val line: Int, val start: Int, val end: Int, val x: Float, val baseline: Float)
+
+class LaidLine(
+    val index: Int,
+    val start: Int,
+    val end: Int,
+    val baseline: Float,
+    /** Extra tracking (em) this line was stretched with on top of the normal letter spacing. */
+    val letterExtraEm: Float,
+    val width: Float,
+)
+
+class LayoutResult(
+    val size: Float,
+    val scaleX: Float,
+    /** Width the text was wrapped at (the box width divided by the horizontal scale). */
+    val wrapWidth: Float,
+    val lineHeight: Float,
+    val lines: List<LaidLine>,
+    val words: List<Placed>,
+    /** Height of the laid-out lines, without the reserved materials row. */
+    val textHeight: Float,
+    val widest: Float,
+)
+
+/** Inline style of every character: 0 plain, 1 bold, 2 italic, 3 both. */
+class Source(val text: String, val styles: IntArray) {
+    init { require(styles.size == text.length) { "one style per character" } }
+}
+
+private class Atom(var start: Int, var end: Int, var spaces: Int, val endsParagraph: Boolean) {
+    var width = 0f
+}
+
+private class RawLine(val first: Int, val last: Int, val endsParagraph: Boolean)
+
+class LayoutCore(
+    private val src: Source,
+    private val factory: MetricsFactory,
+    private val boxWidth: Float,
+    private val boxHeight: Float,
+    private val opt: LayoutOptions,
+    /** Height the materials row takes at a given body font size (0 when there is none). */
+    private val reserve: (Float) -> Float = { 0f },
+    private val baseSize: Float,
+) {
+    private val text = src.text
+    private val styles = src.styles
+    private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
+    private val wrapWidth = boxWidth / hs
+    private val wordSpacePct = if (opt.wordSpace > 0f) opt.wordSpace else 100f
+
+    private fun isCjk(c: Char): Boolean =
+        c in '぀'..'ヿ' || c in '㐀'..'䶿' || c in '一'..'鿿' || c in '＀'..'￯' || c in '가'..'힯'
+
+    /** The unbreakable pieces of the text, in order. A piece owns the spaces that follow it. */
+    private fun tokenize(): MutableList<Atom> {
+        val out = ArrayList<Atom>()
+        var i = 0
+        val n = text.length
+        while (i < n) {
+            val s = i
+            var contentEnd = i
+            var spaces = 0
+            var para = false
+            var done = false
+            while (i < n && !done) {
+                val c = text[i]
+                when {
+                    c == '\n' -> {
+                        contentEnd = i
+                        i++
+                        para = true
+                        done = true
+                    }
+                    c == ' ' -> {
+                        // Content ends at the first space; the run of spaces belongs to this piece.
+                        contentEnd = i
+                        while (i < n && text[i] == ' ') { i++; spaces++ }
+                        if (i < n && text[i] == '\n') { i++; para = true }
+                        done = true
+                    }
+                    else -> {
+                        i++
+                        contentEnd = i
+                        val next = if (i < n) text[i] else '\u0000'
+                        val breakHere = (c == '-' && i < n && next != ' ' && next != '\n' && s < i - 1) ||
+                            (c == '/' && next != '⁠' && i < n && next != ' ' && next != '\n') ||
+                            c == '​' ||
+                            (i < n && next != ' ' && next != '\n' && (isCjk(c) || isCjk(next)) && next != '⁠')
+                        if (breakHere) done = true
+                    }
+                }
+            }
+            out.add(Atom(s, contentEnd, spaces, para))
+        }
+        return out
+    }
+
+    private fun runWidth(m: Metrics, a: Int, b: Int, letterEm: Float): Float {
+        if (b <= a) return 0f
+        var w = 0f
+        var x = a
+        while (x < b) {
+            val st = styles[x]
+            var y = x + 1
+            while (y < b && styles[y] == st) y++
+            w += m.advance(text, x, y, st, letterEm)
+            x = y
+        }
+        return w
+    }
+
+    /** Width of one space character after word spacing. */
+    private fun spaceW(m: Metrics, at: Int, letterEm: Float): Float =
+        m.advance(" ", 0, 1, if (at in styles.indices) styles[at] else 0, letterEm) * wordSpacePct / 100f
+
+    private fun spacesWidth(m: Metrics, from: Int, count: Int, letterEm: Float): Float {
+        var w = 0f
+        for (k in 0 until count) w += spaceW(m, from + k, letterEm)
+        return w
+    }
+
+    /** Greedy wrap at [breakWidth]. A line is only wider than that when a single character does not fit. */
+    private fun wrap(m: Metrics, breakWidth: Float): Pair<List<RawLine>, List<Atom>> {
+        val letterEm = opt.letterSpace
+        val atoms = tokenize()
+        val lines = ArrayList<RawLine>()
+        var lineFirst = -1
+        var curW = 0f
+        var i = 0
+        while (i < atoms.size) {
+            val a = atoms[i]
+            a.width = runWidth(m, a.start, a.end, letterEm)
+            if (lineFirst < 0) {
+                if (a.width > breakWidth + 0.01f && a.end - a.start > 1) {
+                    // Too long for a line of its own: cut it where it stops fitting; the rest carries on.
+                    var cut = a.start + 1
+                    while (cut < a.end && runWidth(m, a.start, cut + 1, letterEm) <= breakWidth + 0.01f) cut++
+                    val tail = Atom(cut, a.end, a.spaces, a.endsParagraph)
+                    a.end = cut
+                    a.spaces = 0
+                    a.width = runWidth(m, a.start, a.end, letterEm)
+                    atoms.add(i + 1, tail)
+                    // A cut piece is a whole line by itself.
+                    lines.add(RawLine(i, i, false))
+                    i++
+                    continue
+                }
+                lineFirst = i
+                curW = a.width
+            } else {
+                val prev = atoms[i - 1]
+                val gap = spacesWidth(m, prev.end, prev.spaces, letterEm)
+                if (curW + gap + a.width <= breakWidth + 0.01f) {
+                    curW += gap + a.width
+                } else {
+                    lines.add(RawLine(lineFirst, i - 1, false))
+                    lineFirst = -1
+                    continue // place this piece again as the first of a new line
+                }
+            }
+            if (a.endsParagraph) {
+                lines.add(RawLine(lineFirst, i, true))
+                lineFirst = -1
+            }
+            i++
+        }
+        if (lineFirst >= 0) lines.add(RawLine(lineFirst, atoms.size - 1, true))
+        // A text that ends with a paragraph break has an empty last line, like any editor.
+        if (text.isEmpty() || text.endsWith("\n")) lines.add(RawLine(atoms.size, atoms.size - 1, true))
+        return lines to atoms
+    }
+
+    private fun lineHeightOf(m: Metrics): Float {
+        val mult = if (opt.leadingPx > 0f) {
+            val h = m.descent - m.ascent
+            if (h > 0f) opt.leadingPx / h else opt.spacing
+        } else opt.spacing
+        val base = if (opt.leadingPx > 0f) m.descent - m.ascent else m.bottom - m.top
+        return base * mult
+    }
+
+    private fun firstBaseline(m: Metrics): Float = -(if (opt.leadingPx > 0f) m.ascent else m.top)
+
+    /** How many lines the text takes at this size and squeeze, and how tall that is. Used by the fit search. */
+    private fun heightAt(size: Float, scaleX: Float): Float {
+        val m = factory.at(size, scaleX)
+        val (lines, _) = wrap(m, wrapWidth)
+        return reserve(size) + lines.size * lineHeightOf(m)
+    }
+
+    private fun fits(size: Float, scaleX: Float): Boolean = heightAt(size, scaleX) <= boxHeight
+
+    /** Chooses the font size and squeeze like the old engine, then lays the text out. */
+    fun layout(): LayoutResult {
+        var floor = if (opt.condense <= 0f) 1f else opt.condense
+        if (floor > 1f) floor /= 100f
+        floor = floor.coerceIn(0.3f, 1f)
+        var phase1 = floor
+        var phase2Floor = floor
+        when (opt.fitMode) {
+            2 -> phase1 = 1f
+            3 -> phase1 = (1f + floor) / 2f
+            4 -> { phase1 = 0.85f; phase2Floor = 0.85f }
+            5 -> { phase1 = 0.70f; phase2Floor = 0.70f }
+            6 -> { phase1 = 0.55f; phase2Floor = 0.55f }
+        }
+        var minSize = baseSize * 0.3f
+        var maxSize = baseSize
+        if (opt.minSizePct > 0f) minSize = opt.minSizePct * baseSize / 100f
+        if (opt.maxSizePct > 0f) maxSize = opt.maxSizePct * baseSize / 100f
+        if (maxSize < minSize) maxSize = minSize
+        if (opt.minLines > 0f) {
+            val m0 = factory.at(baseSize, 1f)
+            val ratio = (m0.bottom - m0.top) * opt.spacing / baseSize
+            var cap = boxHeight / (ratio * opt.minLines)
+            if (cap < minSize) cap = minSize
+            if (cap < maxSize) maxSize = cap
+        }
+        if (opt.fitMode == 7) minSize = maxSize
+        if (opt.fontScale > 0f) {
+            minSize = opt.fontScale * baseSize / 100f
+            maxSize = minSize
+        }
+
+        var lo = minSize
+        var hi = maxSize
+        while (Math.abs(hi - lo) > 0.001f) {
+            val mid = (lo + hi) / 2f
+            if (fits(mid, phase1)) lo = mid else hi = mid
+        }
+        val size = lo
+        // The size search ran at the first-phase squeeze; draw at full width unless that squeeze is really needed.
+        var scale = 1f
+        if (opt.fontScale <= 0f && !fits(size, 1f)) {
+            var a = phase2Floor
+            var b = 1f
+            while (b - a > 0.005f) {
+                val mid = (a + b) / 2f
+                if (fits(size, mid)) a = mid else b = mid
+            }
+            scale = a
+        }
+        return place(size, scale)
+    }
+
+    /** Lays the text out at a fixed size and squeeze: line breaks, justified gaps, positions. */
+    fun place(size: Float, scaleX: Float): LayoutResult {
+        val m = factory.at(size, scaleX)
+        val letterEm = opt.letterSpace
+        var (lines, atoms) = wrap(m, wrapWidth)
+
+        val flowPct = if (opt.justify >= 500f) 100f else opt.flow.coerceIn(0f, 100f)
+        if (flowPct > 0f && lines.size >= 2) {
+            // Re-wrap at the narrowest width that keeps the same line count, then stretch to the full width.
+            val n = lines.size
+            var a = (wrapWidth * 0.8f).toInt()
+            var b = wrapWidth.toInt()
+            var best: Pair<List<RawLine>, List<Atom>>? = null
+            var bestW = wrapWidth
+            while (a < b) {
+                val mid = (a + b) shr 1
+                val t = wrap(m, mid.toFloat())
+                if (t.first.size == n) { best = t; bestW = mid.toFloat(); b = mid } else a = mid + 1
+            }
+            if (best != null) {
+                val target = (wrapWidth - (wrapWidth - bestW) * flowPct / 100f).coerceIn(bestW, wrapWidth)
+                val chosen = if (flowPct >= 100f || target >= wrapWidth) best
+                else wrap(m, target).takeIf { it.first.size == n } ?: best
+                lines = chosen.first
+                atoms = chosen.second
+            }
+        }
+
+        val lineH = lineHeightOf(m)
+        val first = firstBaseline(m)
+        val laid = ArrayList<LaidLine>()
+        val words = ArrayList<Placed>()
+        var widest = 0f
+        val plainSpace = m.advance(" ", 0, 1, 0, letterEm)
+
+        for ((li, rl) in lines.withIndex()) {
+            val baseline = first + li * lineH
+            if (rl.last < rl.first) {
+                laid.add(LaidLine(li, text.length, text.length, baseline, 0f, 0f))
+                continue
+            }
+            val atomsOfLine = atoms.subList(rl.first, rl.last + 1)
+            val start = atomsOfLine.first().start
+            val end = atomsOfLine.last().end
+            // Natural width and the gaps between pieces (every space character is a gap).
+            fun natural(em: Float): Float {
+                var w = 0f
+                for ((k, at) in atomsOfLine.withIndex()) {
+                    w += runWidth(m, at.start, at.end, em)
+                    if (k < atomsOfLine.size - 1) w += spacesWidth(m, at.end, at.spaces, em)
+                }
+                return w
+            }
+            val lw = natural(letterEm)
+            val gaps = atomsOfLine.dropLast(1).sumOf { it.spaces }
+            val extra = wrapWidth - lw
+            val isLastLine = li == lines.size - 1
+            val endsParagraph = rl.endsParagraph || isLastLine
+            var justified = false
+            var spread = 0f
+            var letterExtra = 0f
+            val contentLen = end - start
+
+            if (align == 0 && lines.size > 1 && extra > 0f && (gaps > 0 || (isLastLine && opt.lastStretch > 0f))) {
+                if (!endsParagraph) {
+                    justified = gaps > 0
+                    spread = if (gaps > 0) extra / gaps else 0f
+                } else if (opt.lastStretch > 0f && isLastLine) {
+                    val want = extra * opt.lastStretch.coerceIn(0f, 100f) / 100f
+                    letterExtra = minOf(want / (contentLen.coerceAtLeast(1) * size), 0.08f)
+                    val nw = natural(letterEm + letterExtra)
+                    justified = true
+                    spread = if (gaps > 0) maxOf(0f, (lw + want - nw) / gaps) else 0f
+                } else if (gaps > 0 && opt.justify > 0f && extra / gaps <= plainSpace * opt.justify / 100f) {
+                    letterExtra = minOf(extra / (contentLen.coerceAtLeast(1) * size), 0.08f)
+                    val nw = natural(letterEm + letterExtra)
+                    justified = true
+                    spread = maxOf(0f, (wrapWidth - nw) / gaps)
+                }
+            }
+            val em = letterEm + letterExtra
+            val total = if (justified) natural(em) + spread * gaps else lw
+            var x = if (justified) 0f else when (align) {
+                2 -> wrapWidth - lw
+                1 -> (wrapWidth - lw) / 2f
+                else -> 0f
+            }
+            for ((k, at) in atomsOfLine.withIndex()) {
+                if (at.end > at.start) words.add(Placed(li, at.start, at.end, x, baseline))
+                x += runWidth(m, at.start, at.end, em)
+                if (k < atomsOfLine.size - 1) x += spacesWidth(m, at.end, at.spaces, em) + spread * at.spaces
+            }
+            laid.add(LaidLine(li, start, end, baseline, letterExtra, total))
+            widest = maxOf(widest, total)
+        }
+        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, lines.size * lineH, widest)
+    }
+
+    /** Horizontal alignment: 0 left (and justified), 1 centre, 2 right. Set before [layout]. */
+    var align: Int = 0
+}

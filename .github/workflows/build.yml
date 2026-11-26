@@ -53,6 +53,10 @@ jobs:
           gh release download Templates --dir app/src/main/assets/templates --clobber || echo "No Templates release; building without DLC templates."
           ls -la app/src/main/assets/templates
 
+      # The new text engine's layout core is plain Kotlin; these tests need no phone.
+      - name: Run unit tests
+        run: gradle testDebugUnitTest --stacktrace
+
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
