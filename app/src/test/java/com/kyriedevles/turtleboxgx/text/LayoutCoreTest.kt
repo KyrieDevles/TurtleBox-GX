@@ -204,4 +204,63 @@ class LayoutCoreTest {
             for (p in r.words) assertTrue(right(r, p, t) <= 400.5f)
         }
     }
+
+    private fun fixedCore(t: String, w: Float, opt: LayoutOptions = LayoutOptions()): Pair<LayoutCore, FixedResult> {
+        val fr = extractFixedLines(t, IntArray(t.length))
+        return LayoutCore(Source(fr.text, fr.styles), fake, w, 10000f, opt, { 0f }, 20f, fr.spans) to fr
+    }
+
+    @Test
+    fun wholeLineBracketsAreRemovedAndRecorded() {
+        val fr = extractFixedLines("[[aa bb]][[cc]]\n[[dd]]", IntArray(22))
+        assertEquals("aa bbcc\ndd", fr.text)
+        assertEquals(3, fr.spans.size)
+        assertEquals("aa bb", fr.text.substring(fr.spans[0].start, fr.spans[0].end))
+        assertEquals("cc", fr.text.substring(fr.spans[1].start, fr.spans[1].end))
+        assertEquals("dd", fr.text.substring(fr.spans[2].start, fr.spans[2].end))
+    }
+
+    @Test
+    fun bracketsInsideAParagraphStayOrdinaryText() {
+        val t = "see [[x]] more [[y]] text"
+        val fr = extractFixedLines(t, IntArray(t.length))
+        assertEquals(t, fr.text)
+        assertEquals(0, fr.spans.size)
+    }
+
+    @Test
+    fun aShortFixedLineStretchesAndALongOneSqueezes() {
+        // Box 200 wide, 10 px per character at size 20.
+        val t = "[[aa bb]][[aaaa bbbb cccc dddd eeee ffff]]"
+        val (c, fr) = fixedCore(t, 200f)
+        val r = c.place(20f, 1f)
+        assertEquals(2, r.lines.size)
+        val first = r.words.filter { it.line == 0 }
+        assertEquals(200f, right(r, first.last(), fr.text), 0.6f)
+        assertEquals(1f, r.lines[0].scaleX, 0.0001f)
+        val second = r.lines[1]
+        assertTrue("scale ${second.scaleX}", second.scaleX < 1f)
+        val line2 = r.words.filter { it.line == 1 }
+        assertEquals(200f, right(r, line2.last(), fr.text) * second.scaleX, 0.6f)
+    }
+
+    @Test
+    fun fixedLinesKeepTheProxyLineBreaks() {
+        val t = "[[Once per turn, when a Spell/Trap Card or effect is activated]]\n[[you control with a Spell Counter to the hand, and if you do]]\n[[do that, destroy it.]]"
+        val (c, _) = fixedCore(t, 360f, LayoutOptions(wordSpace = 100f))
+        val r = c.place(20f, 1f)
+        assertEquals(3, r.lines.size)
+        for (l in r.lines) assertTrue(l.width <= 360.5f)
+    }
+
+    @Test
+    fun aFixedLineNeverWrapsAtAnyWordSpacing() {
+        val t = "[[Once per turn, when a Spell/Trap Card or effect is activated (Quick Effect)]]\n[[you can return 1 card you control with a Spell Counter]]"
+        for (ws in listOf(50f, 100f, 250f)) {
+            val (c, _) = fixedCore(t, 360f, LayoutOptions(wordSpace = ws))
+            val r = c.place(20f, 1f)
+            assertEquals(2, r.lines.size)
+            for (l in r.lines) assertTrue(l.width <= 360.5f)
+        }
+    }
 }

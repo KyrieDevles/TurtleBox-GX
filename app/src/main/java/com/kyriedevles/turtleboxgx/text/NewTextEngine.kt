@@ -10,6 +10,8 @@ import com.kyriedevles.turtleboxgx.TextOptions
 import com.kyriedevles.turtleboxgx.exactWidth
 import com.kyriedevles.turtleboxgx.parseMarkup
 
+private class StyledTextView(val text: String, val styles: IntArray)
+
 /** Which text engine draws multi-line text boxes. The old one stays available while the new one is proven. */
 object TextSwitch {
     @JvmField var useNew: Boolean = false
@@ -63,7 +65,10 @@ class NewTextEngine(
     private val materialsLinePct: Float = 100f,
 ) {
     // <br> is a forced line break inside a paragraph (like Photoshop's Shift+Enter): the line before it is still justified.
-    private val styled = parseMarkup(rawText.replace("<br>", "\u2028", ignoreCase = true))
+    private val parsed = parseMarkup(rawText.replace("<br>", "\u2028", ignoreCase = true))
+    // [[ ]] around a whole line: it never wraps; too long it squeezes, short it stretches to the full width.
+    private val fixedLines = extractFixedLines(parsed.text, parsed.styles)
+    private val styled = StyledTextView(fixedLines.text, fixedLines.styles)
     private val text = styled.text
     private val baseSize = paint.textSize
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
@@ -81,6 +86,7 @@ class NewTextEngine(
         ),
         { size -> materialsHeight(size) },
         baseSize,
+        fixedLines.spans,
     )
     private var result: LayoutResult? = null
     private var placedAlign = 0
@@ -163,6 +169,7 @@ class NewTextEngine(
             val em = opt.letterSpace + line.letterExtraEm
             val lineSaved = c.save()
             if (vs != 1f) c.scale(1f, vs, left, baseline)
+            if (line.scaleX != 1f) c.scale(line.scaleX, 1f, left, baseline)
             while (wi < r.words.size && r.words[wi].line == line.index) {
                 val w = r.words[wi++]
                 var x = left + w.x

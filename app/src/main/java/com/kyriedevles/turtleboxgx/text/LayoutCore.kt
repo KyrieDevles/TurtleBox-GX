@@ -50,6 +50,8 @@ class LaidLine(
     /** Extra tracking (em) this line was stretched with on top of the normal letter spacing. */
     val letterExtraEm: Float,
     val width: Float,
+    /** Horizontal squeeze applied to the whole line (a non-breakable line that was too long). 1 = none. */
+    val scaleX: Float = 1f,
 )
 
 class LayoutResult(
@@ -70,8 +72,11 @@ class Source(val text: String, val styles: IntArray) {
     init { require(styles.size == text.length) { "one style per character" } }
 }
 
-private class Atom(var start: Int, var end: Int, var spaces: Int, val endsParagraph: Boolean, val forced: Boolean = false) {
+private class Atom(var start: Int, var end: Int, var spaces: Int, var endsParagraph: Boolean, var forced: Boolean = false) {
     var width = 0f
+    /** >= 0 when the atom belongs to a non-breakable line ([[ ]]); every atom of one such line shares the id. */
+    var lock = -1
+    var lockJust = false
 }
 
 private class RawLine(val first: Int, val last: Int, val endsParagraph: Boolean)
@@ -85,6 +90,8 @@ class LayoutCore(
     /** Height the materials row takes at a given body font size (0 when there is none). */
     private val reserve: (Float) -> Float = { 0f },
     private val baseSize: Float,
+    /** Whole-line spans that never wrap: too long they squeeze, and the justified kind expands to fill the width. */
+    private val fixed: List<FixedSpan> = emptyList(),
 ) {
     private val text = src.text
     private val styles = src.styles
@@ -98,8 +105,26 @@ class LayoutCore(
     /** The unbreakable pieces of the text, in order. A piece owns the spaces that follow it. */
     private fun tokenize(): MutableList<Atom> {
         val out = ArrayList<Atom>()
-        var i = 0
-        val n = text.length
+        var pos = 0
+        for ((id, f) in fixed.withIndex()) {
+            tokenizeRange(out, pos, f.start, -1, false)
+            val before = out.size
+            tokenizeRange(out, f.start, f.end, id, f.justified)
+            pos = f.end
+            // The line break that ends the span belongs to its last piece, so it does not make an empty line.
+            if (pos < text.length && (text[pos] == '\n' || text[pos] == '\u2028') && out.size > before) {
+                val last = out.last()
+                if (text[pos] == '\n') last.endsParagraph = true else last.forced = true
+                pos++
+            }
+        }
+        tokenizeRange(out, pos, text.length, -1, false)
+        return out
+    }
+
+    private fun tokenizeRange(out: MutableList<Atom>, from: Int, to: Int, lock: Int, lockJust: Boolean) {
+        var i = from
+        val n = to
         while (i < n) {
             val s = i
             var contentEnd = i
@@ -143,9 +168,8 @@ class LayoutCore(
                     }
                 }
             }
-            out.add(Atom(s, contentEnd, spaces, para, forced))
+            out.add(Atom(s, contentEnd, spaces, para, forced).also { it.lock = lock; it.lockJust = lockJust })
         }
-        return out
     }
 
     private fun runWidth(m: Metrics, a: Int, b: Int, letterEm: Float): Float {
@@ -184,7 +208,7 @@ class LayoutCore(
             val a = atoms[i]
             a.width = runWidth(m, a.start, a.end, letterEm)
             if (lineFirst < 0) {
-                if (a.width > breakWidth + 0.01f && a.end - a.start > 1) {
+                if (a.lock < 0 && a.width > breakWidth + 0.01f && a.end - a.start > 1) {
                     // Too long for a line of its own: cut it where it stops fitting; the rest carries on.
                     var cut = a.start + 1
                     while (cut < a.end && runWidth(m, a.start, cut + 1, letterEm) <= breakWidth + 0.01f) cut++
@@ -203,7 +227,13 @@ class LayoutCore(
             } else {
                 val prev = atoms[i - 1]
                 val gap = spacesWidth(m, prev.end, prev.spaces, letterEm)
-                if (curW + gap + a.width <= breakWidth + 0.01f) {
+                if (a.lock != prev.lock) {
+                    // A non-breakable line starts or ends here: it always has a line to itself.
+                    lines.add(RawLine(lineFirst, i - 1, false))
+                    lineFirst = -1
+                    continue
+                }
+                if (a.lock >= 0 || curW + gap + a.width <= breakWidth + 0.01f) {
                     curW += gap + a.width
                 } else {
                     lines.add(RawLine(lineFirst, i - 1, false))
@@ -361,8 +391,17 @@ class LayoutCore(
             var spread = 0f
             var letterExtra = 0f
             val contentLen = end - start
+            val locked = atomsOfLine.first().lock >= 0
+            var lineScale = 1f
 
-            if (align == 0 && lines.size > 1 && extra > 0f && (gaps > 0 || (isLastLine && opt.lastStretch > 0f))) {
+            if (locked) {
+                if (lw > wrapWidth + 0.01f) {
+                    lineScale = (wrapWidth / lw).coerceAtLeast(0.3f)
+                } else if (atomsOfLine.first().lockJust && gaps > 0 && extra > 0f) {
+                    justified = true
+                    spread = extra / gaps
+                }
+            } else if (align == 0 && lines.size > 1 && extra > 0f && (gaps > 0 || (isLastLine && opt.lastStretch > 0f))) {
                 if (!endsParagraph) {
                     justified = gaps > 0
                     spread = if (gaps > 0) extra / gaps else 0f
@@ -380,7 +419,7 @@ class LayoutCore(
                 }
             }
             val em = letterEm + letterExtra
-            val total = if (justified) natural(em) + spread * gaps else lw
+            val total = if (lineScale < 1f) wrapWidth else if (justified) natural(em) + spread * gaps else lw
             var x = if (justified) 0f else when (align) {
                 2 -> wrapWidth - lw
                 1 -> (wrapWidth - lw) / 2f
@@ -391,7 +430,7 @@ class LayoutCore(
                 x += runWidth(m, at.start, at.end, em)
                 if (k < atomsOfLine.size - 1) x += spacesWidth(m, at.end, at.spaces, em) + spread * at.spaces
             }
-            laid.add(LaidLine(li, start, end, baseline, letterExtra, total))
+            laid.add(LaidLine(li, start, end, baseline, letterExtra, total, lineScale))
             widest = maxOf(widest, total)
         }
         return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, lines.size * lineH, widest)
@@ -399,4 +438,55 @@ class LayoutCore(
 
     /** Horizontal alignment: 0 left (and justified), 1 centre, 2 right. Set before [layout]. */
     var align: Int = 0
+}
+
+
+/** A whole line that is never wrapped: [start, end) in the cleaned text. */
+class FixedSpan(val start: Int, val end: Int, val justified: Boolean)
+
+class FixedResult(val text: String, val styles: IntArray, val spans: List<FixedSpan>)
+
+/**
+ * Reads the whole-line syntax of ygocarder: [[line]] is a justified, non-breakable line (squeezed if too long, stretched
+ * to the full width if short). The brackets are removed and the line is recorded. A pair only counts when it covers a
+ * whole line, that is when it starts the text or a line and ends at the end of the text, at a line break, or right
+ * before another such pair; brackets anywhere else are ordinary text.
+ */
+fun extractFixedLines(text: String, styles: IntArray): FixedResult {
+    if (!text.contains("[[")) return FixedResult(text, styles, emptyList())
+    val out = StringBuilder(text.length)
+    val outSt = ArrayList<Int>(text.length)
+    val spans = ArrayList<FixedSpan>()
+    val n = text.length
+    fun isBreak(k: Int) = k >= n || text[k] == '\n' || text[k] == '\u2028'
+    fun boundaryAfter(k: Int): Boolean {
+        var m = k
+        while (m < n && text[m] == ' ') m++
+        return isBreak(m) || text.startsWith("[[", m)
+    }
+    var i = 0
+    var atLineStart = true
+    while (i < n) {
+        if (atLineStart && text.startsWith("[[", i)) {
+            var j = i + 2
+            var found = -1
+            while (j < n && !isBreak(j)) {
+                if (text.startsWith("]]", j) && boundaryAfter(j + 2)) { found = j; break }
+                j++
+            }
+            if (found > i + 2) {
+                val start = out.length
+                for (k in i + 2 until found) { out.append(text[k]); outSt.add(styles[k]) }
+                spans.add(FixedSpan(start, out.length, true))
+                i = found + 2
+                while (i < n && text[i] == ' ') i++
+                atLineStart = true
+                continue
+            }
+        }
+        out.append(text[i]); outSt.add(styles[i])
+        atLineStart = text[i] == '\n' || text[i] == '\u2028'
+        i++
+    }
+    return FixedResult(out.toString(), outSt.toIntArray(), spans)
 }
