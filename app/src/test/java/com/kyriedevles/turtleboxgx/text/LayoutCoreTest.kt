@@ -181,4 +181,27 @@ class LayoutCoreTest {
         assertTrue(wide.lines.size >= plain.lines.size)
         assertEquals(200f, wide.wrapWidth, 0.01f)
     }
+
+    @Test
+    fun aForcedBreakEndsTheLineButStillJustifiesIt() {
+        val t = "aa bb\u2028cc dd ee"
+        val r = core(t, 200f).place(20f, 1f)
+        assertEquals(2, r.lines.size)
+        val first = r.words.filter { it.line == 0 }
+        assertEquals("aa", t.substring(first[0].start, first[0].end))
+        assertEquals("bb", t.substring(first[1].start, first[1].end))
+        assertEquals(200f, right(r, first.last(), t), 0.6f)
+        val second = r.words.filter { it.line == 1 }
+        assertEquals("cc", t.substring(second[0].start, second[0].end))
+    }
+
+    @Test
+    fun forcedBreaksReproduceChosenLinesAtAnyWordSpacing() {
+        val t = "Once per turn,\u2028when a Spell/Trap\u2028Card or effect"
+        for (ws in listOf(60f, 100f, 200f)) {
+            val r = core(t, 400f, opt = LayoutOptions(wordSpace = ws)).place(20f, 1f)
+            assertEquals(3, r.lines.size)
+            for (p in r.words) assertTrue(right(r, p, t) <= 400.5f)
+        }
+    }
 }

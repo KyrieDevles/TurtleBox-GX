@@ -62,7 +62,8 @@ class NewTextEngine(
     private val materialsWidthPct: Float = 100f,
     private val materialsLinePct: Float = 100f,
 ) {
-    private val styled = parseMarkup(rawText)
+    // <br> is a forced line break inside a paragraph (like Photoshop's Shift+Enter): the line before it is still justified.
+    private val styled = parseMarkup(rawText.replace("<br>", "\u2028", ignoreCase = true))
     private val text = styled.text
     private val baseSize = paint.textSize
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f

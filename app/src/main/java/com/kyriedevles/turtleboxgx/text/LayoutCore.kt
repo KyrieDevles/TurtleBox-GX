@@ -70,7 +70,7 @@ class Source(val text: String, val styles: IntArray) {
     init { require(styles.size == text.length) { "one style per character" } }
 }
 
-private class Atom(var start: Int, var end: Int, var spaces: Int, val endsParagraph: Boolean) {
+private class Atom(var start: Int, var end: Int, var spaces: Int, val endsParagraph: Boolean, val forced: Boolean = false) {
     var width = 0f
 }
 
@@ -105,10 +105,18 @@ class LayoutCore(
             var contentEnd = i
             var spaces = 0
             var para = false
+            var forced = false
             var done = false
             while (i < n && !done) {
                 val c = text[i]
                 when {
+                    c == '\u2028' -> {
+                        // A forced line break inside a paragraph: the line before it is still justified.
+                        contentEnd = i
+                        i++
+                        forced = true
+                        done = true
+                    }
                     c == '\n' -> {
                         contentEnd = i
                         i++
@@ -120,6 +128,7 @@ class LayoutCore(
                         contentEnd = i
                         while (i < n && text[i] == ' ') { i++; spaces++ }
                         if (i < n && text[i] == '\n') { i++; para = true }
+                        else if (i < n && text[i] == '\u2028') { i++; forced = true; spaces = 0 }
                         done = true
                     }
                     else -> {
@@ -134,7 +143,7 @@ class LayoutCore(
                     }
                 }
             }
-            out.add(Atom(s, contentEnd, spaces, para))
+            out.add(Atom(s, contentEnd, spaces, para, forced))
         }
         return out
     }
@@ -204,6 +213,9 @@ class LayoutCore(
             }
             if (a.endsParagraph) {
                 lines.add(RawLine(lineFirst, i, true))
+                lineFirst = -1
+            } else if (a.forced) {
+                lines.add(RawLine(lineFirst, i, false))
                 lineFirst = -1
             }
             i++
