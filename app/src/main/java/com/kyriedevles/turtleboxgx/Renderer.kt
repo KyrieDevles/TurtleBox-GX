@@ -280,9 +280,15 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val matPct = num("materialssize").takeIf { it > 0f } ?: 100f
         val matWidthPct = num("materialswidth").takeIf { it > 0f } ?: 100f
         val matLinePct = num("materialsline").takeIf { it > 0f } ?: 100f
-        val engine = TextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
-        val used = engine.fit()
-        engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
+        if (com.kyriedevles.turtleboxgx.text.TextSwitch.useNew) {
+            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
+            val used = engine.fit()
+            engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
+        } else {
+            val engine = TextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
+            val used = engine.fit()
+            engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
+        }
         drawn++
     }
 
