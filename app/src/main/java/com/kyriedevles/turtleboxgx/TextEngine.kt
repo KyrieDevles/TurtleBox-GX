@@ -236,6 +236,8 @@ class TextEngine(
         paint.textSize = size
         paint.textScaleX = scaleX
         val sl = build(width)
+        // Word spacing can push a drawn line past the box even when the layout wrapped it; count that as not fitting.
+        if (widestLine(sl) > width + 0.5f) return false
         return materialsHeight() + sl.height <= height
     }
 
