@@ -2241,7 +2241,7 @@ class MainActivity : Activity() {
         if (layer != null) {
             val r2 = Renderer(l, ctx, a, st.values)
             r2.probeName = r.probeName
-            val k = 3f
+            val k = 2f
             val (b, size) = r2.renderTextLayer(layer, k)
             val rr = r2.probeRects ?: return null
             val out = rr.map { it?.let { g -> RectF((g.left + size.first / 2f) * k, (g.top + size.second / 2f) * k, (g.right + size.first / 2f) * k, (g.bottom + size.second / 2f) * k) } }.toTypedArray()

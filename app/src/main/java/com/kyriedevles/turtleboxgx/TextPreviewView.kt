@@ -34,6 +34,10 @@ class TextPreviewView(ctx: Context) : View(ctx) {
     private val knobRing = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); style = Paint.Style.STROKE }
     private val frame = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Theme.hot; style = Paint.Style.STROKE; alpha = 160 }
 
+    private companion object {
+        const val MAX_ZOOM = 1.6f
+    }
+
     private var k = 1f
     private var ox = 0f
     private var oy = 0f
@@ -60,13 +64,14 @@ class TextPreviewView(ctx: Context) : View(ctx) {
         val w = MeasureSpec.getSize(wSpec)
         val b = bmp
         val maxH = (resources.displayMetrics.heightPixels * 0.22f).toInt()
-        val h = if (b == null) 0 else minOf(maxH, (b.height * (w.toFloat() / b.width)).toInt() + (8 * dp).toInt())
+        // Enlarged to fill the width, but at most 1.6x, so a small box is not blown up.
+        val h = if (b == null) 0 else minOf(maxH, (b.height * minOf(w.toFloat() / b.width, MAX_ZOOM)).toInt() + (8 * dp).toInt())
         setMeasuredDimension(w, h)
     }
 
     override fun onDraw(c: Canvas) {
         val b = bmp ?: return
-        k = minOf(width.toFloat() / b.width, (height - 8 * dp) / b.height)
+        k = minOf(width.toFloat() / b.width, (height - 8 * dp) / b.height, MAX_ZOOM)
         ox = (width - b.width * k) / 2f
         oy = 4 * dp
         c.save()

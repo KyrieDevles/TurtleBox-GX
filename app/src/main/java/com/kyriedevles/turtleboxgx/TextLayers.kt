@@ -61,9 +61,10 @@ object TextLayers {
      * Adds the settings and menus of every text layer to the layout (they are what the edit menu and the defaults read).
      * Call on the main thread before drawing or opening a menu; it only adds what is missing and refreshes each menu.
      */
-    fun sync(layout: Layout, values: Map<String, String>) {
+    fun sync(layout: Layout, values: MutableMap<String, String>) {
         @Suppress("UNCHECKED_CAST")
         val datas = layout.datas as? MutableMap<String, DataDef> ?: return
+        convertToBox(values)
         for (l in ImageLayers.read(values).filter { it.isText }) {
             val t = tm(l.id)
             boxElement(l, layout, values, datas)
@@ -90,6 +91,27 @@ object TextLayers {
             for (s in sections) m.items.add(s to s)
             datas[m.name] = m
         }
+    }
+
+    /**
+     * A layer just switched to box text gets a box big enough to read (at least 240 × 90 card px, same centre) and
+     * Size px 0, so the text fits itself to the box instead of spilling out at its point size. Switching back to point
+     * text arms this again.
+     */
+    private fun convertToBox(values: MutableMap<String, String>) {
+        val all = ImageLayers.read(values)
+        var changed = false
+        for (l in all.filter { it.isText }) {
+            val key = "boxinit_${tm(l.id)}"
+            if (isPoint(values, l.id)) { values.remove(key); continue }
+            if (values[key] == "1") continue
+            values[key] = "1"
+            values["sizepx_${tm(l.id)}"] = "0"
+            l.w = maxOf(l.w, 240f)
+            l.h = maxOf(l.h, 90f)
+            changed = true
+        }
+        if (changed) ImageLayers.write(values, all)
     }
 
     private val ownerRx = Regex("_tl([0-9a-z]+)$")
