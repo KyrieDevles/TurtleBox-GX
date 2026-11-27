@@ -22,7 +22,9 @@ import kotlin.math.sqrt
  * A card name style, ported from lauqerm's YGOcarder (Name Style). A card set stores it in one value:
  * "auto", "predefined|<preset name>" or "custom|key=value;key=value".
  *
- * Keys: fill, font, shadow (0/1), shcolor, shx, shy, shblur, outline (0/1), olcolor, olw, olx, oly,
+ * Keys: fill, font, shadow (0/1), shcolor, shx, shy, shblur, outline (0/1), olcolor, olw, olx, oly (copies 2..5 of
+ * shadows, outlines and inner shadows add a suffix, with shcount / olcount / iscount), ishadow + isx isy isblur iscolor
+ * isopacity, iglow + igblur igcolor igopacity, glow + glblur glspread glopacity glcolor,
  * grad (0/1), gangle, gstops ("0.000|#eef10b,1.000|#7e20cf"), emboss (0/1), epitch, eyaw, ethick, pattern.
  * All sizes are in YGOcarder pixels (a 813 px wide card) and are scaled to the layout.
  */
@@ -262,13 +264,7 @@ object NameFx {
         val lu = layoutW / 813f // layout px per style pixel
         val u = k * lu // layer px per style pixel
         val thick = if (on("emboss")) fl("ethick", 0f).coerceAtLeast(0f) * lu else 0f
-        val olR = if (on("outline")) fl("olw", 0f).coerceAtLeast(0f) / 2f * u else 0f
-        val olx = if (on("outline")) fl("olx", 0f) * u else 0f
-        val oly = if (on("outline")) fl("oly", 0f) * u else 0f
-        val shBlur = if (on("shadow")) fl("shblur", 0f).coerceAtLeast(0f) * u else 0f
-        val shx = if (on("shadow")) fl("shx", 0f) * u else 0f
-        val shy = if (on("shadow")) fl("shy", 0f) * u else 0f
-        val pad = Math.ceil((thick * k / 2f + olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + glowReach(m, u) + 12f).toDouble()).toInt()
+        val pad = Math.ceil((thick * k / 2f + effectReach(m, u) + 12f).toDouble()).toInt()
         val lw = Math.ceil((rect.width() * k).toDouble()).toInt() + 2 * pad
         val lh = Math.ceil((rect.height() * k).toDouble()).toInt() + 2 * pad
         val fillColor = col(m["fill"], base.color)
@@ -304,7 +300,7 @@ object NameFx {
             fp.strokeJoin = Paint.Join.ROUND
         }
         lc.drawText(text, x, y, fp)
-        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, RectF(x, top - 1f, x + drawW, bottom + 1f), olR, olx, oly, shBlur, shx, shy, u)
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, RectF(x, top - 1f, x + drawW, bottom + 1f), u)
     }
 
     /**
@@ -326,13 +322,7 @@ object NameFx {
         fun on(key: String) = m[key] == "1"
         val lu = layoutW / 813f
         val u = k * lu
-        val olR = if (on("outline")) fl("olw", 0f).coerceAtLeast(0f) / 2f * u else 0f
-        val olx = if (on("outline")) fl("olx", 0f) * u else 0f
-        val oly = if (on("outline")) fl("oly", 0f) * u else 0f
-        val shBlur = if (on("shadow")) fl("shblur", 0f).coerceAtLeast(0f) * u else 0f
-        val shx = if (on("shadow")) fl("shx", 0f) * u else 0f
-        val shy = if (on("shadow")) fl("shy", 0f) * u else 0f
-        val pad = Math.ceil((olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + glowReach(m, u) + 12f).toDouble()).toInt()
+        val pad = Math.ceil((effectReach(m, u) + 12f).toDouble()).toInt()
         val lw = Math.ceil((rect.width() * k).toDouble()).toInt() + 2 * pad
         val lh = Math.ceil((rect.height() * k).toDouble()).toInt() + 2 * pad
         if (lw <= 0 || lh <= 0 || lw.toLong() * lh > 9_000_000L) return drawContent(c)
@@ -351,20 +341,75 @@ object NameFx {
             fp.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             lc.drawRect(RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k), fp)
         }
-        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, rect, olR, olx, oly, shBlur, shx, shy, u)
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, rect, u)
     }
 
-    /** How far a glow reaches past the letters, in layer px. */
-    private fun glowReach(m: Map<String, String>, u: Float): Float {
-        if (m["glow"] != "1") return 0f
-        return ((m["glblur"]?.toFloatOrNull() ?: 8f) * 2f + (m["glspread"]?.toFloatOrNull() ?: 0f)).coerceAtLeast(0f) * u
+    /** Copy suffixes of an effect that can be added several times ("" is the first, then "2".."5"), top first. */
+    fun copies(m: Map<String, String>, countKey: String): List<String> {
+        val n = (m[countKey]?.toIntOrNull() ?: 1).coerceIn(1, MAX_COPIES)
+        return (1..n).map { if (it == 1) "" else it.toString() }
+    }
+
+    const val MAX_COPIES = 5
+
+    /** How far the effects reach past the letters, in layer px (the offscreen layer's margin). */
+    private fun effectReach(m: Map<String, String>, u: Float): Float {
+        fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
+        var r = 0f
+        if (m["outline"] == "1") for (sf in copies(m, "olcount"))
+            r = max(r, fl("olw$sf", 0f).coerceAtLeast(0f) / 2f * u + max(abs(fl("olx$sf", 0f)), abs(fl("oly$sf", 0f))) * u)
+        var sh = 0f
+        if (m["shadow"] == "1") for (sf in copies(m, "shcount"))
+            sh = max(sh, fl("shblur$sf", 0f).coerceAtLeast(0f) * 2f * u + max(abs(fl("shx$sf", 0f)), abs(fl("shy$sf", 0f))) * u)
+        var gl = 0f
+        if (m["glow"] == "1") gl = ((m["glblur"]?.toFloatOrNull() ?: 8f) * 2f + (m["glspread"]?.toFloatOrNull() ?: 0f)).coerceAtLeast(0f) * u
+        return r + max(sh, gl)
+    }
+
+    /** The letters' shape [mask] grown by [radius] and moved by ([dx], [dy]), stamped in [color] onto [cv]. */
+    private fun stamp(cv: Canvas, mask: Bitmap, radius: Float, dx: Float, dy: Float, color: Int) {
+        val op = Paint(Paint.FILTER_BITMAP_FLAG)
+        op.color = color
+        cv.drawBitmap(mask, dx, dy, op)
+        if (radius <= 0.01f) return
+        for (ring in 1..3) {
+            val rr = radius * ring / 3f
+            val n = min(48, max(8, Math.round(rr * 4f)))
+            for (i in 0 until n) {
+                val a = 2.0 * Math.PI * i / n
+                cv.drawBitmap(mask, dx + (rr * cos(a)).toFloat(), dy + (rr * sin(a)).toFloat(), op)
+            }
+        }
+    }
+
+    /**
+     * Inner shadow / inner glow (Photoshop's): the outside of the letters, blurred (and moved for a shadow), painted
+     * only inside the letters, on top of their fill.
+     */
+    private fun inner(layer: Bitmap, lw: Int, lh: Int, blur: Float, dx: Float, dy: Float, color: Int, opacity: Float) {
+        // Everything that is not letter, as a mask.
+        val outside = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+        val oc = Canvas(outside)
+        oc.drawColor(Color.BLACK)
+        val cut = Paint()
+        cut.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
+        oc.drawBitmap(layer, 0f, 0f, cut)
+        val bp = Paint()
+        if (blur > 0.5f) bp.maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
+        val off = IntArray(2)
+        val a = outside.extractAlpha(bp, off)
+        val p = Paint(Paint.FILTER_BITMAP_FLAG)
+        p.color = color
+        p.alpha = (Color.alpha(color) * opacity.coerceIn(0f, 100f) / 100f).toInt()
+        p.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+        Canvas(layer).drawBitmap(a, off[0] + dx, off[1] + dy, p)
     }
 
     /** Pattern, emboss, outline and shadow around the letters drawn on [layer0], then the result onto [c]. */
     private fun compose(
         c: Canvas, layer0: Bitmap, lw: Int, lh: Int, pad: Int, k: Float, rect: RectF, m: Map<String, String>,
         layout: Layout, assets: Assets, patRect: RectF,
-        olR: Float, olx: Float, oly: Float, shBlur: Float, shx: Float, shy: Float, u: Float,
+        u: Float,
     ) {
         fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
         fun on(key: String) = m[key] == "1"
@@ -402,40 +447,40 @@ object NameFx {
 
         if (on("emboss")) emboss(layer, fl("epitch", 90f), fl("eyaw", 90f))
 
-        // Outline: copies of the letters' shape stamped around a circle, behind the text.
+        // Inner shadows and inner glow, inside the letters on top of their fill.
+        if (on("ishadow")) for (sf in copies(m, "iscount").reversed()) {
+            inner(layer, lw, lh, fl("isblur$sf", 4f).coerceAtLeast(0f) * u, fl("isx$sf", 0f) * u, fl("isy$sf", 0f) * u,
+                col(m["iscolor$sf"], Color.BLACK), fl("isopacity$sf", 75f))
+        }
+        if (on("iglow")) inner(layer, lw, lh, fl("igblur", 6f).coerceAtLeast(0f) * u, 0f, 0f, col(m["igcolor"], Color.WHITE), fl("igopacity", 75f))
+
+        // Outlines (Photoshop's strokes, outside): each is the letters' shape grown by its width; the first is on top.
         var shape = layer
-        if (olR > 0.01f) {
-            val o = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
-            val oc = Canvas(o)
+        if (on("outline")) {
             val mask = layer.extractAlpha()
-            val op = Paint(Paint.FILTER_BITMAP_FLAG)
-            op.color = col(m["olcolor"], Color.BLACK)
-            oc.drawBitmap(mask, olx, oly, op)
-            for (ring in 1..3) {
-                val rr = olR * ring / 3f
-                val n = min(48, max(8, Math.round(rr * 4f)))
-                for (i in 0 until n) {
-                    val a = 2.0 * Math.PI * i / n
-                    oc.drawBitmap(mask, olx + (rr * cos(a)).toFloat(), oly + (rr * sin(a)).toFloat(), op)
-                }
-            }
             val s = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
             val sc = Canvas(s)
-            sc.drawBitmap(o, 0f, 0f, null)
+            for (sf in copies(m, "olcount").reversed()) {
+                val w = fl("olw$sf", 0f).coerceAtLeast(0f) / 2f * u
+                if (w <= 0.01f) continue
+                stamp(sc, mask, w, fl("olx$sf", 0f) * u, fl("oly$sf", 0f) * u, col(m["olcolor$sf"], Color.BLACK))
+            }
             sc.drawBitmap(layer, 0f, 0f, null)
             shape = s
         }
 
         val fin = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
         val fc = Canvas(fin)
-        if (on("shadow")) {
+        // Drop shadows, bottom one first; the first is on top.
+        if (on("shadow")) for (sf in copies(m, "shcount").reversed()) {
+            val blur = fl("shblur$sf", 0f).coerceAtLeast(0f) * u
             val bp = Paint()
-            if (shBlur > 0.5f) bp.maskFilter = BlurMaskFilter(shBlur, BlurMaskFilter.Blur.NORMAL)
+            if (blur > 0.5f) bp.maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
             val off = IntArray(2)
             val a = shape.extractAlpha(bp, off)
             val sp = Paint(Paint.FILTER_BITMAP_FLAG)
-            sp.color = col(m["shcolor"], Color.BLACK)
-            fc.drawBitmap(a, off[0] + shx, off[1] + shy, sp)
+            sp.color = col(m["shcolor$sf"], Color.BLACK)
+            fc.drawBitmap(a, off[0] + fl("shx$sf", 0f) * u, off[1] + fl("shy$sf", 0f) * u, sp)
         }
         // Outer glow (Photoshop's): the letters' shape spread by [glspread], blurred by [glblur], in [glcolor], behind them.
         if (on("glow")) {

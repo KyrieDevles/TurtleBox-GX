@@ -125,6 +125,9 @@ class NameStyleEditor(
     fun show() {
         var st = NameStyle.parse(current())
         var section = "Color"
+        // Which copy of a repeatable effect (shadows, outlines, inner shadows) is being edited, by its count key.
+        val copySel = HashMap<String, Int>()
+        var rebuildFwd: () -> Unit = {}
         var presetMine = false
         val box = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -513,20 +516,88 @@ class NameStyleEditor(
             refreshInfo()
         }
 
+        /**
+         * The copies of an effect that can be added several times, like Photoshop's "+" on Stroke and Drop Shadow:
+         * pick one to edit, add a copy (of the one shown), move it up or down (the first is drawn on top), remove it.
+         * Returns the key suffix of the copy being edited.
+         */
+        fun copyBar(countKey: String, keys: List<String>): String {
+            val n = (st.v[countKey]?.toIntOrNull() ?: 1).coerceIn(1, NameFx.MAX_COPIES)
+            val sel = (copySel[countKey] ?: 0).coerceIn(0, n - 1)
+            copySel[countKey] = sel
+            fun sfx(i: Int) = if (i == 0) "" else (i + 1).toString()
+            fun move(a: Int, b: Int) {
+                for (k in keys) {
+                    val va = st.v[k + sfx(a)]
+                    val vb = st.v[k + sfx(b)]
+                    if (vb == null) st.v.remove(k + sfx(a)) else st.v[k + sfx(a)] = vb
+                    if (va == null) st.v.remove(k + sfx(b)) else st.v[k + sfx(b)] = va
+                }
+            }
+            val c = card("Copies · the first is drawn on top")
+            val parts = ArrayList<Pair<View, Float>>()
+            for (i in 0 until n) parts.add(segBtn(if (i == sel) "● ${i + 1}" else "${i + 1}", if (i == sel) hot else pink) {
+                copySel[countKey] = i
+                rebuildFwd()
+            } to 1f)
+            if (n < NameFx.MAX_COPIES) parts.add(segBtn("+ Add", pink) {
+                for (k in keys) st.v[k + sfx(sel)]?.let { st.v[k + sfx(n)] = it }
+                st.v[countKey] = (n + 1).toString()
+                copySel[countKey] = n
+                commit()
+                rebuildFwd()
+            } to 1.4f)
+            c.addView(joined(*parts.toTypedArray()), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+            if (n > 1) {
+                val tools = joined(
+                    segBtn("Move up", pink) {
+                        if (sel > 0) { move(sel, sel - 1); copySel[countKey] = sel - 1; commit(); rebuildFwd() }
+                    } to 1f,
+                    segBtn("Move down", pink) {
+                        if (sel < n - 1) { move(sel, sel + 1); copySel[countKey] = sel + 1; commit(); rebuildFwd() }
+                    } to 1f,
+                    segBtn("Remove", pink) {
+                        for (i in sel until n - 1) move(i, i + 1)
+                        for (k in keys) st.v.remove(k + sfx(n - 1))
+                        st.v[countKey] = (n - 1).toString()
+                        copySel[countKey] = minOf(sel, n - 2)
+                        commit()
+                        rebuildFwd()
+                    } to 1f,
+                )
+                c.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(8) })
+            }
+            return sfx(sel)
+        }
+
         fun sectionBody() {
             when (section) {
                 "Color" -> { cur = card(null); colorPicker(null, "fill", "#000000", true) }
                 "Shadow" -> {
                     header("Has Shadow?", "shadow")
-                    cur = card("Position"); pad(15, "shx", "shy")
-                    cur = card(null); slider("Blur", "shblur", 0f, 20f, 0f)
-                    cur = card("Shadow colour"); colorPicker(null, "shcolor", "#000000", false)
+                    val sf = copyBar("shcount", listOf("shx", "shy", "shblur", "shcolor"))
+                    cur = card("Position"); pad(15, "shx$sf", "shy$sf")
+                    cur = card(null); slider("Blur", "shblur$sf", 0f, 20f, 0f)
+                    cur = card("Shadow colour"); colorPicker(null, "shcolor$sf", "#000000", false)
+                }
+                "Inner Shadow" -> {
+                    val sf = copyBar("iscount", listOf("isx", "isy", "isblur", "iscolor", "isopacity"))
+                    cur = card("Position"); pad(10, "isx$sf", "isy$sf")
+                    cur = card(null); slider("Blur", "isblur$sf", 0f, 20f, 4f)
+                    cur = card(null); slider("Opacity %", "isopacity$sf", 0f, 100f, 75f, true)
+                    cur = card("Shadow colour"); colorPicker(null, "iscolor$sf", "#000000", false)
+                }
+                "Inner Glow" -> {
+                    cur = card(null); slider("Size", "igblur", 0f, 30f, 6f)
+                    cur = card(null); slider("Opacity %", "igopacity", 0f, 100f, 75f, true)
+                    cur = card("Glow colour"); colorPicker(null, "igcolor", "#ffffff", false)
                 }
                 "Outline" -> {
                     header("Has Outline?", "outline")
-                    cur = card("Position"); pad(10, "olx", "oly")
-                    cur = card(null); slider("Thickness", "olw", 0f, 30f, 0f)
-                    cur = card("Outline colour"); colorPicker(null, "olcolor", "#000000", false)
+                    val sf = copyBar("olcount", listOf("olw", "olx", "oly", "olcolor"))
+                    cur = card("Position"); pad(10, "olx$sf", "oly$sf")
+                    cur = card(null); slider("Thickness", "olw$sf", 0f, 30f, 0f)
+                    cur = card("Outline colour"); colorPicker(null, "olcolor$sf", "#000000", false)
                 }
                 "Gradient" -> gradientUi()
                 "Pattern" -> {
@@ -661,8 +732,14 @@ class NameStyleEditor(
                     }
         var chipFlow: FlowLayout? = null
         val rowUpd = LinkedHashMap<String, () -> Unit>()
+        fun copiesNote(countKey: String): String {
+            val n = st.v[countKey]?.toIntOrNull() ?: 1
+            return if (n > 1) " · ×$n" else ""
+        }
         fun used(s: String) = when (s) {
             "Shadow" -> st.v["shadow"] == "1"
+            "Inner Shadow" -> st.v["ishadow"] == "1"
+            "Inner Glow" -> st.v["iglow"] == "1"
             "Glow" -> st.v["glow"] == "1"
             "Outline" -> st.v["outline"] == "1"
             "Gradient" -> st.v["grad"] == "1"
@@ -842,6 +919,7 @@ class NameStyleEditor(
             dlg.show()
         }
 
+        rebuildFwd = { rebuild() }
         rebuild = {
             body.removeAllViews()
             rowUpd.clear()
@@ -885,18 +963,20 @@ class NameStyleEditor(
                 }
                 "custom" -> {
                     tabRow.removeAllViews()
-                    for (s in listOf("Color", "Shadow", "Glow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
+                    for (s in listOf("Color", "Shadow", "Inner Shadow", "Glow", "Inner Glow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
                         val open = section == s
-                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Glow" -> "glow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
+                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Inner Shadow" -> "ishadow"; "Inner Glow" -> "iglow"; "Glow" -> "glow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
                         val tg = SkewToggle(activity)
                         val sum = TextView(activity).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.END }
                         fun val_(k: String) = st.v[k] ?: ""
                         fun summary(): CharSequence {
                             val (v, rest) = when (s) {
                                 "Color" -> val_("fill").ifEmpty { "#000000" } to ""
-                                "Shadow" -> if (used(s)) "${val_("shx").ifEmpty { "0" }}, ${val_("shy").ifEmpty { "0" }}" to " · blur ${val_("shblur").ifEmpty { "0" }}" else "off" to ""
+                                "Shadow" -> if (used(s)) "${val_("shx").ifEmpty { "0" }}, ${val_("shy").ifEmpty { "0" }}" to " · blur ${val_("shblur").ifEmpty { "0" }}" + copiesNote("shcount") else "off" to ""
+                                "Inner Shadow" -> if (used(s)) "${val_("isx").ifEmpty { "0" }}, ${val_("isy").ifEmpty { "0" }}" to copiesNote("iscount") else "off" to ""
+                                "Inner Glow" -> if (used(s)) "${val_("igblur").ifEmpty { "6" }} px" to " · ${val_("igcolor").ifEmpty { "#ffffff" }}" else "off" to ""
                                 "Glow" -> if (used(s)) "${val_("glblur").ifEmpty { "8" }} px" to " · ${val_("glcolor").ifEmpty { "#ffffff" }}" else "off" to ""
-                                "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to " · ${val_("olcolor").ifEmpty { "#000000" }}" else "off" to ""
+                                "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to " · ${val_("olcolor").ifEmpty { "#000000" }}" + copiesNote("olcount") else "off" to ""
                                 "Gradient" -> if (used(s)) "${val_("gstops").split(',').count { it.contains('|') }} stops" to " · ${val_("gangle").ifEmpty { "0" }}°" else "off" to ""
                                 "Pattern" -> val_("pattern").ifEmpty { "none" } to ""
                                 "Font" -> val_("font").ifEmpty { "auto" } to ""
