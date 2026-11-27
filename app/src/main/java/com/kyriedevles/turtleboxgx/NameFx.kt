@@ -8,6 +8,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
@@ -215,7 +216,7 @@ object NameFx {
         bm.setPixels(px, 0, w, 0, 0, w, h)
     }
 
-    private fun gradientShader(stops: String, angle: Float, left: Float, top: Float, right: Float, bottom: Float): Shader? {
+    private fun parseStops(stops: String): List<Pair<Float, Int>> {
         val list = ArrayList<Pair<Float, Int>>()
         for (part in stops.split(',')) {
             val p = part.split('|')
@@ -224,8 +225,21 @@ object NameFx {
                 list.add(off.coerceIn(0f, 1f) to col(p[1].trim(), Color.BLACK))
             }
         }
-        if (list.size < 2) return null
         list.sortBy { it.first }
+        return list
+    }
+
+    /** Radial gradient overlay: the first stop in the middle, the last at the corners. */
+    private fun radialShader(stops: String, r: RectF): Shader? {
+        val list = parseStops(stops)
+        if (list.size < 2) return null
+        val rad = (Math.hypot(r.width().toDouble(), r.height().toDouble()) / 2.0).toFloat().coerceAtLeast(1f)
+        return RadialGradient(r.centerX(), r.centerY(), rad, IntArray(list.size) { list[it].second }, FloatArray(list.size) { list[it].first }, Shader.TileMode.CLAMP)
+    }
+
+    private fun gradientShader(stops: String, angle: Float, left: Float, top: Float, right: Float, bottom: Float): Shader? {
+        val list = parseStops(stops)
+        if (list.size < 2) return null
         val a = Math.toRadians(angle.toDouble())
         val w = right - left
         val h = bottom - top
@@ -291,9 +305,6 @@ object NameFx {
         place(lc)
         val fp = Paint(base)
         fp.color = fillColor
-        if (on("grad")) {
-            fp.shader = gradientShader(m["gstops"] ?: "", fl("gangle", 0f), x, top, x + drawW, bottom)
-        }
         if (thick > 0f) {
             fp.style = Paint.Style.FILL_AND_STROKE
             fp.strokeWidth = thick
@@ -316,6 +327,8 @@ object NameFx {
         layoutW: Float,
         layout: Layout,
         assets: Assets,
+        /** False for pictures (image layers): the style's text colour does not paint over them. */
+        recolor: Boolean = true,
         drawContent: (Canvas) -> Unit,
     ) {
         fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
@@ -332,12 +345,11 @@ object NameFx {
         lc.scale(k, k)
         lc.translate(-rect.left, -rect.top)
         drawContent(lc)
-        // Fill colour or gradient over the letters only.
-        val fill = m["fill"]?.takeIf { it.isNotBlank() }
-        if (fill != null || on("grad")) {
+        // The style's text colour over the letters only.
+        val fill = m["fill"]?.takeIf { it.isNotBlank() && recolor }
+        if (fill != null) {
             val fp = Paint(Paint.ANTI_ALIAS_FLAG)
             fp.color = col(fill, Color.BLACK)
-            if (on("grad")) fp.shader = gradientShader(m["gstops"] ?: "", fl("gangle", 0f), rect.left, rect.top, rect.right, rect.bottom)
             fp.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             lc.drawRect(RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k), fp)
         }
@@ -360,7 +372,7 @@ object NameFx {
             r = max(r, fl("olw$sf", 0f).coerceAtLeast(0f) / 2f * u + max(abs(fl("olx$sf", 0f)), abs(fl("oly$sf", 0f))) * u)
         var sh = 0f
         if (m["shadow"] == "1") for (sf in copies(m, "shcount"))
-            sh = max(sh, fl("shblur$sf", 0f).coerceAtLeast(0f) * 2f * u + max(abs(fl("shx$sf", 0f)), abs(fl("shy$sf", 0f))) * u)
+            sh = max(sh, (fl("shblur$sf", 0f).coerceAtLeast(0f) * 2f + fl("shspread$sf", 0f).coerceAtLeast(0f)) * u + max(abs(fl("shx$sf", 0f)), abs(fl("shy$sf", 0f))) * u)
         var gl = 0f
         if (m["glow"] == "1") gl = ((m["glblur"]?.toFloatOrNull() ?: 8f) * 2f + (m["glspread"]?.toFloatOrNull() ?: 0f)).coerceAtLeast(0f) * u
         return r + max(sh, gl)
@@ -380,6 +392,44 @@ object NameFx {
                 cv.drawBitmap(mask, dx + (rr * cos(a)).toFloat(), dy + (rr * sin(a)).toFloat(), op)
             }
         }
+    }
+
+    /**
+     * Satin (Photoshop's): the letters' shape moved both ways along an angle, where the two copies differ, blurred,
+     * painted inside the letters. Gives the silky inner shading of metallic text.
+     */
+    private fun satin(layer: Bitmap, lw: Int, lh: Int, u: Float, m: Map<String, String>) {
+        fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
+        val mask = layer.extractAlpha()
+        val d = fl("satdist", 11f) * u
+        val a = Math.toRadians(fl("satangle", 19f).toDouble())
+        val dx = (d * cos(a)).toFloat()
+        val dy = (d * sin(a)).toFloat()
+        val t = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+        val tc = Canvas(t)
+        val p = Paint(Paint.FILTER_BITMAP_FLAG)
+        p.color = Color.BLACK
+        tc.drawBitmap(mask, dx, dy, p)
+        tc.drawBitmap(mask, -dx, -dy, Paint(p).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.XOR) })
+        var src = t
+        if (m["satinvert"] == "1") {
+            val inv = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+            val ic = Canvas(inv)
+            ic.drawColor(Color.BLACK)
+            ic.drawBitmap(t, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
+            src = inv
+        }
+        val bp = Paint()
+        val size = fl("satsize", 14f).coerceAtLeast(0f) * u
+        if (size > 0.5f) bp.maskFilter = BlurMaskFilter(size, BlurMaskFilter.Blur.NORMAL)
+        val off = IntArray(2)
+        val am = src.extractAlpha(bp, off)
+        val cc = col(m["satcolor"], Color.BLACK)
+        val sp = Paint(Paint.FILTER_BITMAP_FLAG)
+        sp.color = cc
+        sp.alpha = (Color.alpha(cc) * fl("satopacity", 50f).coerceIn(0f, 100f) / 100f).toInt()
+        sp.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+        Canvas(layer).drawBitmap(am, off[0].toFloat(), off[1].toFloat(), sp)
     }
 
     /**
@@ -445,6 +495,25 @@ object NameFx {
             }
         }
 
+        // Overlays inside the letters (Photoshop's order, bottom up): gradient, colour, satin.
+        val all = RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k)
+        fun overlay(p: Paint) {
+            p.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+            val cv = Canvas(layer)
+            place(cv)
+            cv.drawRect(all, p)
+        }
+        if (on("grad")) {
+            val sh = if (m["gstyle"] == "radial") radialShader(m["gstops"] ?: "", patRect)
+            else gradientShader(m["gstops"] ?: "", fl("gangle", 0f), patRect.left, patRect.top, patRect.right, patRect.bottom)
+            if (sh != null) overlay(Paint(Paint.ANTI_ALIAS_FLAG).apply { shader = sh; alpha = (255 * fl("gopacity", 100f).coerceIn(0f, 100f) / 100f).toInt() })
+        }
+        if (on("coverlay")) {
+            val cc = col(m["cocolor"], Color.RED)
+            overlay(Paint(Paint.ANTI_ALIAS_FLAG).apply { color = cc; alpha = (Color.alpha(cc) * fl("coopacity", 100f).coerceIn(0f, 100f) / 100f).toInt() })
+        }
+        if (on("satin")) satin(layer, lw, lh, u, m)
+
         if (on("emboss")) emboss(layer, fl("epitch", 90f), fl("eyaw", 90f))
 
         // Inner shadows and inner glow, inside the letters on top of their fill.
@@ -455,17 +524,51 @@ object NameFx {
         if (on("iglow")) inner(layer, lw, lh, fl("igblur", 6f).coerceAtLeast(0f) * u, 0f, 0f, col(m["igcolor"], Color.WHITE), fl("igopacity", 75f))
 
         // Outlines (Photoshop's strokes, outside): each is the letters' shape grown by its width; the first is on top.
+        // Strokes: outside (behind the letters), inside (over them, within their edge) or centre (half of each).
         var shape = layer
         if (on("outline")) {
             val mask = layer.extractAlpha()
+            val outsideMask: Bitmap by lazy {
+                val o = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+                val oc = Canvas(o)
+                oc.drawColor(Color.BLACK)
+                oc.drawBitmap(layer, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
+                o.extractAlpha()
+            }
+            val behind = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+            val bc = Canvas(behind)
+            val above = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+            val ac = Canvas(above)
+            for (sf in copies(m, "olcount").reversed()) {
+                // How far the stroke reaches from the edge (the same as the outside outline always was).
+                val full = fl("olw$sf", 0f).coerceAtLeast(0f) / 2f * u
+                if (full <= 0.02f) continue
+                val pos = m["olpos$sf"] ?: "out"
+                val color = col(m["olcolor$sf"], Color.BLACK)
+                val alpha = (255 * fl("olopacity$sf", 100f).coerceIn(0f, 100f) / 100f).toInt()
+                val dx = fl("olx$sf", 0f) * u
+                val dy = fl("oly$sf", 0f) * u
+                val outW = when (pos) { "in" -> 0f; "center" -> full / 2f; else -> full }
+                val inW = when (pos) { "in" -> full; "center" -> full / 2f; else -> 0f }
+                if (pos != "in") {
+                    val t = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+                    stamp(Canvas(t), mask, outW, dx, dy, color)
+                    bc.drawBitmap(t, 0f, 0f, Paint().apply { this.alpha = alpha })
+                }
+                if (inW > 0.01f) {
+                    // The outside grown inwards by the width, kept inside the letters.
+                    val t = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+                    val tc = Canvas(t)
+                    stamp(tc, outsideMask, inW, dx, dy, color)
+                    tc.drawBitmap(layer, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
+                    ac.drawBitmap(t, 0f, 0f, Paint().apply { this.alpha = alpha })
+                }
+            }
             val s = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
             val sc = Canvas(s)
-            for (sf in copies(m, "olcount").reversed()) {
-                val w = fl("olw$sf", 0f).coerceAtLeast(0f) / 2f * u
-                if (w <= 0.01f) continue
-                stamp(sc, mask, w, fl("olx$sf", 0f) * u, fl("oly$sf", 0f) * u, col(m["olcolor$sf"], Color.BLACK))
-            }
+            sc.drawBitmap(behind, 0f, 0f, null)
             sc.drawBitmap(layer, 0f, 0f, null)
+            sc.drawBitmap(above, 0f, 0f, null)
             shape = s
         }
 
@@ -474,12 +577,20 @@ object NameFx {
         // Drop shadows, bottom one first; the first is on top.
         if (on("shadow")) for (sf in copies(m, "shcount").reversed()) {
             val blur = fl("shblur$sf", 0f).coerceAtLeast(0f) * u
+            val spread = fl("shspread$sf", 0f).coerceAtLeast(0f) * u
+            var src = shape
+            if (spread > 0.01f) {
+                src = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+                stamp(Canvas(src), shape.extractAlpha(), spread, 0f, 0f, Color.BLACK)
+            }
             val bp = Paint()
             if (blur > 0.5f) bp.maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
             val off = IntArray(2)
-            val a = shape.extractAlpha(bp, off)
+            val a = src.extractAlpha(bp, off)
             val sp = Paint(Paint.FILTER_BITMAP_FLAG)
-            sp.color = col(m["shcolor$sf"], Color.BLACK)
+            val sc0 = col(m["shcolor$sf"], Color.BLACK)
+            sp.color = sc0
+            sp.alpha = (Color.alpha(sc0) * fl("shopacity$sf", 100f).coerceIn(0f, 100f) / 100f).toInt()
             fc.drawBitmap(a, off[0] + fl("shx$sf", 0f) * u, off[1] + fl("shy$sf", 0f) * u, sp)
         }
         // Outer glow (Photoshop's): the letters' shape spread by [glspread], blurred by [glblur], in [glcolor], behind them.

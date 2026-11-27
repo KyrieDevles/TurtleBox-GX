@@ -58,6 +58,8 @@ class LayersPanel(
     private val startEdit: (Layer, List<Layer>) -> Unit,
     private val addText: () -> Unit = {},
     private val editText: (Layer) -> Unit = {},
+    /** Opens Layer Effects for an image layer. */
+    private val editEffects: (Layer) -> Unit = {},
 ) {
     private var dlg: Dialog? = null
     private val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; clipChildren = false }
@@ -93,16 +95,108 @@ class LayersPanel(
         return box
     }
 
+    /** The layout's parts showing on this card, with their index (the card's own index if it moved them). */
     private fun elementRows(): List<Pair<String, Float>> {
         val seen = LinkedHashSet<Pair<String, Float>>()
         val ctx = Ctx(layout, st.values)
+        val ovr = ElementOverrides.read(st.values)
         for (e in layout.elements) {
             val vis = e.visible
             if (vis != null && !try { Expr.eval(vis, ctx) } catch (x: Exception) { true }) continue
-            val name = e.label ?: e.attrs["id"]?.takeIf { it.isNotBlank() } ?: e.kind
-            seen.add(name to e.index)
+            val name = ElementOverrides.nameOf(e)
+            seen.add(name to (ovr[name]?.index ?: e.index))
         }
         return seen.toList()
+    }
+
+    /** The layout's own index of a part (what Reset goes back to). */
+    private fun layoutIndex(name: String): Float? = layout.elements.firstOrNull { ElementOverrides.nameOf(it) == name }?.index
+
+    private fun elementRow(name: String, z: Float): View {
+        val key = "el:$name"
+        val isOpen = open.contains(key)
+        val ovr = ElementOverrides.read(st.values)
+        val o = ovr[name]
+        val opacity = o?.opacity ?: 1f
+        val card = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(activity.dpx(12), activity.dpx(7), activity.dpx(12), activity.dpx(7))
+            background = CutDrawable(intArrayOf(Theme.plane2), cutTR = activity.dpx(12).toFloat())
+        }
+        val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(activity.tv(if (isOpen) "▾" else "▸", 16f, DIM, true), LinearLayout.LayoutParams(activity.dpx(22), ViewGroup.LayoutParams.WRAP_CONTENT))
+        val changed = o != null && (o.index != null || o.opacity != null)
+        head.addView(activity.tv(name + if (changed) "  ●" else "", 13f, if (changed) PINK else DIM), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(activity.tv((if (opacity < 1f) "${(opacity * 100).toInt()}% · " else "") + "index " + fmt(z), 12f, DIM, true))
+        head.setOnClickListener { if (isOpen) open.remove(key) else open.add(key); refresh() }
+        card.addView(head)
+        if (isOpen) {
+            fun mut(f: (ElementOverrides.Ovr) -> Unit) {
+                val m = ElementOverrides.read(st.values)
+                val cur = m.getOrPut(name) { ElementOverrides.Ovr() }
+                f(cur)
+                if (cur.index != null && cur.index == layoutIndex(name)) cur.index = null
+                if (cur.opacity != null && cur.opacity!! >= 0.999f) cur.opacity = null
+                ElementOverrides.write(st.values, m)
+                onChanged()
+            }
+            val step = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            step.addView(activity.tv("Index (higher = in front)", 12f, SOFT), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val zBox = EditText(activity).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
+                setSingleLine(true)
+                setText(fmt(z))
+                setTextColor(PINK)
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                minimumHeight = 0
+                minHeight = 0
+                includeFontPadding = false
+                setPadding(activity.dpx(4), 0, activity.dpx(4), 0)
+                imeOptions = EditorInfo.IME_ACTION_DONE
+                background = Theme.field(activity.dpx(8).toFloat(), activity.dpx(1).toFloat() * 1.5f)
+                fun apply() {
+                    val v = text.toString().toFloatOrNull() ?: return
+                    if (v != z) { mut { it.index = v }; list.post { refresh() } }
+                }
+                setOnEditorActionListener { v, a, _ -> if (a == EditorInfo.IME_ACTION_DONE) { apply(); v.clearFocus(); true } else false }
+                setOnFocusChangeListener { _, f -> if (!f) apply() }
+            }
+            step.addView(activity.pillBtn("−", PINK) { mut { it.index = z - 1f }; refresh() }, LinearLayout.LayoutParams(activity.dpx(40), activity.dpx(34)))
+            step.addView(zBox, LinearLayout.LayoutParams(activity.dpx(58), activity.dpx(34)).apply { leftMargin = activity.dpx(6); rightMargin = activity.dpx(6) })
+            step.addView(activity.pillBtn("+", PINK) { mut { it.index = z + 1f }; refresh() }, LinearLayout.LayoutParams(activity.dpx(40), activity.dpx(34)))
+            card.addView(step, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(10) })
+            val opHead = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+            opHead.addView(activity.tv("Opacity", 12f, SOFT), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val opVal = activity.tv("${(opacity * 100).toInt()}%", 12f, PINK, true)
+            opHead.addView(opVal)
+            card.addView(opHead, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(8) })
+            card.addView(SeekBar(activity).apply {
+                max = 100
+                progress = (opacity * 100).toInt()
+                progressTintList = android.content.res.ColorStateList.valueOf(HOT)
+                thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
+                        if (fromUser) opVal.text = "$p%"
+                    }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {
+                        mut { it.opacity = (s?.progress ?: 100) / 100f }
+                        refresh()
+                    }
+                })
+            })
+            card.addView(activity.pillBtn("Reset to layout", PINK) {
+                val m = ElementOverrides.read(st.values)
+                m.remove(name)
+                ElementOverrides.write(st.values, m)
+                onChanged()
+                refresh()
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, activity.dpx(38)).apply { topMargin = activity.dpx(8) })
+        }
+        return card
     }
 
     fun refresh() {
@@ -121,22 +215,14 @@ class LayersPanel(
         for (r in rows) {
             val lay = r.layer
             if (lay == null) {
-                val row = LinearLayout(activity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(activity.dpx(12), activity.dpx(7), activity.dpx(12), activity.dpx(7))
-                    background = CutDrawable(intArrayOf(Theme.plane2), cutTR = activity.dpx(12).toFloat())
-                }
-                row.addView(activity.tv(r.name, 13f, DIM), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                row.addView(activity.tv("index " + fmt(r.z), 12f, DIM, true))
-                list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
+                list.addView(elementRow(r.name, r.z), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
             } else {
                 list.addView(layerRow(lay, ls), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(6) })
             }
         }
         list.addView(activity.tv("BACK", 11f, Color.parseColor("#b98aa5"), true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(8) })
         list.addView(
-            activity.tv("Dashed rows are the layout's own elements that are showing on this card, with their index from the XML. Give a layer a number to put it in front of or behind them. Higher is in front.", 11f, DIM),
+            activity.tv("Flat rows are the layout's own parts showing on this card. Tap one to move it to another index or fade it (for this card only). Give a layer a number to put it in front of or behind them. Higher is in front.", 11f, DIM),
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(4) },
         )
         Theme.noClip(list)
@@ -238,6 +324,11 @@ class LayersPanel(
             if (l.isText) r1.addView(activity.pillBtn("Text settings", PINK) { editText(l) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { leftMargin = activity.dpx(4) })
             else r1.addView(activity.pillBtn("Replace", PINK) { pickImage(l.id) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { leftMargin = activity.dpx(4) })
             card.addView(r1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(10) })
+            if (!l.isText) {
+                val fxOn = (st.values["style_il${l.id}"] ?: "auto").substringBefore('|').let { it != "auto" && it.isNotBlank() }
+                card.addView(activity.pillBtn("Layer Effects" + if (fxOn) "  ●" else "", PINK) { dlg?.dismiss(); dlg = null; editEffects(l) },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, activity.dpx(38)).apply { topMargin = activity.dpx(8) })
+            }
             val r2 = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             r2.addView(activity.pillBtn("Rename", PINK) { rename(l) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { rightMargin = activity.dpx(4) })
             r2.addView(activity.pillBtn("Duplicate", PINK) { duplicate(l) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { leftMargin = activity.dpx(4); rightMargin = activity.dpx(4) })
@@ -273,6 +364,7 @@ class LayersPanel(
         } else {
             st.files[c.file] = st.files[src.file] ?: return
             st.files[src.origFile]?.let { st.files[c.origFile] = it }
+            st.values["style_il${src.id}"]?.let { st.values["style_il${c.id}"] = it }
         }
         cur.add(c)
         open.add(c.id)
@@ -285,7 +377,7 @@ class LayersPanel(
             .setPositiveButton("Delete") { _, _ ->
                 val cur = layers()
                 cur.removeAll { it.id == l.id }
-                if (l.isText) TextLayers.removeValues(st.values, l.id)
+                if (l.isText) TextLayers.removeValues(st.values, l.id) else st.values.remove("style_il${l.id}")
                 st.files.remove(l.file)
                 st.files.remove(l.origFile)
                 save(cur)

@@ -896,6 +896,20 @@ class MainActivity : Activity() {
             },
             startEdit = { layer, all -> beginLayerEdit(layer, all) },
             addText = { addTextLayer() },
+            editEffects = { layer ->
+                // The same Layer Effects editor as text, around the picture's shape; back to Layers when done.
+                NameStyleEditor(
+                    this, l, st, "style_il${layer.id}", { renderState(st) },
+                    { maps ->
+                        val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
+                        try {
+                            Renderer(l, Ctx(l, st.values), a, st.values).previewImage(maps, layer, 360, 110)
+                        } finally {
+                            a.close()
+                        }
+                    },
+                ) { openLayers() }.show()
+            },
             editText = { layer ->
                 layersPanel?.close()
                 openEditor("layermenu_" + TextLayers.tm(layer.id))

@@ -570,14 +570,26 @@ class NameStyleEditor(
             return sfx(sel)
         }
 
+        /** A row of choices (one value of [k]) in a card. */
+        fun choice(title: String?, k: String, opts: List<Pair<String, String>>, def: String) {
+            cur = card(title)
+            val now = st.v[k] ?: def
+            val parts = opts.map { (label, v) ->
+                segBtn(if (v == now) "● $label" else label, if (v == now) hot else pink) { setV(k, v); rebuildFwd() } to 1f
+            }
+            cur.addView(joined(*parts.toTypedArray()), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+        }
+
         fun sectionBody() {
             when (section) {
                 "Color" -> { cur = card(null); colorPicker(null, "fill", "#000000", true) }
                 "Shadow" -> {
                     header("Has Shadow?", "shadow")
-                    val sf = copyBar("shcount", listOf("shx", "shy", "shblur", "shcolor"))
+                    val sf = copyBar("shcount", listOf("shx", "shy", "shblur", "shcolor", "shspread", "shopacity"))
                     cur = card("Position"); pad(15, "shx$sf", "shy$sf")
                     cur = card(null); slider("Blur", "shblur$sf", 0f, 20f, 0f)
+                    cur = card(null); slider("Spread", "shspread$sf", 0f, 10f, 0f)
+                    cur = card(null); slider("Opacity %", "shopacity$sf", 0f, 100f, 100f, true)
                     cur = card("Shadow colour"); colorPicker(null, "shcolor$sf", "#000000", false)
                 }
                 "Inner Shadow" -> {
@@ -594,12 +606,30 @@ class NameStyleEditor(
                 }
                 "Outline" -> {
                     header("Has Outline?", "outline")
-                    val sf = copyBar("olcount", listOf("olw", "olx", "oly", "olcolor"))
-                    cur = card("Position"); pad(10, "olx$sf", "oly$sf")
+                    val sf = copyBar("olcount", listOf("olw", "olx", "oly", "olcolor", "olpos", "olopacity"))
+                    choice("Stroke position", "olpos$sf", listOf("Outside" to "out", "Inside" to "in", "Centre" to "center"), "out")
+                    cur = card("Offset"); pad(10, "olx$sf", "oly$sf")
                     cur = card(null); slider("Thickness", "olw$sf", 0f, 30f, 0f)
+                    cur = card(null); slider("Opacity %", "olopacity$sf", 0f, 100f, 100f, true)
                     cur = card("Outline colour"); colorPicker(null, "olcolor$sf", "#000000", false)
                 }
-                "Gradient" -> gradientUi()
+                "Gradient" -> {
+                    gradientUi()
+                    choice("Style", "gstyle", listOf("Linear" to "linear", "Radial" to "radial"), "linear")
+                    cur = card(null); slider("Opacity %", "gopacity", 0f, 100f, 100f, true)
+                }
+                "Colour Overlay" -> {
+                    cur = card(null); slider("Opacity %", "coopacity", 0f, 100f, 100f, true)
+                    cur = card("Overlay colour"); colorPicker(null, "cocolor", "#ff0000", false)
+                }
+                "Satin" -> {
+                    cur = card(null); dial("Angle", "satangle", 19, cur, 130)
+                    cur = card(null); slider("Distance", "satdist", 0f, 50f, 11f)
+                    cur = card(null); slider("Size", "satsize", 0f, 50f, 14f)
+                    cur = card(null); slider("Opacity %", "satopacity", 0f, 100f, 50f, true)
+                    choice("Invert", "satinvert", listOf("Off" to "0", "On" to "1"), "0")
+                    cur = card("Satin colour"); colorPicker(null, "satcolor", "#000000", false)
+                }
                 "Pattern" -> {
                     val items = layout.datas["namepatterns"]?.items ?: emptyList<Pair<String, String>>()
                     if (items.isEmpty()) {
@@ -743,6 +773,8 @@ class NameStyleEditor(
             "Glow" -> st.v["glow"] == "1"
             "Outline" -> st.v["outline"] == "1"
             "Gradient" -> st.v["grad"] == "1"
+            "Satin" -> st.v["satin"] == "1"
+            "Colour Overlay" -> st.v["coverlay"] == "1"
             "Pattern" -> !st.v["pattern"].isNullOrEmpty()
             "Font" -> !st.v["font"].isNullOrEmpty()
             "Emboss" -> st.v["emboss"] == "1"
@@ -963,9 +995,10 @@ class NameStyleEditor(
                 }
                 "custom" -> {
                     tabRow.removeAllViews()
-                    for (s in listOf("Color", "Shadow", "Inner Shadow", "Glow", "Inner Glow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
+                    // Photoshop's Layer Style list order (after the text's own colour and font).
+                    for (s in listOf("Color", "Font", "Emboss", "Outline", "Inner Shadow", "Inner Glow", "Satin", "Colour Overlay", "Gradient", "Pattern", "Glow", "Shadow")) {
                         val open = section == s
-                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Inner Shadow" -> "ishadow"; "Inner Glow" -> "iglow"; "Glow" -> "glow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
+                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Satin" -> "satin"; "Colour Overlay" -> "coverlay"; "Inner Shadow" -> "ishadow"; "Inner Glow" -> "iglow"; "Glow" -> "glow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
                         val tg = SkewToggle(activity)
                         val sum = TextView(activity).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.END }
                         fun val_(k: String) = st.v[k] ?: ""
@@ -977,6 +1010,8 @@ class NameStyleEditor(
                                 "Inner Glow" -> if (used(s)) "${val_("igblur").ifEmpty { "6" }} px" to " · ${val_("igcolor").ifEmpty { "#ffffff" }}" else "off" to ""
                                 "Glow" -> if (used(s)) "${val_("glblur").ifEmpty { "8" }} px" to " · ${val_("glcolor").ifEmpty { "#ffffff" }}" else "off" to ""
                                 "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to " · ${val_("olcolor").ifEmpty { "#000000" }}" + copiesNote("olcount") else "off" to ""
+                                "Satin" -> if (used(s)) "${val_("satangle").ifEmpty { "19" }}°" to " · ${val_("satcolor").ifEmpty { "#000000" }}" else "off" to ""
+                                "Colour Overlay" -> if (used(s)) val_("cocolor").ifEmpty { "#ff0000" } to " · ${val_("coopacity").ifEmpty { "100" }}%" else "off" to ""
                                 "Gradient" -> if (used(s)) "${val_("gstops").split(',').count { it.contains('|') }} stops" to " · ${val_("gangle").ifEmpty { "0" }}°" else "off" to ""
                                 "Pattern" -> val_("pattern").ifEmpty { "none" } to ""
                                 "Font" -> val_("font").ifEmpty { "auto" } to ""

@@ -72,18 +72,24 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val c = Canvas(bmp)
         if (part != 2) c.drawColor(Color.WHITE)
         c.scale(scale, scale)
-        val sorted = layout.elements.filter { part == 0 || (part == 1) == (it.index <= splitZ) }.sortedWith(compareBy<Element> { it.index }.thenBy { it.order })
+        // The card can move a built-in part to another index and fade it (Layers, dashed rows).
+        val ovr = ElementOverrides.read(values)
+        fun idx(e: Element) = ovr[ElementOverrides.nameOf(e)]?.index ?: e.index
+        val sorted = layout.elements.filter { part == 0 || (part == 1) == (idx(it) <= splitZ) }.sortedWith(compareBy<Element> { idx(it) }.thenBy { it.order })
         val layers = ImageLayers.read(values).filter { it.vis && it.id != hideLayerId && (part == 0 || (part == 1) == (it.z <= splitZ)) }.sortedBy { it.z }
         var li = 0
         for (e in sorted) {
-            while (li < layers.size && layers[li].z < e.index) drawLayer(c, layers[li++])
+            while (li < layers.size && layers[li].z < idx(e)) drawLayer(c, layers[li++])
             val vis = e.visible
             if (vis != null && !Expr.eval(vis, ctx)) continue
+            val op = ovr[ElementOverrides.nameOf(e)]?.opacity
+            val saved = if (op != null && op < 1f) c.saveLayerAlpha(null, (op.coerceIn(0f, 1f) * 255).toInt()) else -1
             try {
                 if (e.kind == "image") drawImage(c, e) else drawText(c, e)
             } catch (ex: Exception) {
                 assets.missing.add("${e.kind} element failed: ${ex.javaClass.simpleName}")
             }
+            if (saved >= 0) c.restoreToCount(saved)
         }
         while (li < layers.size) drawLayer(c, layers[li++])
         return bmp
@@ -92,14 +98,49 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     private fun drawLayer(c: Canvas, l: Layer) {
         if (l.isText) return drawTextLayer(c, l)
         val bmp = assets.bitmap(l.file) ?: return
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt() }
+        val fx = imageLayerStyle(l)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { alpha = if (fx == null) (l.opacity.coerceIn(0f, 1f) * 255).toInt() else 255 }
         c.save()
         c.translate(l.cx, l.cy)
         c.rotate(l.rot)
         c.scale(if (l.mx) -1f else 1f, if (l.fy) -1f else 1f)
-        c.drawBitmap(bmp, null, RectF(-l.w / 2f, -l.h / 2f, l.w / 2f, l.h / 2f), paint)
+        val dst = RectF(-l.w / 2f, -l.h / 2f, l.w / 2f, l.h / 2f)
+        if (fx != null) {
+            // Layer Effects around the picture's shape (its transparent parts are outside it); opacity fades all of it.
+            val a = (l.opacity.coerceIn(0f, 1f) * 255).toInt()
+            if (a < 255) c.saveLayerAlpha(null, a)
+            NameFx.drawBlock(c, dst, fx, curScale, layout.width, layout, assets, recolor = false) { cv -> cv.drawBitmap(bmp, null, dst, paint) }
+        } else {
+            c.drawBitmap(bmp, null, dst, paint)
+        }
         c.restore()
         drawn++
+    }
+
+    /** An image layer's Layer Effects (`style_il<id>` in the card), or null for none. */
+    private fun imageLayerStyle(l: Layer): Map<String, String>? {
+        val raw = values["style_il${l.id}"] ?: return null
+        return NameStyle.resolve(raw, layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "")
+    }
+
+    /** Samples of styles on an image layer's own picture, for the Layer Effects editor. */
+    fun previewImage(maps: List<Map<String, String>?>, l: Layer, w: Int, h: Int): List<Bitmap> {
+        val bmp = assets.bitmap(l.file)
+        return maps.map { m ->
+            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            if (bmp != null) {
+                val c = Canvas(out)
+                val k = minOf((w - 16f) / bmp.width, (h - 16f) / bmp.height)
+                val dw = bmp.width * k
+                val dh = bmp.height * k
+                val dst = RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
+                val p = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+                // Effects are sized for the card; the sample is drawn at about card scale so they read the same.
+                if (m != null) NameFx.drawBlock(c, dst, m, 1f, layout.width, layout, assets, recolor = false) { cv -> cv.drawBitmap(bmp, null, dst, p) }
+                else c.drawBitmap(bmp, null, dst, p)
+            }
+            out
+        }
     }
 
     // ---- text layers (see TextLayers) ----
