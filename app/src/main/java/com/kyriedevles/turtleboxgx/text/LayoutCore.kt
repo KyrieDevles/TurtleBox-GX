@@ -21,6 +21,12 @@ interface Metrics {
     val lineAscent: Float get() = ascent
     val lineDescent: Float get() = descent
     val lineBottom: Float get() = bottom
+    /**
+     * How far below the box top the first baseline sits, positive px. Photoshop puts it at the height of the letter "d"
+     * whatever the leading (measured on the user's template PSD, 0.765 em for MatrixBook against "d" = 0.760 em). The
+     * default is the font ascent, which is what the engine used before.
+     */
+    val firstLineAscent: Float get() = -ascent
 }
 
 fun interface MetricsFactory {
@@ -444,7 +450,8 @@ class LayoutCore(
         return base * mult
     }
 
-    private fun firstBaseline(m: Metrics): Float = -(if (opt.leadingPx > 0f) m.ascent else m.lineTop)
+    /** The first baseline, from the box top: Photoshop's rule (the "d" height) in both leading modes. */
+    private fun firstBaseline(m: Metrics): Float = m.firstLineAscent
 
     /**
      * Height of [n] lines without paragraph spacing. With Leading px every line is that tall. With automatic leading the

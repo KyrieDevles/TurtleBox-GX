@@ -294,7 +294,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
                 assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
             }
-            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup)
+            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup)
             val used = engine.fit()
             engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         } else {

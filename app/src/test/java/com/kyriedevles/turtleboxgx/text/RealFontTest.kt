@@ -47,6 +47,8 @@ private class MatrixMetrics(val size: Float, val scaleX: Float) : Metrics {
     override val ascent = -MatrixBook.ascent / 1000f * size
     override val descent = MatrixBook.descent / 1000f * size
     override val bottom = -MatrixBook.yMin / 1000f * size
+    // Height of "d" in MatrixBook (760 units), which is where Photoshop puts the first baseline.
+    override val firstLineAscent = 0.760f * size
 }
 
 private val matrix = MetricsFactory { s, x -> MatrixMetrics(s, x) }
@@ -128,6 +130,18 @@ class RealFontTest {
         // Line 1 is wider than line 2 plus "do", so filling one line at a time always pulls "do" up.
         val single = lines(endymionEffect.joinToString(" "), 16.36f, 683.05f, photoshop(0, composer = 0, min = 136f, desired = 170f, max = 226f))
         assertTrue(single != endymionEffect)
+    }
+
+    @Test
+    fun firstBaselineSitsWherePhotoshopPutsIt() {
+        // Template effect text: 24.55 pt with leading 25.04 and 27.04 (two layers). Photoshop's first baseline measured
+        // 0.765 em below the box top in both, whatever the leading; within 0.01 em is within the measurement error.
+        for (lead in listOf(25.04466f, 27.04f)) {
+            val opt = LayoutOptions(leadingPx = lead)
+            val r = LayoutCore(Source("Once per turn", IntArray(13)), matrix, 681f, 1000f, opt, { 0f }, 24.55359f).place(24.55359f, 1f)
+            assertEquals(0.765f * 24.55359f, r.lines[0].baseline, 0.01f * 24.55359f)
+            assertEquals(lead, r.lineHeight, 0.001f)
+        }
     }
 
     @Test

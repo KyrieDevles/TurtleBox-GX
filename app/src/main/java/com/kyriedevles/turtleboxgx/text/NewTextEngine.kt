@@ -2,6 +2,8 @@ package com.kyriedevles.turtleboxgx.text
 
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
 import android.text.Layout
@@ -105,6 +107,16 @@ class PaintMetrics(
     override val lineAscent get() = fmi.ascent.toFloat()
     override val lineDescent get() = fmi.descent.toFloat()
     override val lineBottom get() = fmi.bottom.toFloat()
+
+    /** Height of "d" in the box font (exact, from its outline), or the ascent when the font has no such glyph. */
+    private val dHeight: Float by lazy {
+        val path = Path()
+        plain.getTextPath("d", 0, 1, 0f, 0f, path)
+        val r = RectF()
+        path.computeBounds(r, true)
+        if (r.isEmpty || r.top >= 0f) -fm.ascent else -r.top
+    }
+    override val firstLineAscent get() = dHeight
 }
 
 /**
@@ -114,7 +126,8 @@ class PaintMetrics(
 class NewTextEngine(
     rawText: String,
     private val paint: TextPaint,
-    private val boxWidth: Int,
+    /** Box width in card px, fractions kept (the template's boxes are not whole px). */
+    private val boxWidth: Float,
     private val boxHeight: Float,
     private val opt: TextOptions,
     private val materials: String = "",
@@ -136,7 +149,7 @@ class NewTextEngine(
     private val core = LayoutCore(
         Source(text, styled.styles),
         { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup) },
-        boxWidth.toFloat(),
+        boxWidth,
         boxHeight,
         LayoutOptions(
             condense = opt.condense, fitMode = opt.fitMode, minSizePct = opt.minSizePct, maxSizePct = opt.maxSizePct,
