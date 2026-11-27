@@ -70,7 +70,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             Bitmap.Config.ARGB_8888,
         )
         val c = Canvas(bmp)
-        if (part != 2) c.drawColor(Color.WHITE)
+        // No fill: where no card part or layer draws, the card is transparent (hide the card background for a cut-out;
+        // PNG exports keep it, JPEG ones are flattened on white).
         c.scale(scale, scale)
         // The card can move a built-in part to another index and fade it (Layers, dashed rows).
         val ovr = ElementOverrides.read(values)

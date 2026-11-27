@@ -280,10 +280,28 @@ class CardView(context: Context) : View(context) {
         val cx = fit.centerX() + panX
         val cy = fit.centerY() + panY
         dest.set(cx - zw / 2f, cy - zh / 2f, cx + zw / 2f, cy + zh / 2f)
+        // A checkerboard under the card shows where it is transparent (only seen if a part such as the background is hidden).
+        c.drawRect(dest, checker())
         c.drawBitmap(b, null, dest, bmpPaint)
         editor?.draw(c, dest, resources.displayMetrics.density)
         boxEditor?.draw(c, dest, resources.displayMetrics.density)
         if (zoom > 1.01f) drawChip(c)
+    }
+
+    private var checkerPaint: Paint? = null
+
+    private fun checker(): Paint {
+        checkerPaint?.let { return it }
+        val n = (8f * resources.displayMetrics.density).toInt().coerceAtLeast(4)
+        val tile = Bitmap.createBitmap(n * 2, n * 2, Bitmap.Config.ARGB_8888)
+        val tc = Canvas(tile)
+        tc.drawColor(Color.parseColor("#e6e6e6"))
+        val dark = Paint().apply { color = Color.parseColor("#b4b4b4") }
+        tc.drawRect(0f, 0f, n.toFloat(), n.toFloat(), dark)
+        tc.drawRect(n.toFloat(), n.toFloat(), 2f * n, 2f * n, dark)
+        val p = Paint().apply { shader = android.graphics.BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT) }
+        checkerPaint = p
+        return p
     }
 
     // ---- Zoom and move (pinch, drag when zoomed, double-tap) ----
