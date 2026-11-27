@@ -46,7 +46,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         private set
     var probeLayer: Layer? = null
         private set
+    /** The probed box has hidden lines. */
+    var probeOverset = false
+        private set
     private var drawingLayer: Layer? = null
+
+    /** Text boxes whose last lines did not fit and were hidden (Photoshop's overset text), for the status under the card. */
+    val overset = ArrayList<String>()
 
     /** Natural size (card px) of each text layer drawn: the line for point text, the box for box text. */
     val textSizes = HashMap<String, Pair<Float, Float>>()
@@ -415,6 +421,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             composer = if (ctx.sub(e.options["composer"] ?: "").trim().equals("everyline", ignoreCase = true) || num("composer") >= 1f) 1 else 0,
             photoshopFirstBaseline = ctx.sub(e.options["firstbaseline"] ?: "").trim().equals("photoshop", ignoreCase = true),
             justifyMode = justifyMode,
+            hideOverflow = ctx.sub(e.options["overflow"] ?: "").trim().equals("hide", ignoreCase = true),
         )
         var body = indentText(text, num("indent"))
         // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.
@@ -441,10 +448,15 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             publishFit(e, opt, engine, steps.size)
             val top = size.top + (size.height - used).coerceAtLeast(0f) * v
             engine.draw(c, size.left, top, h)
+            if (engine.hiddenLines > 0) {
+                val what = drawingLayer?.name ?: e.label ?: e.attrs["click"] ?: "text"
+                overset.add("$what: ${engine.hiddenLines} line${if (engine.hiddenLines == 1) "" else "s"} hidden")
+            }
             probeName?.let { pn ->
                 if (e.text.contains("{{$pn}}")) {
                     probeRects = engine.glyphRects(size.left, top)
                     probeText = engine.engineText
+                    probeOverset = engine.hiddenLines > 0
                     probeBox = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
                     probeLayer = drawingLayer
                 }

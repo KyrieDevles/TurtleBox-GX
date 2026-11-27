@@ -83,6 +83,8 @@ class TextOptions(
     val photoshopFirstBaseline: Boolean = false,
     // Justification (New engine): -1 old rule, 0 none, 1 justify full lines, 2 justify all. See LayoutOptions.justifyMode.
     val justifyMode: Int = -1,
+    // Lines that do not fit in the box are not drawn, like Photoshop's overset text (New engine; <overflow>hide</overflow>).
+    val hideOverflow: Boolean = false,
 )
 
 /**

@@ -20,6 +20,8 @@ object TextProbe {
         /** Per character of [engineText]: its box in [bitmap] pixels, or null. */
         val rects: Array<RectF?>,
         val engineText: String,
+        /** Some lines did not fit and are hidden (shown as Photoshop's red overset mark). */
+        val overset: Boolean = false,
     )
 
     var listener: ((Preview) -> Unit)? = null

@@ -42,7 +42,12 @@ class TextPreviewView(ctx: Context) : View(ctx) {
     private var ox = 0f
     private var oy = 0f
 
-    fun setPreview(b: Bitmap, r: Array<RectF?>, text: String, map: IntArray) {
+    private var overset = false
+    private val red = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFE0303A.toInt() }
+    private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt(); strokeCap = Paint.Cap.ROUND }
+
+    fun setPreview(b: Bitmap, r: Array<RectF?>, text: String, map: IntArray, overset: Boolean = false) {
+        this.overset = overset
         bmp = b
         rects = r
         engineText = text
@@ -81,6 +86,16 @@ class TextPreviewView(ctx: Context) : View(ctx) {
         c.restore()
         frame.strokeWidth = 1.5f * dp
         c.drawRect(ox, oy, ox + b.width * k, oy + b.height * k, frame)
+        if (overset) {
+            // Photoshop's overset mark: a red box with a plus at the bottom right of the text box.
+            val s = 9f * dp
+            val x = ox + b.width * k - s - 2f * dp
+            val y = oy + b.height * k - s - 2f * dp
+            c.drawRect(x, y, x + s, y + s, red)
+            white.strokeWidth = 1.6f * dp
+            c.drawLine(x + s / 2f, y + 2f * dp, x + s / 2f, y + s - 2f * dp, white)
+            c.drawLine(x + 2f * dp, y + s / 2f, x + s - 2f * dp, y + s / 2f, white)
+        }
         if (selTo <= selFrom) return
         var first: RectF? = null
         var last: RectF? = null

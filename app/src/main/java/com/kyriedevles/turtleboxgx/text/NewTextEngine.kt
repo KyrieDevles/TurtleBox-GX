@@ -331,6 +331,14 @@ class NewTextEngine(
         c.drawRect(x0, top, x1, top + t, linePaint)
     }
 
+    /** How many lines the last [draw] left out because they did not fit (only with hideOverflow). */
+    var hiddenLines = 0
+        private set
+
+    /** A line that runs past the box bottom (its descent included) and is not drawn, like Photoshop's overset text. */
+    private fun hidden(line: LaidLine, pm: PaintMetrics): Boolean =
+        opt.hideOverflow && matH + line.baseline + pm.descent * vs > boxHeight + 0.5f
+
     /** The text as the engine lays it out (tags removed, <br> as U+2028, [[ ]] removed). */
     val engineText: String get() = text
 
@@ -346,6 +354,10 @@ class NewTextEngine(
         val bodyTop = top + matH
         var wi = 0
         for (line in r.lines) {
+            if (hidden(line, pm)) {
+                while (wi < r.words.size && r.words[wi].line == line.index) wi++
+                continue
+            }
             val baseline = bodyTop + line.baseline - opt.baselineShift
             val em = usedTracking / 1000f + line.letterExtraEm
             val ox = left + line.originX
@@ -394,7 +406,13 @@ class NewTextEngine(
         val pm = PaintMetrics(paint, r.size, r.scaleX, parsed.extras, fontLookup, hs)
         val styles = styled.styles
         var wi = 0
+        hiddenLines = 0
         for (line in r.lines) {
+            if (hidden(line, pm)) {
+                if (line.end > line.start) hiddenLines++
+                while (wi < r.words.size && r.words[wi].line == line.index) wi++
+                continue
+            }
             val baseline = bodyTop + line.baseline - opt.baselineShift
             // The tracking the layout used (the fit step's included), plus this line's stretch.
             val em = usedTracking / 1000f + line.letterExtraEm

@@ -2245,7 +2245,7 @@ class MainActivity : Activity() {
             val (b, size) = r2.renderTextLayer(layer, k)
             val rr = r2.probeRects ?: return null
             val out = rr.map { it?.let { g -> RectF((g.left + size.first / 2f) * k, (g.top + size.second / 2f) * k, (g.right + size.first / 2f) * k, (g.bottom + size.second / 2f) * k) } }.toTypedArray()
-            return TextProbe.Preview(b, out, r2.probeText)
+            return TextProbe.Preview(b, out, r2.probeText, r2.probeOverset)
         }
         val k = 2f
         val pad = 3f
@@ -2255,7 +2255,7 @@ class MainActivity : Activity() {
         val bottom = ((box.bottom + pad) * k).toInt().coerceIn(top + 1, full.height)
         val crop = Bitmap.createBitmap(full, left, top, right - left, bottom - top)
         val out = rects.map { it?.let { g -> RectF(g.left * k - left, g.top * k - top, g.right * k - left, g.bottom * k - top) } }.toTypedArray()
-        return TextProbe.Preview(crop, out, r.probeText)
+        return TextProbe.Preview(crop, out, r.probeText, r.probeOverset)
     }
 
     /** Draws the card being edited on a background thread and shows it. */
@@ -2310,6 +2310,8 @@ class MainActivity : Activity() {
                 newHits = r.hits
                 newBoxes = HashMap(r.boxes)
                 r.notes.forEach { msg.append(it).append('\n') }
+                // Like Photoshop's red overset mark: say which text boxes have hidden lines.
+                r.overset.forEach { msg.append("⊞ Text doesn't fit · ").append(it).append('\n') }
                 if (blank.isNotEmpty()) msg.append("Blank on purpose (none/off images): ${blank.size}\n")
                 if (real.isNotEmpty()) {
                     msg.append("\nNot found / failed (${real.size}):\n")

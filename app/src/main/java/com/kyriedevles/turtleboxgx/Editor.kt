@@ -765,7 +765,7 @@ class Editor(
         AutoFit.listener = fitListener
         val probeListener: (TextProbe.Preview) -> Unit = { p ->
             val map = com.kyriedevles.turtleboxgx.text.TagEdit.align(com.kyriedevles.turtleboxgx.text.TagEdit.plain(rawText()), p.engineText)
-            preview.setPreview(p.bitmap, p.rects, p.engineText, map)
+            preview.setPreview(p.bitmap, p.rects, p.engineText, map, p.overset)
             selPanel.visibility = View.VISIBLE
         }
         if (probeName != null && restores.isNotEmpty()) {
