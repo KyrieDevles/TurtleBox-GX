@@ -67,6 +67,13 @@ class LayersPanel(
 
     private fun layers() = ImageLayers.read(st.values)
 
+    /** Redraws the card shortly after the last slider move, so opacity shows while dragging without piling up renders. */
+    private val liveRender = Runnable { onChanged() }
+    private fun renderSoon() {
+        list.removeCallbacks(liveRender)
+        list.postDelayed(liveRender, 60)
+    }
+
     private fun save(l: List<Layer>) {
         ImageLayers.write(st.values, l)
         onChanged()
@@ -179,7 +186,14 @@ class LayersPanel(
                 thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                        if (fromUser) opVal.text = "$p%"
+                        if (!fromUser) return
+                        opVal.text = "$p%"
+                        // Live: write the value and redraw the card while dragging.
+                        val m = ElementOverrides.read(st.values)
+                        val cur = m.getOrPut(name) { ElementOverrides.Ovr() }
+                        cur.opacity = if (p >= 100) null else p / 100f
+                        ElementOverrides.write(st.values, m)
+                        renderSoon()
                     }
                     override fun onStartTrackingTouch(s: SeekBar?) {}
                     override fun onStopTrackingTouch(s: SeekBar?) {
@@ -308,7 +322,12 @@ class LayersPanel(
                 thumbTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                        if (fromUser) opVal.text = "$p%"
+                        if (!fromUser) return
+                        opVal.text = "$p%"
+                        val cur = layers()
+                        cur.firstOrNull { it.id == l.id }?.opacity = p / 100f
+                        ImageLayers.write(st.values, cur)
+                        renderSoon()
                     }
 
                     override fun onStartTrackingTouch(s: SeekBar?) {}
