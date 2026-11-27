@@ -2275,21 +2275,25 @@ class MainActivity : Activity() {
      * layer drawn alone and unrotated (3x). Letter boxes come with it, in the preview's pixels.
      */
     private fun makePreview(r: Renderer, full: Bitmap, l: Layout, ctx: Ctx, a: Assets, st: CardState): TextProbe.Preview? {
-        var rects = r.probeRects ?: return null
-        var box = r.probeBox ?: return null
+        val rects = r.probeRects ?: return null
+        val box = r.probeBox ?: return null
         val layer = r.probeLayer
-        if (layer != null && layer.rot == 0f && !layer.mx && !layer.fy) {
-            // An unrotated box text layer: crop it from the card like card text, so the card shows behind it.
-            box = RectF(layer.cx - layer.w / 2f, layer.cy - layer.h / 2f, layer.cx + layer.w / 2f, layer.cy + layer.h / 2f)
-            rects = rects.map { it?.let { g -> RectF(g.left + layer.cx, g.top + layer.cy, g.right + layer.cx, g.bottom + layer.cy) } }.toTypedArray()
-        } else if (layer != null) {
-            val r2 = Renderer(l, ctx, a, st.values)
-            r2.probeName = r.probeName
+        if (layer != null) {
+            // A box text layer: the card under its box, turned upright (rotation and mirroring undone), so the text
+            // reads level with the card art behind it. Its letter boxes are already in the layer's own upright frame.
             val k = 2f
-            val (b, size) = r2.renderTextLayer(layer, k)
-            val rr = r2.probeRects ?: return null
-            val out = rr.map { it?.let { g -> RectF((g.left + size.first / 2f) * k, (g.top + size.second / 2f) * k, (g.right + size.first / 2f) * k, (g.bottom + size.second / 2f) * k) } }.toTypedArray()
-            return TextProbe.Preview(b, out, r2.probeText, r2.probeOverset)
+            val pad = 3f
+            val w = layer.w + 2 * pad
+            val h = layer.h + 2 * pad
+            val out = Bitmap.createBitmap(Math.ceil((w * k).toDouble()).toInt().coerceAtLeast(1), Math.ceil((h * k).toDouble()).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(out)
+            c.translate(w * k / 2f, h * k / 2f)
+            c.scale(if (layer.mx) -1f else 1f, if (layer.fy) -1f else 1f)
+            c.rotate(-layer.rot)
+            c.translate(-layer.cx * k, -layer.cy * k)
+            c.drawBitmap(full, 0f, 0f, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+            val rr = rects.map { it?.let { g -> RectF((g.left + w / 2f) * k, (g.top + h / 2f) * k, (g.right + w / 2f) * k, (g.bottom + h / 2f) * k) } }.toTypedArray()
+            return TextProbe.Preview(out, rr, r.probeText, r.probeOverset)
         }
         val k = 2f
         val pad = 3f
