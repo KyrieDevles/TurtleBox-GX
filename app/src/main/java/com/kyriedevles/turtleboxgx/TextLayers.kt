@@ -79,13 +79,14 @@ object TextLayers {
             if (fonts.isNotEmpty()) def("font_$t", defaultFont(layout), null, "Font", fonts) else def("font_$t", "", "text", "Font file")
             def("color_$t", "#000000", "text", "Colour (hex, e.g. #ffffff)")
             def("style_$t", "auto", "namestyle", "Style (Name Style)")
+            def("box_$t", "", "box", "Move / resize text box…")
             // Point text: one line, so only the character settings that apply to it.
             val pc = DataDef("pointchars_$t", null, "multi_select", "Characters")
             for (k in listOf("allcaps", "italic", "sizepx", "tracking", "hscale", "vscale", "baseline", "weight")) pc.items.add("${k}_$t" to "${k}_$t")
             datas[pc.name] = pc
             val m = DataDef("layermenu_$t", null, "multi_select", l.name)
             for (k in ownKeys) m.items.add("${k}_$t" to "${k}_$t")
-            val sections = if (isPoint(values, l.id)) listOf("pointchars_$t") else listOf("fitmenu_$t", "advancedmenu_$t", "paragraphmenu_$t")
+            val sections = if (isPoint(values, l.id)) listOf("pointchars_$t") else listOf("box_$t", "fitmenu_$t", "advancedmenu_$t", "paragraphmenu_$t")
             for (s in sections) m.items.add(s to s)
             datas[m.name] = m
         }

@@ -1082,6 +1082,7 @@ class MainActivity : Activity() {
     private fun beginBoxEdit(name: String, after: () -> Unit) {
         val l = layout ?: return after()
         val st = state ?: return after()
+        if (name.startsWith("box_tl")) return beginLayerBoxEdit(name.removePrefix("box_tl"), after)
         val old = st.values[name]
         val natural = lastBoxes[name]
         val cur = old?.split(',')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 4 && it[2] > 0f && it[3] > 0f }
@@ -1128,6 +1129,71 @@ class MainActivity : Activity() {
         dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
             st.values.remove(name)
             natural?.let { cur.set(it) }
+            cardView.invalidate()
+            renderState(st)
+        }
+        dlg.window?.decorView?.post {
+            val loc = IntArray(2)
+            dlg.window?.decorView?.getLocationOnScreen(loc)
+            val cl = IntArray(2)
+            cardView.getLocationOnScreen(cl)
+            cardView.insetBottom = (cl[1] + cardView.height - loc[1]).coerceIn(0, maxOf(0, cardView.height - dp(60)))
+        }
+    }
+
+    /**
+     * The area type box of a box text layer: the same dashed box as the Effect text, turned with the layer.
+     * The text rewraps live; Cancel puts the box back as it was.
+     */
+    private fun beginLayerBoxEdit(id: String, after: () -> Unit) {
+        val l = layout ?: return after()
+        val st = state ?: return after()
+        val start = ImageLayers.read(st.values).firstOrNull { it.id == id } ?: return after()
+        val rect = RectF(start.cx - start.w / 2f, start.cy - start.h / 2f, start.cx + start.w / 2f, start.cy + start.h / 2f)
+        val ed = BoxEditor(rect, l.width, l.height)
+        ed.rot = start.rot
+        val handler = Handler(Looper.getMainLooper())
+        var pending = false
+        fun write(r: RectF) {
+            val cur = ImageLayers.read(st.values)
+            cur.firstOrNull { it.id == id }?.let { c -> c.cx = r.centerX(); c.cy = r.centerY(); c.w = r.width(); c.h = r.height() }
+            ImageLayers.write(st.values, cur)
+        }
+        ed.onChange = {
+            write(rect)
+            if (!pending) {
+                pending = true
+                handler.postDelayed({ pending = false; renderState(st) }, 100)
+            }
+        }
+        showTab(0)
+        cardView.boxEditor = ed
+        var kept = true
+        val dlg = ThemedBuilder(this).setTitle("Text box")
+            .setMessage("Drag inside the box to move it. Drag a corner or edge handle to resize it. The text rewraps as you go.")
+            .setPositiveButton("Done", null)
+            .setNeutralButton("Reset") { _, _ -> }
+            .setNegativeButton("Cancel") { _, _ -> kept = false }
+            .create()
+        val original = RectF(rect)
+        dlg.setOnDismissListener {
+            handler.removeCallbacksAndMessages(null)
+            if (!kept) write(original)
+            cardView.boxEditor = null
+            cardView.insetBottom = 0
+            renderState(st)
+            after()
+        }
+        dlg.show()
+        dlg.window?.apply {
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+            setGravity(Gravity.BOTTOM)
+        }
+        // Reset puts the box back to where it was when this opened.
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+            rect.set(original)
+            write(rect)
             cardView.invalidate()
             renderState(st)
         }
