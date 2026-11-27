@@ -60,6 +60,8 @@ class LayersPanel(
     private val editText: (Layer) -> Unit = {},
     /** Opens Layer Effects for an image layer. */
     private val editEffects: (Layer) -> Unit = {},
+    /** Where the docked panel's top edge is on screen (-1 when closed), so the card fits above it. */
+    private val onTop: (Int) -> Unit = {},
 ) {
     private var dlg: Dialog? = null
     private val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; clipChildren = false }
@@ -433,9 +435,16 @@ class LayersPanel(
         title.addView(activity.tv("DONE", 13f, PINK, true).apply { setPadding(activity.dpx(10), activity.dpx(8), activity.dpx(10), activity.dpx(8)); setOnClickListener { d.dismiss() } })
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(activity.dpx(14), activity.dpx(12), activity.dpx(14), activity.dpx(12))
+            setPadding(activity.dpx(14), activity.dpx(4), activity.dpx(14), activity.dpx(12))
             background = Theme.dialog(activity.dpx(22).toFloat(), activity.dpx(4).toFloat())
         }
+        // Docked like the other menus: a pill handle on top, drag it to resize (the height is shared with them).
+        val grip = LinearLayout(activity).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, activity.dpx(6), 0, activity.dpx(6))
+            addView(View(activity).apply { background = GradientDrawable().apply { setColor(PINK); cornerRadius = activity.dpx(3).toFloat() } }, LinearLayout.LayoutParams(activity.dpx(44), activity.dpx(5)))
+        }
+        root.addView(grip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(title)
         val adds = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
         adds.addView(activity.pillBtn("+  Image", PINK) { pickImage(null) }, LinearLayout.LayoutParams(0, activity.dpx(40), 1f).apply { rightMargin = activity.dpx(5) })
@@ -443,16 +452,45 @@ class LayersPanel(
         root.addView(adds, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(8); bottomMargin = activity.dpx(10) })
         root.addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding((10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt(), (10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt()); addView(list); Theme.unclip(this) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         d.setContentView(root)
-        d.setOnDismissListener { if (dlg === d) dlg = null }
+        d.setOnDismissListener {
+            // Closed by Done or Back: the card gets its space back. Handed over to another tool (Edit on card,
+            // Layer Effects...): that tool sets the space itself.
+            if (dlg === d) {
+                dlg = null
+                onTop(-1)
+            }
+        }
+        val screenH = activity.resources.displayMetrics.heightPixels
+        val h0 = if (Editor.dockH > 0) Editor.dockH else (screenH * 0.5f).toInt()
+        d.setCanceledOnTouchOutside(false)
         d.window?.apply {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            val dm = activity.resources.displayMetrics
-            setLayout((dm.widthPixels * 0.96f).toInt(), (dm.heightPixels * 0.72f).toInt())
-            setGravity(Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            // Touches above the panel reach the card (tap parts, pinch to zoom); only Done or Back closes it.
+            addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, h0)
+            setGravity(Gravity.BOTTOM)
         }
+        var startY = 0f
+        var startH = 0
+        val drag = View.OnTouchListener { _, ev ->
+            val win = d.window
+            when (ev.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { startY = ev.rawY; startH = win?.decorView?.height ?: h0 }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val h = (startH + (startY - ev.rawY)).toInt().coerceIn(activity.dpx(190), (screenH * 0.94f).toInt())
+                    Editor.dockH = h
+                    win?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, h)
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> onTop(screenH - (win?.decorView?.height ?: h0))
+            }
+            true
+        }
+        grip.setOnTouchListener(drag)
+        title.setOnTouchListener(drag)
         refresh()
         d.show()
+        onTop(screenH - h0)
     }
 }
 

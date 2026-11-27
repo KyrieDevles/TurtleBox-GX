@@ -896,6 +896,16 @@ class MainActivity : Activity() {
             },
             startEdit = { layer, all -> beginLayerEdit(layer, all) },
             addText = { addTextLayer() },
+            onTop = { topY ->
+                if (topY < 0) {
+                    cardView.insetBottom = 0
+                } else {
+                    val loc = IntArray(2)
+                    cardView.getLocationOnScreen(loc)
+                    cardView.insetBottom = (loc[1] + cardView.height - topY).coerceIn(0, maxOf(0, cardView.height - dp(60)))
+                }
+                cardView.invalidate()
+            },
             editEffects = { layer ->
                 // The same Layer Effects editor as text, around the picture's shape; back to Layers when done.
                 NameStyleEditor(
