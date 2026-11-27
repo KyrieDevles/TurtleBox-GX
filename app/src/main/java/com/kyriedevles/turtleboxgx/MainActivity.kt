@@ -983,8 +983,16 @@ class MainActivity : Activity() {
             TextLayers.sync(l, st.values)
             val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
             try {
-                val (b, size) = Renderer(l, Ctx(l, st.values), a, st.values).renderTextLayer(layer, 2f)
+                val rr = Renderer(l, Ctx(l, st.values), a, st.values)
+                val (b, size) = rr.renderTextLayer(layer, 2f)
                 if (TextLayers.isPoint(st.values, layer.id)) {
+                    // The box shrinks or grows to the text where the text is drawn now (its anchored side), so it
+                    // does not jump when editing starts.
+                    val dx = when (rr.pointAnchor(layer)) { 1 -> 0f; 2 -> layer.w / 2f - size.first / 2f; else -> -layer.w / 2f + size.first / 2f }
+                    val dy = -layer.h / 2f + size.second / 2f
+                    val a0 = Math.toRadians(layer.rot.toDouble())
+                    layer.cx += (dx * Math.cos(a0) - dy * Math.sin(a0)).toFloat()
+                    layer.cy += (dx * Math.sin(a0) + dy * Math.cos(a0)).toFloat()
                     layer.w = size.first
                     layer.h = size.second
                     pointH = size.second

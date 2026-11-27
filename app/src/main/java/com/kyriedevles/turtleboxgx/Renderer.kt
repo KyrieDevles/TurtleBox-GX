@@ -133,12 +133,30 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         return p
     }
 
-    /** Natural size of a point text layer: its line's width and height (vertical scale included). */
+    private fun pointLines(l: Layer): List<String> = layerText(l).replace(Regex("<br>", RegexOption.IGNORE_CASE), "\n").split('\n')
+
+    /** Line pitch of point text: Leading px, else Photoshop's automatic 120% of the size. */
+    private fun pointLeading(l: Layer, p: Paint): Float = layerValue("leadingpx", l).toFloatOrNull()?.takeIf { it > 0f } ?: p.textSize * 1.2f
+
+    /**
+     * Which side of point text stays put when the text changes, from its Alignment: 0 left, 1 centre, 2 right (Photoshop
+     * anchors point text at its click point the same way). Lines are aligned to each other the same way.
+     */
+    fun pointAnchor(l: Layer): Int = when (layerValue("halign", l).lowercase()) {
+        "hcenter", "center", "justcenter" -> 1
+        "right", "justright" -> 2
+        else -> 0
+    }
+
+    /** Natural size of a point text layer: its widest line, and its lines' height (vertical scale included). */
     fun pointSize(l: Layer): Pair<Float, Float> {
         val p = pointPaint(l)
         val fm = p.fontMetrics
         val vs = layerValue("vscale", l).toFloatOrNull()?.takeIf { it > 0f }?.div(100f) ?: 1f
-        return exactWidth(p, layerText(l)).coerceAtLeast(p.textSize * 0.5f) to (fm.descent - fm.ascent) * vs
+        val lines = pointLines(l)
+        val w = lines.maxOf { exactWidth(p, it) }.coerceAtLeast(p.textSize * 0.5f)
+        val h = (fm.descent - fm.ascent) + (lines.size - 1) * pointLeading(l, p)
+        return w to h * vs
     }
 
     /** Draws a text layer centred on (0, 0), unrotated. Returns its natural size. */
@@ -148,34 +166,56 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             drawText(c, e)
             return l.w to l.h
         }
-        val text = layerText(l)
         val p = pointPaint(l)
         val (tw, th) = pointSize(l)
-        if (text.isBlank()) return tw to th
+        val lines = pointLines(l)
+        if (lines.all { it.isBlank() }) return tw to th
         val fm = p.fontMetrics
         val vs = layerValue("vscale", l).toFloatOrNull()?.takeIf { it > 0f }?.div(100f) ?: 1f
         val shift = layerValue("baseline", l).toFloatOrNull() ?: 0f
+        val lead = pointLeading(l, p)
+        val anchor = pointAnchor(l)
+        val fx = NameStyle.resolve(layerValue("style", l), layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "")
         c.save()
         c.translate(0f, -shift)
-        c.scale(1f, vs)
-        val x = -tw / 2f
-        val y = -(fm.ascent + fm.descent) / 2f
-        val fx = NameStyle.resolve(layerValue("style", l), layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "")
-        if (fx != null) {
-            val h = fm.descent - fm.ascent
-            NameFx.draw(c, text, x, y, p, RectF(x, -h / 2f, x + tw, h / 2f), tw, fx, curScale, layout.width, layout, assets)
-        } else {
-            c.drawText(text, x, y, p)
+        c.scale(1f, vs, 0f, 0f)
+        val top = -th / vs / 2f
+        for ((i, line) in lines.withIndex()) {
+            if (line.isBlank()) continue
+            val lw = exactWidth(p, line)
+            val x = -tw / 2f + when (anchor) { 1 -> (tw - lw) / 2f; 2 -> tw - lw; else -> 0f }
+            val y = top - fm.ascent + i * lead
+            if (fx != null) {
+                NameFx.draw(c, line, x, y, p, RectF(x, y + fm.ascent, x + lw, y + fm.descent), lw, fx, curScale, layout.width, layout, assets)
+            } else {
+                c.drawText(line, x, y, p)
+            }
         }
         c.restore()
         return tw to th
     }
 
+    /**
+     * Where a point text layer's text sits in its box: the side its Alignment anchors stays at the box's side, and the
+     * first line at the box's top, so editing the text grows it from there instead of from the middle.
+     */
+    private fun pointOffset(l: Layer, size: Pair<Float, Float>): Pair<Float, Float> {
+        val dx = when (pointAnchor(l)) {
+            1 -> 0f
+            2 -> l.w / 2f - size.first / 2f
+            else -> -l.w / 2f + size.first / 2f
+        }
+        return dx to (-l.h / 2f + size.second / 2f)
+    }
+
     private fun drawTextLayer(c: Canvas, l: Layer) {
+        val point = TextLayers.isPoint(values, l.id)
+        val off = if (point) pointOffset(l, pointSize(l)) else 0f to 0f
         c.save()
         c.translate(l.cx, l.cy)
         c.rotate(l.rot)
         c.scale(if (l.mx) -1f else 1f, if (l.fy) -1f else 1f)
+        c.translate(off.first, off.second)
         val alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt()
         if (alpha < 255) c.saveLayerAlpha(null, alpha)
         drawingLayer = l
@@ -185,6 +225,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         textSizes[l.id] = size
         // Tap area: the rotated box's bounds.
         val m = android.graphics.Matrix()
+        m.postTranslate(off.first, off.second)
         m.postRotate(l.rot)
         m.postTranslate(l.cx, l.cy)
         val r = RectF(-size.first / 2f, -size.second / 2f, size.first / 2f, size.second / 2f)

@@ -84,11 +84,15 @@ object TextLayers {
             def("box_$t", "", "box", "Move / resize text box…")
             // Point text: one line, so only the character settings that apply to it.
             val pc = DataDef("pointchars_$t", null, "multi_select", "Characters")
-            for (k in listOf("allcaps", "italic", "sizepx", "tracking", "hscale", "vscale", "baseline", "weight")) pc.items.add("${k}_$t" to "${k}_$t")
+            for (k in listOf("allcaps", "italic", "sizepx", "tracking", "leadingpx", "hscale", "vscale", "baseline", "weight")) pc.items.add("${k}_$t" to "${k}_$t")
             datas[pc.name] = pc
+            // Point text: Alignment (which side stays put, and how lines line up).
+            val pp = DataDef("pointpara_$t", null, "multi_select", "Paragraph")
+            pp.items.add("halign_$t" to "halign_$t")
+            datas[pp.name] = pp
             val m = DataDef("layermenu_$t", null, "multi_select", l.name)
             for (k in ownKeys) m.items.add("${k}_$t" to "${k}_$t")
-            val sections = if (isPoint(values, l.id)) listOf("pointchars_$t") else listOf("box_$t", "fitmenu_$t", "advancedmenu_$t", "paragraphmenu_$t")
+            val sections = if (isPoint(values, l.id)) listOf("pointchars_$t", "pointpara_$t") else listOf("box_$t", "fitmenu_$t", "advancedmenu_$t", "paragraphmenu_$t")
             for (s in sections) m.items.add(s to s)
             datas[m.name] = m
         }
