@@ -104,10 +104,11 @@ object TextMenu {
                     return name
                 } else {
                     val have = e.options[s.key]
-                    if (have != null) return ref(have)
-                    e.options[s.key] = "{{${s.key}_$id}}"
+                    // A literal value stays out of the menu; a {{name}} is shown (and defined if it is not).
+                    if (have != null && ref(have) == null) return null
+                    if (have == null) e.options[s.key] = "{{${s.key}_$id}}"
                 }
-                val name = "${s.key}_$id"
+                val name = (if (s.key == "halign") null else ref(e.options[s.key])) ?: "${s.key}_$id"
                 if (name !in datas) {
                     val d = DataDef(name, s.default, if (s.items.isEmpty()) "text" else null, s.desc)
                     d.items.addAll(s.items)

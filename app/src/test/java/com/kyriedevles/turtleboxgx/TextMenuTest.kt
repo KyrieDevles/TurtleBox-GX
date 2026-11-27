@@ -68,4 +68,15 @@ class TextMenuTest {
         assertTrue(datas.isEmpty())
         assertTrue(e.options.isEmpty())
     }
+
+    @Test
+    fun definesSettingsTheElementNamesButLayoutLacks() {
+        val datas = LinkedHashMap<String, DataDef>()
+        val e = textEl("textmenu" to "xros", "tracking" to "{{tracking_xros}}", "condense" to "{{condense_xros}}")
+        TextMenu.expand(datas, listOf(e))
+        assertEquals("text", datas["tracking_xros"]!!.type)
+        assertEquals("100", datas["condense_xros"]!!.default)
+        for (g in listOf("fitmenu_xros", "advancedmenu_xros", "paragraphmenu_xros"))
+            for ((_, v) in datas[g]!!.items) if (v != "#") assertTrue("$g lists $v", datas.containsKey(v))
+    }
 }
