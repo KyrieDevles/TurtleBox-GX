@@ -51,6 +51,7 @@ object TextLayers {
         e.options["textmenu"] = t
         e.options["firstbaseline"] = "photoshop"
         e.options["overflow"] = "hide"
+        e.options["namestyle"] = "{{style_$t}}"
         TextMenu.expand(datas, listOf(e))
         // The layer handles taps and moving itself.
         e.attrs.remove("click")

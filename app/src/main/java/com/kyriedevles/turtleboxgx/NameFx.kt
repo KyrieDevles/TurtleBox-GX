@@ -304,6 +304,70 @@ object NameFx {
             fp.strokeJoin = Paint.Join.ROUND
         }
         lc.drawText(text, x, y, fp)
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, RectF(x, top - 1f, x + drawW, bottom + 1f), olR, olx, oly, shBlur, shx, shy)
+    }
+
+    /**
+     * The same effects for a whole block of text that draws itself (a box of wrapped lines, with its own colours per
+     * word): [drawContent] draws it in card coordinates; the effects go around everything it draws inside [rect].
+     * A style's fill colour or gradient replaces the text's colours, as it does for one line.
+     */
+    fun drawBlock(
+        c: Canvas,
+        rect: RectF,
+        m: Map<String, String>,
+        k: Float,
+        layoutW: Float,
+        layout: Layout,
+        assets: Assets,
+        drawContent: (Canvas) -> Unit,
+    ) {
+        fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
+        fun on(key: String) = m[key] == "1"
+        val lu = layoutW / 813f
+        val u = k * lu
+        val olR = if (on("outline")) fl("olw", 0f).coerceAtLeast(0f) / 2f * u else 0f
+        val olx = if (on("outline")) fl("olx", 0f) * u else 0f
+        val oly = if (on("outline")) fl("oly", 0f) * u else 0f
+        val shBlur = if (on("shadow")) fl("shblur", 0f).coerceAtLeast(0f) * u else 0f
+        val shx = if (on("shadow")) fl("shx", 0f) * u else 0f
+        val shy = if (on("shadow")) fl("shy", 0f) * u else 0f
+        val pad = Math.ceil((olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + 12f).toDouble()).toInt()
+        val lw = Math.ceil((rect.width() * k).toDouble()).toInt() + 2 * pad
+        val lh = Math.ceil((rect.height() * k).toDouble()).toInt() + 2 * pad
+        if (lw <= 0 || lh <= 0 || lw.toLong() * lh > 9_000_000L) return drawContent(c)
+        val layer = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+        val lc = Canvas(layer)
+        lc.translate(pad.toFloat(), pad.toFloat())
+        lc.scale(k, k)
+        lc.translate(-rect.left, -rect.top)
+        drawContent(lc)
+        // Fill colour or gradient over the letters only.
+        val fill = m["fill"]?.takeIf { it.isNotBlank() }
+        if (fill != null || on("grad")) {
+            val fp = Paint(Paint.ANTI_ALIAS_FLAG)
+            fp.color = col(fill, Color.BLACK)
+            if (on("grad")) fp.shader = gradientShader(m["gstops"] ?: "", fl("gangle", 0f), rect.left, rect.top, rect.right, rect.bottom)
+            fp.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            lc.drawRect(RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k), fp)
+        }
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, rect, olR, olx, oly, shBlur, shx, shy)
+    }
+
+    /** Pattern, emboss, outline and shadow around the letters drawn on [layer0], then the result onto [c]. */
+    private fun compose(
+        c: Canvas, layer0: Bitmap, lw: Int, lh: Int, pad: Int, k: Float, rect: RectF, m: Map<String, String>,
+        layout: Layout, assets: Assets, patRect: RectF,
+        olR: Float, olx: Float, oly: Float, shBlur: Float, shx: Float, shy: Float,
+    ) {
+        fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
+        fun on(key: String) = m[key] == "1"
+        fun place(cv: Canvas) {
+            cv.translate(pad.toFloat(), pad.toFloat())
+            cv.scale(k, k)
+            cv.translate(-rect.left, -rect.top)
+        }
+        var layer = layer0
 
         // Pattern: an image from the asset zip laid over the text with a blend mode, kept inside the letters.
         val pn = m["pattern"].orEmpty()
@@ -322,7 +386,7 @@ object NameFx {
                 place(tc)
                 val pp = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
                 pp.xfermode = PorterDuffXfermode(mode)
-                tc.drawBitmap(pbmp, null, RectF(x, top - 1f, x + drawW, bottom + 1f), pp)
+                tc.drawBitmap(pbmp, null, patRect, pp)
                 val mp = Paint()
                 mp.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                 Canvas(tmp).drawBitmap(layer, 0f, 0f, mp)

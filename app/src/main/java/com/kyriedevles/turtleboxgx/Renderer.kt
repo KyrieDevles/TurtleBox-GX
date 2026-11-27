@@ -489,7 +489,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val used = engine.fit()
             publishFit(e, opt, engine, steps.size)
             val top = size.top + (size.height - used).coerceAtLeast(0f) * v
-            engine.draw(c, size.left, top, h)
+            if (nameFx != null) {
+                // Name Style effects (outline, shadow, gradient...) around the whole block of lines.
+                val block = RectF(size.left, minOf(size.top, top), size.left + size.width, maxOf(size.top + size.height, top + used))
+                NameFx.drawBlock(c, block, nameFx, curScale, layout.width, layout, assets) { cv -> engine.draw(cv, size.left, top, h) }
+            } else {
+                engine.draw(c, size.left, top, h)
+            }
             if (engine.hiddenLines > 0) {
                 val what = drawingLayer?.name ?: e.label ?: e.attrs["click"] ?: "text"
                 overset.add("$what: ${engine.hiddenLines} line${if (engine.hiddenLines == 1) "" else "s"} hidden")
