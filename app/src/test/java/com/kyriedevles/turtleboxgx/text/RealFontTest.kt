@@ -137,7 +137,7 @@ class RealFontTest {
         // Template effect text: 24.55 pt with leading 25.04 and 27.04 (two layers). Photoshop's first baseline measured
         // 0.765 em below the box top in both, whatever the leading; within 0.01 em is within the measurement error.
         for (lead in listOf(25.04466f, 27.04f)) {
-            val opt = LayoutOptions(leadingPx = lead)
+            val opt = LayoutOptions(leadingPx = lead, photoshopFirstBaseline = true)
             val r = LayoutCore(Source("Once per turn", IntArray(13)), matrix, 681f, 1000f, opt, { 0f }, 24.55359f).place(24.55359f, 1f)
             assertEquals(0.765f * 24.55359f, r.lines[0].baseline, 0.01f * 24.55359f)
             assertEquals(lead, r.lineHeight, 0.001f)

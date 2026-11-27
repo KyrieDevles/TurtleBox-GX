@@ -159,6 +159,7 @@ class NewTextEngine(
             indentLeft = opt.indentLeft, indentRight = opt.indentRight, indentFirst = opt.indentFirst,
             spaceBefore = opt.spaceBefore, spaceAfter = opt.spaceAfter,
             wordSpaceMin = opt.wordSpaceMin, wordSpaceMax = opt.wordSpaceMax, composer = opt.composer,
+            photoshopFirstBaseline = opt.photoshopFirstBaseline,
         ),
         { size -> materialsHeight(size) },
         baseSize,

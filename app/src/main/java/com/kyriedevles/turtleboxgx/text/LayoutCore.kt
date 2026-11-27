@@ -64,6 +64,12 @@ class LayoutOptions(
     val wordSpaceMax: Float = 0f,
     /** Line breaking, like Photoshop's Paragraph menu: 0 Single-line Composer, 1 Every-line Composer. */
     val composer: Int = 0,
+    /**
+     * First baseline where Photoshop puts it (the "d" height, [Metrics.firstLineAscent]). Off: the font ascent with
+     * Leading px, the rounded font top with automatic leading, as before. Opt-in per box, because boxes laid out for the
+     * old position (ATK/DEF values, small-caps fonts) would move.
+     */
+    val photoshopFirstBaseline: Boolean = false,
 )
 
 /** One word (or any unbreakable piece) of a line: text[start, end) drawn at [x] from the box's left edge. */
@@ -450,8 +456,9 @@ class LayoutCore(
         return base * mult
     }
 
-    /** The first baseline, from the box top: Photoshop's rule (the "d" height) in both leading modes. */
-    private fun firstBaseline(m: Metrics): Float = m.firstLineAscent
+    /** The first baseline, from the box top. */
+    private fun firstBaseline(m: Metrics): Float =
+        if (opt.photoshopFirstBaseline) m.firstLineAscent else -(if (opt.leadingPx > 0f) m.ascent else m.lineTop)
 
     /**
      * Height of [n] lines without paragraph spacing. With Leading px every line is that tall. With automatic leading the

@@ -79,6 +79,8 @@ class TextOptions(
     val wordSpaceMin: Float = 0f,
     val wordSpaceMax: Float = 0f,
     val composer: Int = 0,
+    // First baseline at the "d" height like Photoshop (New engine only; layout option firstbaseline = photoshop).
+    val photoshopFirstBaseline: Boolean = false,
 )
 
 /**

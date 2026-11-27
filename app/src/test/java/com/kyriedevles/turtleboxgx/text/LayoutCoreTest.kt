@@ -367,8 +367,7 @@ class LayoutCoreTest {
         // full top-to-bottom height (26) only counts above the first line and below the last.
         val r = core("a\nb\nc", 200f).place(20f, 1f)
         assertEquals(22f, r.lineHeight, 0.001f)
-        // The first baseline follows Photoshop's rule (Metrics.firstLineAscent; the fake font's is its ascent, 18).
-        assertEquals(18f, r.lines[0].baseline, 0.001f)
+        assertEquals(20f, r.lines[0].baseline, 0.001f)
         assertEquals(22f, r.lines[1].baseline - r.lines[0].baseline, 0.001f)
         assertEquals(26f + 2 * 22f, r.textHeight, 0.001f)
         assertEquals(26f, core("a", 200f).place(20f, 1f).textHeight, 0.001f)
