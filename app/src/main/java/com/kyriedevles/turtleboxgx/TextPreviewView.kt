@@ -38,6 +38,22 @@ class TextPreviewView(ctx: Context) : View(ctx) {
         const val MAX_ZOOM = 1.6f
     }
 
+    private var checkerPaint: Paint? = null
+
+    private fun checker(): Paint {
+        checkerPaint?.let { return it }
+        val n = (6f * dp).toInt().coerceAtLeast(4)
+        val tile = Bitmap.createBitmap(n * 2, n * 2, Bitmap.Config.ARGB_8888)
+        val tc = Canvas(tile)
+        tc.drawColor(0xFFE6E6E6.toInt())
+        val dark = Paint().apply { color = 0xFFB4B4B4.toInt() }
+        tc.drawRect(0f, 0f, n.toFloat(), n.toFloat(), dark)
+        tc.drawRect(n.toFloat(), n.toFloat(), 2f * n, 2f * n, dark)
+        val p = Paint().apply { shader = android.graphics.BitmapShader(tile, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT) }
+        checkerPaint = p
+        return p
+    }
+
     private var k = 1f
     private var ox = 0f
     private var oy = 0f
@@ -79,6 +95,9 @@ class TextPreviewView(ctx: Context) : View(ctx) {
         k = minOf(width.toFloat() / b.width, (height - 8 * dp) / b.height, MAX_ZOOM)
         ox = (width - b.width * k) / 2f
         oy = 4 * dp
+        // A light checkerboard behind, as on the card: a text layer is drawn alone, so dark text stays readable on the
+        // dark menu and see-through parts show as such. (Card text boxes come with the card behind them.)
+        c.drawRect(ox, oy, ox + b.width * k, oy + b.height * k, checker())
         c.save()
         c.translate(ox, oy)
         c.scale(k, k)
