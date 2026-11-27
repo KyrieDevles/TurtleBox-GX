@@ -132,9 +132,23 @@ class LayersPanel(
         }
         val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(activity.tv(if (isOpen) "▾" else "▸", 16f, DIM, true), LinearLayout.LayoutParams(activity.dpx(22), ViewGroup.LayoutParams.WRAP_CONTENT))
+        val hidden = o?.hidden == true
         val changed = o != null && (o.index != null || o.opacity != null)
         head.addView(activity.tv(name + if (changed) "  ●" else "", 13f, if (changed) PINK else DIM), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(activity.tv((if (opacity < 1f) "${(opacity * 100).toInt()}% · " else "") + "index " + fmt(z), 12f, DIM, true))
+        head.addView(activity.tv((if (hidden) "hidden · " else if (opacity < 1f) "${(opacity * 100).toInt()}% · " else "") + "index " + fmt(z), 12f, DIM, true))
+        // One-tap hide, like a layer's.
+        head.addView(activity.tv(if (hidden) "○" else "●", 20f, if (hidden) Color.parseColor("#6f4a5f") else PINK, true).apply {
+            gravity = Gravity.CENTER
+            contentDescription = if (hidden) "Show $name" else "Hide $name"
+            setOnClickListener {
+                val m = ElementOverrides.read(st.values)
+                val cur = m.getOrPut(name) { ElementOverrides.Ovr() }
+                cur.hidden = !cur.hidden
+                ElementOverrides.write(st.values, m)
+                onChanged()
+                refresh()
+            }
+        }, LinearLayout.LayoutParams(activity.dpx(36), activity.dpx(34)))
         head.setOnClickListener { if (isOpen) open.remove(key) else open.add(key); refresh() }
         card.addView(head)
         if (isOpen) {
@@ -144,6 +158,7 @@ class LayersPanel(
                 f(cur)
                 if (cur.index != null && cur.index == layoutIndex(name)) cur.index = null
                 if (cur.opacity != null && cur.opacity!! >= 0.999f) cur.opacity = null
+                // (hidden stays as it is)
                 ElementOverrides.write(st.values, m)
                 onChanged()
             }

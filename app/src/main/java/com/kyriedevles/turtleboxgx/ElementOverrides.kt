@@ -9,7 +9,7 @@ package com.kyriedevles.turtleboxgx
 object ElementOverrides {
     const val KEY = "elemovr"
 
-    class Ovr(var index: Float? = null, var opacity: Float? = null)
+    class Ovr(var index: Float? = null, var opacity: Float? = null, var hidden: Boolean = false)
 
     fun nameOf(e: Element): String = e.label ?: e.attrs["id"]?.takeIf { it.isNotBlank() } ?: e.kind
 
@@ -18,14 +18,14 @@ object ElementOverrides {
         for (line in (values[KEY] ?: "").split('\n')) {
             val p = line.split('|')
             if (p.size < 3 || p[0].isBlank()) continue
-            out[p[0]] = Ovr(p[1].toFloatOrNull(), p[2].toFloatOrNull())
+            out[p[0]] = Ovr(p[1].toFloatOrNull(), p[2].toFloatOrNull(), p.getOrNull(3) == "1")
         }
         return out
     }
 
     fun write(values: MutableMap<String, String>, m: Map<String, Ovr>) {
-        val s = m.filter { it.value.index != null || it.value.opacity != null }.entries.joinToString("\n") { (n, o) ->
-            n.replace("|", "/").replace("\n", " ") + "|" + (o.index?.toString() ?: "") + "|" + (o.opacity?.toString() ?: "")
+        val s = m.filter { it.value.index != null || it.value.opacity != null || it.value.hidden }.entries.joinToString("\n") { (n, o) ->
+            n.replace("|", "/").replace("\n", " ") + "|" + (o.index?.toString() ?: "") + "|" + (o.opacity?.toString() ?: "") + "|" + (if (o.hidden) "1" else "")
         }
         if (s.isEmpty()) values.remove(KEY) else values[KEY] = s
     }

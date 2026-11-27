@@ -82,6 +82,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             while (li < layers.size && layers[li].z < idx(e)) drawLayer(c, layers[li++])
             val vis = e.visible
             if (vis != null && !Expr.eval(vis, ctx)) continue
+            if (ovr[ElementOverrides.nameOf(e)]?.hidden == true) continue
             val op = ovr[ElementOverrides.nameOf(e)]?.opacity
             val saved = if (op != null && op < 1f) c.saveLayerAlpha(null, (op.coerceIn(0f, 1f) * 255).toInt()) else -1
             try {
