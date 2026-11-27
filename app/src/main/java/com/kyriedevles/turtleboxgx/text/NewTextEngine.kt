@@ -54,6 +54,7 @@ class PaintMetrics(
     private val fonts: (String) -> Typeface? = { null },
 ) : Metrics {
     private val plain = TextPaint(base).also { it.textSize = size; it.textScaleX = scaleX }
+    private val boxScaleX = scaleX
     private val cache = HashMap<Int, TextPaint>()
     private val smallCache = HashMap<Int, TextPaint>()
     private val fm = plain.fontMetrics
@@ -71,7 +72,9 @@ class PaintMetrics(
         ex?.color?.let { p.color = it }
         var mul = sizeMul
         if (ex != null && ex.script != 0) mul *= SCRIPT_SIZE
-        p.textSize = size * mul
+        // <size=..> and <scale=..> runs.
+        p.textSize = (ex?.sizeAt(size) ?: size) * mul
+        if (ex != null && ex.scale > 0f) p.textScaleX = boxScaleX * ex.scale / 100f
         return p
     }
 
@@ -162,8 +165,15 @@ class NewTextEngine(
             photoshopFirstBaseline = opt.photoshopFirstBaseline, justifyMode = opt.justifyMode,
         )
 
+    /** The per-run Character settings the layout needs (size, tracking, leading), from the tags. */
+    private val runSpecs: (Int) -> RunSpec? = { st ->
+        extraOf(st, parsed.extras)?.let { e ->
+            if (e.sizePx > 0f || e.sizePct > 0f || e.tracking != null || e.leading > 0f) RunSpec(e.sizePx, e.sizePct, e.tracking?.div(1000f), e.leading) else null
+        }
+    }
+
     private fun makeCore(o: LayoutOptions) = LayoutCore(
-        Source(text, styled.styles),
+        Source(text, styled.styles, runSpecs),
         { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup) },
         boxWidth,
         boxHeight,
@@ -272,11 +282,12 @@ class NewTextEngine(
      */
     private fun drawRun(c: Canvas, pm: PaintMetrics, a: Int, b: Int, x: Float, baseline: Float, st: Int, em: Float, bodySize: Float): Float {
         val ex = pm.extra(st)
+        val runSize = ex?.sizeAt(bodySize) ?: bodySize
         val y = when (ex?.script) {
-            1 -> baseline - bodySize * SCRIPT_SHIFT
-            2 -> baseline + bodySize * SCRIPT_SHIFT
+            1 -> baseline - runSize * SCRIPT_SHIFT
+            2 -> baseline + runSize * SCRIPT_SHIFT
             else -> baseline
-        }
+        } - (ex?.baseline ?: 0f)
         if (ex == null || !ex.smallCaps) {
             val p = pm.paintFor(st, em)
             c.drawText(text, a, b, x, y, p)
@@ -336,7 +347,8 @@ class NewTextEngine(
         var wi = 0
         for (line in r.lines) {
             val baseline = bodyTop + line.baseline - opt.baselineShift
-            val em = opt.letterSpace + line.letterExtraEm
+            // The tracking the layout used (the fit step's included), plus this line's stretch.
+            val em = usedTracking / 1000f + line.letterExtraEm
             val lineSaved = c.save()
             if (vs != 1f) c.scale(1f, vs, left, baseline)
             if (line.scaleX != 1f) c.scale(line.scaleX, 1f, left + line.originX, baseline)
@@ -349,7 +361,8 @@ class NewTextEngine(
                     val st = styles[a]
                     var b = a + 1
                     while (b < w.end && styles[b] == st) b++
-                    val adv = drawRun(c, pm, a, b, x, baseline, st, em, r.size)
+                    val runEm = core.runEm(st, em)
+                    val adv = drawRun(c, pm, a, b, x, baseline, st, runEm, r.size)
                     val ex = pm.extra(st)
                     if (ex != null && (ex.underline || ex.strike)) {
                         // Underline and strikethrough carry on across a space that has the same style, so a marked
@@ -363,12 +376,13 @@ class NewTextEngine(
                                 if (sx.strike) endS = left + next.x
                             }
                         }
-                        val p = pm.paintFor(st, em)
+                        val p = pm.paintFor(st, runEm)
+                        val rs = ex.sizeAt(r.size)
                         val lineY = when (ex.script) {
-                            1 -> baseline - r.size * SCRIPT_SHIFT
-                            2 -> baseline + r.size * SCRIPT_SHIFT
+                            1 -> baseline - rs * SCRIPT_SHIFT
+                            2 -> baseline + rs * SCRIPT_SHIFT
                             else -> baseline
-                        }
+                        } - ex.baseline
                         if (ex.underline) drawLine(c, p, lineY, x, endU, false)
                         if (ex.strike) drawLine(c, p, lineY, x, endS, true)
                     }

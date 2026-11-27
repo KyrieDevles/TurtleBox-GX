@@ -113,8 +113,20 @@ class LayoutResult(
     val widest: Float,
 )
 
-/** Inline style of every character: 0 plain, 1 bold, 2 italic, 3 both. */
-class Source(val text: String, val styles: IntArray) {
+/**
+ * Per-run Character settings from inline tags: size in card px or in % of the box size (0 = the box's), tracking in em
+ * replacing the box's (null = the box's), leading in card px (0 = the box's).
+ */
+class RunSpec(val sizePx: Float = 0f, val sizePct: Float = 0f, val trackingEm: Float? = null, val leadingPx: Float = 0f) {
+    fun sizeAt(boxSize: Float): Float = when {
+        sizePx > 0f -> sizePx
+        sizePct > 0f -> boxSize * sizePct / 100f
+        else -> boxSize
+    }
+}
+
+/** Inline style of every character: 0 plain, 1 bold, 2 italic, 3 both; [spec] gives a style's per-run settings, if any. */
+class Source(val text: String, val styles: IntArray, val spec: (Int) -> RunSpec? = { null }) {
     init { require(styles.size == text.length) { "one style per character" } }
 }
 
@@ -149,6 +161,14 @@ class LayoutCore(
 ) {
     private val text = src.text
     private val styles = src.styles
+    private val specs = HashMap<Int, RunSpec?>()
+    private fun spec(style: Int): RunSpec? = specs.getOrPut(style) { src.spec(style) }
+
+    /** Some run changes its line's height (its own size or leading): lines are then spaced one by one. */
+    private val perLine: Boolean = styles.distinct().any { st -> spec(st)?.let { it.sizePx > 0f || it.sizePct > 0f || it.leadingPx > 0f } == true }
+
+    /** The tracking a run is drawn with: its own (<tracking=..>) plus any line stretch, or the box's [letterEm]. */
+    fun runEm(style: Int, letterEm: Float): Float = spec(style)?.trackingEm?.let { it + (letterEm - opt.letterSpace) } ?: letterEm
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
     private val wrapWidth = boxWidth / hs
     private val wordSpacePct = if (opt.wordSpace > 0f) opt.wordSpace else 100f
@@ -259,15 +279,17 @@ class LayoutCore(
             val st = styles[x]
             var y = x + 1
             while (y < b && styles[y] == st) y++
-            w += m.advance(text, x, y, st, letterEm)
+            w += m.advance(text, x, y, st, runEm(st, letterEm))
             x = y
         }
         return w
     }
 
     /** Width of one space character after word spacing. */
-    private fun spaceW(m: Metrics, at: Int, letterEm: Float): Float =
-        m.advance(" ", 0, 1, if (at in styles.indices) styles[at] else 0, letterEm) * wordSpacePct / 100f
+    private fun spaceW(m: Metrics, at: Int, letterEm: Float): Float {
+        val st = if (at in styles.indices) styles[at] else 0
+        return m.advance(" ", 0, 1, st, runEm(st, letterEm)) * wordSpacePct / 100f
+    }
 
     private fun spacesWidth(m: Metrics, from: Int, count: Int, letterEm: Float): Float {
         var w = 0f
@@ -485,10 +507,59 @@ class LayoutCore(
         return if (opt.leadingPx > 0f || opt.leadingRatio > 0f) n * lh else (m.lineBottom - m.lineTop) + (n - 1) * lh
     }
 
+    /**
+     * Baselines line by line when runs change the line height, as in Photoshop: every character has a leading (its own
+     * <leading=..>, else the box's; automatic leading grows with the character's size) and a line sits that far below the
+     * one above, using the largest leading on it. The first baseline uses the largest size on the first line, the block's
+     * bottom the largest on the last. Returns the baselines and the block height, paragraph spacing included.
+     */
+    private fun perLineBaselines(m: Metrics, size: Float, lines: List<RawLine>, atoms: List<Atom>): Pair<FloatArray, Float> {
+        val baseLead = lineHeightOf(m)
+        val out = FloatArray(lines.size)
+        var lastF = 1f
+        for ((li, rl) in lines.withIndex()) {
+            var lead = 0f
+            var f = 0f
+            if (rl.last >= rl.first && rl.first < atoms.size) {
+                val a = atoms[rl.first].start
+                val b = atoms[rl.last].end
+                var k = a
+                var prevSt = Int.MIN_VALUE
+                while (k < b) {
+                    val st = styles[k++]
+                    if (st == prevSt) continue
+                    prevSt = st
+                    val sp = spec(st)
+                    val rs = sp?.sizeAt(size) ?: size
+                    f = maxOf(f, rs / size)
+                    val l = when {
+                        sp != null && sp.leadingPx > 0f -> sp.leadingPx
+                        opt.leadingRatio > 0f -> rs * opt.leadingRatio
+                        opt.leadingPx > 0f -> opt.leadingPx
+                        else -> baseLead * rs / size
+                    }
+                    lead = maxOf(lead, l)
+                }
+            }
+            if (f <= 0f) { f = 1f; lead = baseLead }
+            out[li] = if (li == 0) firstBaseline(m) * f
+            else out[li - 1] + lead + if (rl.paraFirst) opt.spaceBefore + opt.spaceAfter else 0f
+            lastF = f
+        }
+        if (lines.isEmpty()) return out to 0f
+        val bottom = when {
+            opt.photoshopFirstBaseline -> m.descent * lastF
+            opt.leadingPx > 0f || opt.leadingRatio > 0f -> baseLead + m.ascent
+            else -> m.lineBottom * lastF
+        }
+        return out to out.last() + bottom
+    }
+
     /** How many lines the text takes at this size and squeeze, and how tall that is. Used by the fit search. */
     private fun heightAt(size: Float, scaleX: Float): Float {
         val m = factory.at(size, scaleX)
-        val (lines, _) = wrap(m, wrapWidth)
+        val (lines, atoms) = wrap(m, wrapWidth)
+        if (perLine) return reserve(size) + perLineBaselines(m, size, lines, atoms).second
         return reserve(size) + blockHeight(m, lines.size) + paraSpacing(lines)
     }
 
@@ -577,6 +648,7 @@ class LayoutCore(
 
         val lineH = lineHeightOf(m)
         val first = firstBaseline(m)
+        val vertical = if (perLine) perLineBaselines(m, size, lines, atoms) else null
         val laid = ArrayList<LaidLine>()
         val words = ArrayList<Placed>()
         var widest = 0f
@@ -588,7 +660,7 @@ class LayoutCore(
 
         for ((li, rl) in lines.withIndex()) {
             if (li > 0 && rl.paraFirst) extraY += opt.spaceBefore + opt.spaceAfter
-            val baseline = first + li * lineH + extraY
+            val baseline = vertical?.first?.get(li) ?: (first + li * lineH + extraY)
             val lx = lineX(rl.paraFirst)
             val avail = lineAvail(wrapWidth, rl.paraFirst)
             if (rl.last < rl.first) {
@@ -670,7 +742,7 @@ class LayoutCore(
             laid.add(LaidLine(li, start, end, baseline, letterExtra, total, lineScale, lx))
             widest = maxOf(widest, lx + total)
         }
-        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, blockHeight(m, lines.size) + extraY, widest)
+        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, vertical?.second ?: (blockHeight(m, lines.size) + extraY), widest)
     }
 
     /** Horizontal alignment: 0 left (and justified), 1 centre, 2 right. Set before [layout]. */

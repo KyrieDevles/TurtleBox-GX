@@ -18,7 +18,29 @@ data class RunExtra(
     val color: Int? = null,
     /** A font name as the layout knows it (a name from `namefonts`, or a font file), or null for the box's own font. */
     val font: String? = null,
-)
+    /** `<size=10.65>`: font size in card px (0 = the box's). Stays that size when the box shrinks to fit, as in Photoshop. */
+    val sizePx: Float = 0f,
+    /** `<size=85%>`: font size as a % of the box's (0 = not set). Shrinks with the box. */
+    val sizePct: Float = 0f,
+    /** `<tracking=-20>`: tracking in 1/1000 em, replacing the box's for these letters (null = the box's). */
+    val tracking: Float? = null,
+    /** `<leading=11.14>`: leading in card px (0 = the box's). A line uses the largest leading on it, as in Photoshop. */
+    val leading: Float = 0f,
+    /** `<scale=90>`: horizontal scale % on top of the box's (0 = not set). */
+    val scale: Float = 0f,
+    /** `<baseline=1.5>`: baseline shift in card px, + raises (0 = none). */
+    val baseline: Float = 0f,
+) {
+    /** The font size of this run when the box's size is [boxSize]. */
+    fun sizeAt(boxSize: Float): Float = when {
+        sizePx > 0f -> sizePx
+        sizePct > 0f -> boxSize * sizePct / 100f
+        else -> boxSize
+    }
+
+    /** True when the run changes the line's height (its size or leading). */
+    val changesLines: Boolean get() = sizePx > 0f || sizePct > 0f || leading > 0f
+}
 
 class RichText(val text: String, val styles: IntArray, val extras: List<RunExtra>)
 
@@ -47,11 +69,42 @@ fun parseHexColor(s: String): Int? {
     }
 }
 
+/** The open tags while reading the text: flags, and a stack per valued tag (closing removes the innermost one). */
+private class TagState {
+    var bold = false
+    var italic = false
+    var underline = false
+    var strike = false
+    var script = 0
+    var smallCaps = false
+    val colors = ArrayList<Int>()
+    val fonts = ArrayList<String>()
+    val sizes = ArrayList<Pair<Float, Boolean>>() // value, is %
+    val trackings = ArrayList<Float>()
+    val leadings = ArrayList<Float>()
+    val scales = ArrayList<Float>()
+    val baselines = ArrayList<Float>()
+
+    fun extra(): RunExtra {
+        val sz = sizes.lastOrNull()
+        return RunExtra(
+            underline, strike, script, smallCaps, colors.lastOrNull(), fonts.lastOrNull(),
+            sizePx = if (sz != null && !sz.second) sz.first else 0f,
+            sizePct = if (sz != null && sz.second) sz.first else 0f,
+            tracking = trackings.lastOrNull(),
+            leading = leadings.lastOrNull() ?: 0f,
+            scale = scales.lastOrNull() ?: 0f,
+            baseline = baselines.lastOrNull() ?: 0f,
+        )
+    }
+}
+
 /**
- * Reads `<b> <i> <u> <s> <sup> <sub> <sc>` and `<color=#rrggbb> <font=name>` with their closing tags
- * (`</color>` and `</font>` close the innermost one). A tag that is never closed stays on to the end of the text,
- * across lines and paragraphs. Tag names are not case sensitive. Anything else that looks like a tag, a colour that is not
- * valid hex, or a tag without its `>` is left as ordinary text so a typo stays visible on the card.
+ * Reads `<b> <i> <u> <s> <sup> <sub> <sc>`, `<color=#rrggbb> <font=name>` and the Character tags
+ * `<size=10.65>` (card px) or `<size=85%>`, `<tracking=-20>`, `<leading=11.14>`, `<scale=90>`, `<baseline=1.5>`, with their
+ * closing tags (a closing tag ends the innermost open one of its kind). A tag that is never closed stays on to the end of
+ * the text, across lines and paragraphs. Tag names are not case sensitive. Anything else that looks like a tag, a value
+ * that is not valid, or a tag without its `>` is left as ordinary text so a typo stays visible on the card.
  * `<br>` is not handled here: the engine turns it into a line break before calling this.
  */
 fun parseRich(raw: String): RichText {
@@ -66,22 +119,15 @@ fun parseRich(raw: String): RichText {
     val out = StringBuilder(raw.length)
     val st = IntArray(raw.length)
     var n = 0
-    var bold = false
-    var italic = false
-    var underline = false
-    var strike = false
-    var script = 0
-    var smallCaps = false
-    val colors = ArrayList<Int>()
-    val fonts = ArrayList<String>()
+    val tags = TagState()
     var cur = 0
     var dirty = true
 
     fun styleId(): Int {
         if (dirty) {
-            val e = RunExtra(underline, strike, script, smallCaps, colors.lastOrNull(), fonts.lastOrNull())
+            val e = tags.extra()
             val k = index.getOrPut(e) { extras.add(e); extras.size - 1 }
-            cur = (k shl 2) or (if (bold) 1 else 0) or (if (italic) 2 else 0)
+            cur = (k shl 2) or (if (tags.bold) 1 else 0) or (if (tags.italic) 2 else 0)
             dirty = false
         }
         return cur
@@ -93,8 +139,7 @@ fun parseRich(raw: String): RichText {
             val close = raw.indexOf('>', i + 1)
             if (close > i && close - i <= 200) {
                 val body = raw.substring(i + 1, close)
-                if (applyTag(body, { bold = it }, { italic = it }, { underline = it }, { strike = it }, { script = it },
-                        { smallCaps = it }, colors, fonts)) {
+                if (applyTag(body, tags)) {
                     dirty = true
                     i = close + 1
                     continue
@@ -109,51 +154,56 @@ fun parseRich(raw: String): RichText {
     return RichText(out.toString(), st.copyOf(n), extras)
 }
 
+private fun num(v: String?): Float? = v?.replace("\u2060", "")?.trim()?.removeSuffix("px")?.trim()?.toFloatOrNull()
+
+private fun <T> pushPop(list: MutableList<T>, closing: Boolean, value: T?): Boolean {
+    if (closing) { if (list.isNotEmpty()) list.removeAt(list.size - 1); return true }
+    list.add(value ?: return false)
+    return true
+}
+
 /** Applies one tag (the text between `<` and `>`). Returns false when it is not a tag this parser knows. */
-private fun applyTag(
-    body: String,
-    setBold: (Boolean) -> Unit,
-    setItalic: (Boolean) -> Unit,
-    setUnderline: (Boolean) -> Unit,
-    setStrike: (Boolean) -> Unit,
-    setScript: (Int) -> Unit,
-    setSmallCaps: (Boolean) -> Unit,
-    colors: MutableList<Int>,
-    fonts: MutableList<String>,
-): Boolean {
+private fun applyTag(body: String, t: TagState): Boolean {
     val closing = body.startsWith("/")
-    val t = if (closing) body.substring(1) else body
-    val eq = t.indexOf('=')
-    val name = (if (eq >= 0) t.substring(0, eq) else t).trim().lowercase()
-    val value = if (eq >= 0) t.substring(eq + 1) else null
+    val b = if (closing) body.substring(1) else body
+    val eq = b.indexOf('=')
+    val name = (if (eq >= 0) b.substring(0, eq) else b).trim().lowercase()
+    val value = if (eq >= 0) b.substring(eq + 1) else null
     if (closing && value != null) return false
     when (name) {
-        "b" -> { if (value != null) return false; setBold(!closing) }
-        "i" -> { if (value != null) return false; setItalic(!closing) }
-        "u" -> { if (value != null) return false; setUnderline(!closing) }
-        "s" -> { if (value != null) return false; setStrike(!closing) }
-        "sup" -> { if (value != null) return false; setScript(if (closing) 0 else 1) }
-        "sub" -> { if (value != null) return false; setScript(if (closing) 0 else 2) }
-        "sc" -> { if (value != null) return false; setSmallCaps(!closing) }
-        "color" -> {
-            if (closing) { if (colors.isNotEmpty()) colors.removeAt(colors.size - 1) }
-            else colors.add(parseHexColor(value ?: return false) ?: return false)
-        }
+        "b" -> { if (value != null) return false; t.bold = !closing }
+        "i" -> { if (value != null) return false; t.italic = !closing }
+        "u" -> { if (value != null) return false; t.underline = !closing }
+        "s" -> { if (value != null) return false; t.strike = !closing }
+        "sup" -> { if (value != null) return false; t.script = if (closing) 0 else 1 }
+        "sub" -> { if (value != null) return false; t.script = if (closing) 0 else 2 }
+        "sc" -> { if (value != null) return false; t.smallCaps = !closing }
+        "color" -> return pushPop(t.colors, closing, if (closing) null else parseHexColor(value ?: return false) ?: return false)
         "font" -> {
-            if (closing) { if (fonts.isNotEmpty()) fonts.removeAt(fonts.size - 1) }
-            else {
-                // keepWord boxes glue "/" with a word joiner; a font file path must not carry it.
-                val f = (value ?: return false).replace("\u2060", "").trim()
-                if (f.isEmpty()) return false
-                fonts.add(f)
-            }
+            if (closing) return pushPop(t.fonts, true, null)
+            // keepWord boxes glue "/" with a word joiner; a font file path must not carry it.
+            val f = (value ?: return false).replace("\u2060", "").trim()
+            if (f.isEmpty()) return false
+            t.fonts.add(f)
         }
+        "size" -> {
+            if (closing) return pushPop(t.sizes, true, null)
+            val v = (value ?: return false).replace("\u2060", "").trim()
+            val pct = v.endsWith("%")
+            val x = num(v.removeSuffix("%")) ?: return false
+            if (x <= 0f) return false
+            t.sizes.add(x to pct)
+        }
+        "tracking" -> return pushPop(t.trackings, closing, if (closing) null else num(value) ?: return false)
+        "leading" -> return pushPop(t.leadings, closing, if (closing) null else num(value)?.takeIf { it > 0f } ?: return false)
+        "scale" -> return pushPop(t.scales, closing, if (closing) null else num(value?.removeSuffix("%"))?.takeIf { it > 0f } ?: return false)
+        "baseline" -> return pushPop(t.baselines, closing, if (closing) null else num(value) ?: return false)
         else -> return false
     }
     return true
 }
 
-private val knownTag = Regex("</?(b|i|u|s|sup|sub|sc|br|color|font)(=[^>]*)?>", RegexOption.IGNORE_CASE)
+private val knownTag = Regex("</?(b|i|u|s|sup|sub|sc|br|color|font|size|tracking|leading|scale|baseline)(=[^>]*)?>", RegexOption.IGNORE_CASE)
 
 /** Upper-cases the text but not the inline tags in it, so `<b>` and `<font=name>` keep working under All caps. */
 fun uppercaseOutsideTags(s: String): String {
