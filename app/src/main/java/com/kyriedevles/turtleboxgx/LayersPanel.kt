@@ -56,6 +56,8 @@ class LayersPanel(
     private val onChanged: () -> Unit,
     private val pickImage: (String?) -> Unit,
     private val startEdit: (Layer, List<Layer>) -> Unit,
+    private val addText: () -> Unit = {},
+    private val editText: (Layer) -> Unit = {},
 ) {
     private var dlg: Dialog? = null
     private val list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; clipChildren = false }
@@ -69,6 +71,11 @@ class LayersPanel(
     }
 
     private fun thumb(l: Layer): View {
+        if (l.isText) return activity.tv("T", 22f, PINK, true).apply {
+            gravity = Gravity.CENTER
+            typeface = Typeface.SERIF
+            background = CutDrawable(intArrayOf(Color.BLACK), cutTR = activity.dpx(8).toFloat())
+        }
         val box = ImageView(activity).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             background = CutDrawable(intArrayOf(Theme.plane3), cutTR = activity.dpx(8).toFloat())
@@ -152,7 +159,8 @@ class LayersPanel(
         head.addView(thumb(l), LinearLayout.LayoutParams(activity.dpx(44), activity.dpx(44)))
         val mid = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(activity.dpx(10), 0, activity.dpx(6), 0) }
         mid.addView(activity.tv(l.name, 14f, Color.WHITE, true).apply { setSingleLine(true); ellipsize = android.text.TextUtils.TruncateAt.END })
-        mid.addView(activity.tv(if (l.vis) "Visible · ${(l.opacity * 100).toInt()}%" else "Hidden", 11f, DIM))
+        val kind = if (l.isText) (if (TextLayers.isPoint(st.values, l.id)) "Point text · " else "Box text · ") else ""
+        mid.addView(activity.tv(kind + if (l.vis) "Visible · ${(l.opacity * 100).toInt()}%" else "Hidden", 11f, DIM))
         head.addView(mid, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val zBox = EditText(activity).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
@@ -227,7 +235,8 @@ class LayersPanel(
             card.addView(sb)
             val r1 = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             r1.addView(activity.pillBtn("Edit on card", PINK, true) { dlg?.dismiss(); dlg = null; startEdit(l, layers()) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { rightMargin = activity.dpx(4) })
-            r1.addView(activity.pillBtn("Replace", PINK) { pickImage(l.id) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { leftMargin = activity.dpx(4) })
+            if (l.isText) r1.addView(activity.pillBtn("Text settings", PINK) { editText(l) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { leftMargin = activity.dpx(4) })
+            else r1.addView(activity.pillBtn("Replace", PINK) { pickImage(l.id) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { leftMargin = activity.dpx(4) })
             card.addView(r1, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(10) })
             val r2 = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
             r2.addView(activity.pillBtn("Rename", PINK) { rename(l) }, LinearLayout.LayoutParams(0, activity.dpx(38), 1f).apply { rightMargin = activity.dpx(4) })
@@ -259,8 +268,12 @@ class LayersPanel(
         c.id = ImageLayers.newId()
         c.name = src.name + " copy"
         c.z = src.z + 1f
-        st.files[c.file] = st.files[src.file] ?: return
-        st.files[src.origFile]?.let { st.files[c.origFile] = it }
+        if (src.isText) {
+            TextLayers.copyValues(st.values, src.id, c.id)
+        } else {
+            st.files[c.file] = st.files[src.file] ?: return
+            st.files[src.origFile]?.let { st.files[c.origFile] = it }
+        }
         cur.add(c)
         open.add(c.id)
         save(cur)
@@ -272,6 +285,7 @@ class LayersPanel(
             .setPositiveButton("Delete") { _, _ ->
                 val cur = layers()
                 cur.removeAll { it.id == l.id }
+                if (l.isText) TextLayers.removeValues(st.values, l.id)
                 st.files.remove(l.file)
                 st.files.remove(l.origFile)
                 save(cur)
@@ -279,12 +293,17 @@ class LayersPanel(
             }.setNegativeButton("Cancel", null).show()
     }
 
+    fun close() {
+        dlg?.dismiss()
+        dlg = null
+    }
+
     fun show() {
         val d = Dialog(activity)
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dlg = d
         val title = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        title.addView(activity.tv("Image layers", 16f, HOT, true).apply { isAllCaps = true; letterSpacing = 0.12f }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        title.addView(activity.tv("Layers", 16f, HOT, true).apply { isAllCaps = true; letterSpacing = 0.12f }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         title.addView(activity.tv("DONE", 13f, PINK, true).apply { setPadding(activity.dpx(10), activity.dpx(8), activity.dpx(10), activity.dpx(8)); setOnClickListener { d.dismiss() } })
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -292,7 +311,10 @@ class LayersPanel(
             background = Theme.dialog(activity.dpx(22).toFloat(), activity.dpx(4).toFloat())
         }
         root.addView(title)
-        root.addView(activity.pillBtn("+  Add image layer", PINK, true) { pickImage(null) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, activity.dpx(40)).apply { topMargin = activity.dpx(8); bottomMargin = activity.dpx(10) })
+        val adds = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
+        adds.addView(activity.pillBtn("+  Image", PINK) { pickImage(null) }, LinearLayout.LayoutParams(0, activity.dpx(40), 1f).apply { rightMargin = activity.dpx(5) })
+        adds.addView(activity.pillBtn("+  Text", PINK, true) { addText() }, LinearLayout.LayoutParams(0, activity.dpx(40), 1f).apply { leftMargin = activity.dpx(5) })
+        root.addView(adds, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = activity.dpx(8); bottomMargin = activity.dpx(10) })
         root.addView(ScrollView(activity).apply { clipChildren = false; clipToPadding = false; setPadding((10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt(), (10 * resources.displayMetrics.density).toInt(), (8 * resources.displayMetrics.density).toInt()); addView(list); Theme.unclip(this) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         d.setContentView(root)
         d.setOnDismissListener { if (dlg === d) dlg = null }

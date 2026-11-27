@@ -56,6 +56,7 @@ object SetWriter {
         val written = HashSet<String>()
         for (d in layout.datas.values) {
             if (d.type == "multi_select" || d.type == "button" || d.type == "fitstatus") continue
+            if (TextLayers.isOrphan(d.name, state.values)) continue
             written.add(d.name)
             sb.append("<data><key>").append(esc(d.name)).append("</key><value>")
                 .append(esc(state.values[d.name] ?: ctx.value(d.name))).append("</value></data>")
@@ -471,7 +472,7 @@ class Editor(
                     }
                 }
                 else -> {
-                    val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
+                    val multi = f.name.endsWith("text", ignoreCase = true) || f.name.startsWith("text_tl") || current.contains('\n')
                     val et = EditText(activity).apply {
                         setText(current)
                         setTextColor(Color.WHITE)

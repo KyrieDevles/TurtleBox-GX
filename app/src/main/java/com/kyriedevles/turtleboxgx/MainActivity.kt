@@ -895,9 +895,36 @@ class MainActivity : Activity() {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"), REQ_LAYER)
             },
             startEdit = { layer, all -> beginLayerEdit(layer, all) },
+            addText = { addTextLayer() },
+            editText = { layer ->
+                layersPanel?.close()
+                openEditor("layermenu_" + TextLayers.tm(layer.id))
+            },
         )
         layersPanel = panel
         panel.show()
+    }
+
+    /** Adds a point text layer in the middle of the card, in front of everything, and opens its settings. */
+    private fun addTextLayer() {
+        val l = layout ?: return
+        val st = state ?: return
+        val all = ImageLayers.read(st.values)
+        val id = ImageLayers.newId()
+        val top = maxOf(l.elements.maxOfOrNull { it.index } ?: 0f, all.maxOfOrNull { it.z } ?: 0f)
+        val n = all.count { it.isText } + 1
+        val layer = Layer(id, "Text $n", top + 1f, kind = "text")
+        layer.cx = l.width / 2f
+        layer.cy = l.height / 2f
+        layer.w = 120f
+        layer.h = 30f
+        all.add(layer)
+        ImageLayers.write(st.values, all)
+        TextLayers.newValues(st.values, l, id, "Text")
+        TextLayers.sync(l, st.values)
+        renderState(st)
+        layersPanel?.close()
+        openEditor("layermenu_" + TextLayers.tm(id))
     }
 
     /** Adds a layer (or replaces the picture of [replaceId]) from PNG bytes, fitted to the whole card. */
@@ -950,8 +977,28 @@ class MainActivity : Activity() {
     private fun beginLayerEdit(layer: Layer, all: List<Layer>) {
         val l = layout ?: return
         val st = state ?: return
-        val bytes = st.files[layer.file] ?: return toast("That layer has no picture.")
-        val bmp = try {
+        // A text layer is moved as a picture of itself; point text that is scaled changes its Size px.
+        var pointH = 0f
+        val textBmp: Bitmap? = if (!layer.isText) null else try {
+            TextLayers.sync(l, st.values)
+            val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
+            try {
+                val (b, size) = Renderer(l, Ctx(l, st.values), a, st.values).renderTextLayer(layer, 2f)
+                if (TextLayers.isPoint(st.values, layer.id)) {
+                    layer.w = size.first
+                    layer.h = size.second
+                    pointH = size.second
+                }
+                b
+            } finally {
+                a.close()
+            }
+        } catch (e: Throwable) {
+            null
+        }
+        if (layer.isText && textBmp == null) return toast("Could not draw that text layer.")
+        val bytes = if (layer.isText) ByteArray(0) else st.files[layer.file] ?: return toast("That layer has no picture.")
+        val bmp = textBmp ?: try {
             val (bw, bh) = ImageLayers.size(bytes)
             var sample = 1
             while (maxOf(bw, bh) / (sample * 2) >= 2048) sample *= 2
@@ -967,6 +1014,13 @@ class MainActivity : Activity() {
         val win = LayerEditWindow(
             this, ed, layer.name,
             save = {
+                // Scaling point text scales its font size, as in Photoshop.
+                if (pointH > 0f && layer.h > 0f && Math.abs(layer.h - pointH) > 0.01f) {
+                    val key = "sizepx_" + TextLayers.tm(layer.id)
+                    val old = st.values[key]?.toFloatOrNull()?.takeIf { it > 0f } ?: TextLayers.DEFAULT_SIZE
+                    st.values[key] = String.format(java.util.Locale.US, "%.2f", old * layer.h / pointH).trimEnd('0').trimEnd('.')
+                    pointH = layer.h
+                }
                 val cur = ImageLayers.read(st.values)
                 cur.firstOrNull { it.id == layer.id }?.let { c ->
                     c.cx = layer.cx; c.cy = layer.cy; c.w = layer.w; c.h = layer.h; c.rot = layer.rot; c.mx = layer.mx; c.fy = layer.fy
@@ -979,7 +1033,10 @@ class MainActivity : Activity() {
                 cardView.insetBottom = maxOf(0, loc[1] + cardView.height - topY)
             },
             eraserSource = {
-                try {
+                if (layer.isText) {
+                    toast("The eraser works on image layers.")
+                    null
+                } else try {
                     // Both pictures at the same size, at most 2048 px on the long side, so Restore lines up.
                     val origBytes = st.files[layer.origFile] ?: st.files[layer.file]!!
                     val (ow, oh) = ImageLayers.size(origBytes)
@@ -1090,6 +1147,7 @@ class MainActivity : Activity() {
             toast("Choose a layout folder first.")
             return
         }
+        TextLayers.sync(l, st.values)
         Editor(
             this, l, st,
             onChanged = { renderState(st) },
@@ -2110,6 +2168,7 @@ class MainActivity : Activity() {
     private fun renderState(st: CardState) {
         val l = layout ?: return
         val z = zipFile
+        TextLayers.sync(l, st.values)
         thread {
             val t0 = SystemClock.elapsedRealtime()
             var bmp: Bitmap? = null

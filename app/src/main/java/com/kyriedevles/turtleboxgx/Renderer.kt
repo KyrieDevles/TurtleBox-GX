@@ -35,6 +35,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** Fit steps of the text boxes drawn, for the edit menu (see [AutoFit]). */
     val fitGroups = ArrayList<AutoFit.Group>()
 
+    /** Natural size (card px) of each text layer drawn: the line for point text, the box for box text. */
+    val textSizes = HashMap<String, Pair<Float, Float>>()
+
     /** Debug notes shown under the card. */
     val notes = ArrayList<String>()
 
@@ -68,6 +71,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     }
 
     private fun drawLayer(c: Canvas, l: Layer) {
+        if (l.isText) return drawTextLayer(c, l)
         val bmp = assets.bitmap(l.file) ?: return
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt() }
         c.save()
@@ -77,6 +81,107 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         c.drawBitmap(bmp, null, RectF(-l.w / 2f, -l.h / 2f, l.w / 2f, l.h / 2f), paint)
         c.restore()
         drawn++
+    }
+
+    // ---- text layers (see TextLayers) ----
+
+    private fun layerValue(key: String, l: Layer): String {
+        val v = ctx.value("${key}_${TextLayers.tm(l.id)}")
+        return if (v.startsWith("{{")) "" else v.trim()
+    }
+
+    private fun layerText(l: Layer): String {
+        var t = ctx.value("text_${TextLayers.tm(l.id)}").let { if (it.startsWith("{{")) "" else it }
+        if (layerValue("allcaps", l).equals("on", true)) t = com.kyriedevles.turtleboxgx.text.uppercaseOutsideTags(t)
+        return t
+    }
+
+    /** The paint of a point text layer: font, size, colour and the Characters settings that apply to one line. */
+    private fun pointPaint(l: Layer): TextPaint {
+        val p = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG)
+        if (android.os.Build.VERSION.SDK_INT >= 33) p.hinting = Paint.HINTING_OFF
+        assets.font(TextLayers.fontFile(layout, values, l.id))?.let { p.typeface = it }
+        p.textSize = layerValue("sizepx", l).toFloatOrNull()?.takeIf { it > 0f } ?: TextLayers.DEFAULT_SIZE
+        p.color = try { Color.parseColor(layerValue("color", l)) } catch (e: Exception) { Color.BLACK }
+        if (layerValue("italic", l).equals("on", true)) p.textSkewX = -0.25f
+        layerValue("tracking", l).toFloatOrNull()?.let { p.letterSpacing = it / 1000f }
+        layerValue("hscale", l).toFloatOrNull()?.takeIf { it > 0f }?.let { p.textScaleX = it / 100f }
+        layerValue("weight", l).toFloatOrNull()?.takeIf { it > 0f }?.let { w ->
+            p.style = Paint.Style.FILL_AND_STROKE
+            p.strokeJoin = Paint.Join.ROUND
+            p.strokeWidth = p.textSize * w / 1000f
+        }
+        return p
+    }
+
+    /** Natural size of a point text layer: its line's width and height (vertical scale included). */
+    fun pointSize(l: Layer): Pair<Float, Float> {
+        val p = pointPaint(l)
+        val fm = p.fontMetrics
+        val vs = layerValue("vscale", l).toFloatOrNull()?.takeIf { it > 0f }?.div(100f) ?: 1f
+        return exactWidth(p, layerText(l)).coerceAtLeast(p.textSize * 0.5f) to (fm.descent - fm.ascent) * vs
+    }
+
+    /** Draws a text layer centred on (0, 0), unrotated. Returns its natural size. */
+    private fun drawTextLayerContent(c: Canvas, l: Layer): Pair<Float, Float> {
+        if (!TextLayers.isPoint(values, l.id)) {
+            val e = TextLayers.boxElement(l, layout, values)
+            drawText(c, e)
+            return l.w to l.h
+        }
+        val text = layerText(l)
+        val p = pointPaint(l)
+        val (tw, th) = pointSize(l)
+        if (text.isBlank()) return tw to th
+        val fm = p.fontMetrics
+        val vs = layerValue("vscale", l).toFloatOrNull()?.takeIf { it > 0f }?.div(100f) ?: 1f
+        val shift = layerValue("baseline", l).toFloatOrNull() ?: 0f
+        c.save()
+        c.translate(0f, -shift)
+        c.scale(1f, vs)
+        val x = -tw / 2f
+        val y = -(fm.ascent + fm.descent) / 2f
+        val fx = NameStyle.resolve(layerValue("style", l), layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "")
+        if (fx != null) {
+            val h = fm.descent - fm.ascent
+            NameFx.draw(c, text, x, y, p, RectF(x, -h / 2f, x + tw, h / 2f), tw, fx, curScale, layout.width, layout, assets)
+        } else {
+            c.drawText(text, x, y, p)
+        }
+        c.restore()
+        return tw to th
+    }
+
+    private fun drawTextLayer(c: Canvas, l: Layer) {
+        c.save()
+        c.translate(l.cx, l.cy)
+        c.rotate(l.rot)
+        c.scale(if (l.mx) -1f else 1f, if (l.fy) -1f else 1f)
+        val alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt()
+        if (alpha < 255) c.saveLayerAlpha(null, alpha)
+        val size = try { drawTextLayerContent(c, l) } catch (e: Exception) { assets.missing.add("text layer failed: ${e.javaClass.simpleName}"); l.w to l.h }
+        c.restore()
+        textSizes[l.id] = size
+        // Tap area: the rotated box's bounds.
+        val m = android.graphics.Matrix()
+        m.postRotate(l.rot)
+        m.postTranslate(l.cx, l.cy)
+        val r = RectF(-size.first / 2f, -size.second / 2f, size.first / 2f, size.second / 2f)
+        m.mapRect(r)
+        hits.add(Hit("layermenu_${TextLayers.tm(l.id)}", r))
+        drawn++
+    }
+
+    /** A text layer alone on a transparent picture at its natural size (the preview moved while editing it on the card). */
+    fun renderTextLayer(l: Layer, scale: Float): Pair<Bitmap, Pair<Float, Float>> {
+        curScale = scale
+        val size = if (TextLayers.isPoint(values, l.id)) pointSize(l) else l.w to l.h
+        val bmp = Bitmap.createBitmap(Math.ceil((size.first * scale).toDouble()).toInt().coerceAtLeast(1), Math.ceil((size.second * scale).toDouble()).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        c.scale(scale, scale)
+        c.translate(size.first / 2f, size.second / 2f)
+        drawTextLayerContent(c, l)
+        return bmp to size
     }
 
     /** Small "Card Name" samples of name styles (for the Name Style panel), drawn with the layout's name font and colour. */

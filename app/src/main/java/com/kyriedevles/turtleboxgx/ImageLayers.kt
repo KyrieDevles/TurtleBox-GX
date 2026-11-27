@@ -20,8 +20,11 @@ class Layer(
     var rot: Float = 0f,
     var mx: Boolean = false,
     var fy: Boolean = false,
+    /** "image", or "text" for a text layer (its text and settings live in the card's values, see [TextLayers]). */
+    var kind: String = "image",
 ) {
-    fun copy() = Layer(id, name, z, vis, opacity, cx, cy, w, h, rot, mx, fy)
+    fun copy() = Layer(id, name, z, vis, opacity, cx, cy, w, h, rot, mx, fy, kind)
+    val isText: Boolean get() = kind == "text"
     val file: String get() = ImageLayers.file(id)
 
     /** The picture as it was before the first erasing, kept so the eraser's Restore brush can bring pixels back. */
@@ -44,7 +47,7 @@ object ImageLayers {
             val p = line.split('\t')
             if (p.size < 12) continue
             try {
-                out.add(Layer(p[0], p[1], p[2].toFloat(), p[3] == "1", p[4].toFloat(), p[5].toFloat(), p[6].toFloat(), p[7].toFloat(), p[8].toFloat(), p[9].toFloat(), p[10] == "1", p[11] == "1"))
+                out.add(Layer(p[0], p[1], p[2].toFloat(), p[3] == "1", p[4].toFloat(), p[5].toFloat(), p[6].toFloat(), p[7].toFloat(), p[8].toFloat(), p[9].toFloat(), p[10] == "1", p[11] == "1", p.getOrNull(12)?.ifBlank { null } ?: "image"))
             } catch (e: NumberFormatException) {
             }
         }
@@ -57,7 +60,7 @@ object ImageLayers {
             return
         }
         values[KEY] = list.joinToString("\n") { l ->
-            listOf(l.id, l.name.replace('\t', ' ').replace('\n', ' '), f(l.z), if (l.vis) "1" else "0", f(l.opacity), f(l.cx), f(l.cy), f(l.w), f(l.h), f(l.rot), if (l.mx) "1" else "0", if (l.fy) "1" else "0").joinToString("\t")
+            listOf(l.id, l.name.replace('\t', ' ').replace('\n', ' '), f(l.z), if (l.vis) "1" else "0", f(l.opacity), f(l.cx), f(l.cy), f(l.w), f(l.h), f(l.rot), if (l.mx) "1" else "0", if (l.fy) "1" else "0", l.kind).joinToString("\t")
         }
     }
 
