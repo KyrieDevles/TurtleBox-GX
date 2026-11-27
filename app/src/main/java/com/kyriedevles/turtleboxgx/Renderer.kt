@@ -276,6 +276,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             indentFirst = num("indentfirst"),
             spaceBefore = num("spacebefore"),
             spaceAfter = num("spaceafter"),
+            wordSpaceMin = num("wordspacemin"),
+            wordSpaceMax = num("wordspacemax"),
+            composer = if (ctx.sub(e.options["composer"] ?: "").trim().equals("everyline", ignoreCase = true) || num("composer") >= 1f) 1 else 0,
         )
         var body = indentText(text, num("indent"))
         // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.

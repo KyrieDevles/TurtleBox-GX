@@ -74,6 +74,11 @@ class TextOptions(
     val indentFirst: Float = 0f,
     val spaceBefore: Float = 0f,
     val spaceAfter: Float = 0f,
+    // Photoshop's Justification word spacing (New engine only): Minimum and Maximum in % of a space (0 = not set; Desired
+    // is wordSpace), and the composer: 0 Single-line, 1 Every-line.
+    val wordSpaceMin: Float = 0f,
+    val wordSpaceMax: Float = 0f,
+    val composer: Int = 0,
 )
 
 /**

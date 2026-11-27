@@ -49,6 +49,15 @@ class LayoutOptions(
     val indentFirst: Float = 0f,
     val spaceBefore: Float = 0f,
     val spaceAfter: Float = 0f,
+    /**
+     * Photoshop's Justification word spacing, in % of a normal space. [wordSpace] is Desired. Minimum is how far spaces may
+     * shrink to fit a word on a justified line (0 = same as Desired, which never shrinks); Maximum is where a stretched
+     * line starts to count as bad for the Every-line composer (0 = 133% of Desired). Spaces still stretch past it.
+     */
+    val wordSpaceMin: Float = 0f,
+    val wordSpaceMax: Float = 0f,
+    /** Line breaking, like Photoshop's Paragraph menu: 0 Single-line Composer, 1 Every-line Composer. */
+    val composer: Int = 0,
 )
 
 /** One word (or any unbreakable piece) of a line: text[start, end) drawn at [x] from the box's left edge. */
@@ -94,7 +103,14 @@ private class Atom(var start: Int, var end: Int, var spaces: Int, var endsParagr
 }
 
 /** [paraFirst]: the line is the first of its paragraph (it gets the first-line indent and the space before). */
-private class RawLine(val first: Int, val last: Int, val endsParagraph: Boolean, val paraFirst: Boolean = false)
+private class RawLine(
+    val first: Int,
+    val last: Int,
+    val endsParagraph: Boolean,
+    val paraFirst: Boolean = false,
+    /** The line ended only because the next word did not fit, so a composer may move this break. */
+    val soft: Boolean = false,
+)
 
 class LayoutCore(
     private val src: Source,
@@ -113,6 +129,9 @@ class LayoutCore(
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
     private val wrapWidth = boxWidth / hs
     private val wordSpacePct = if (opt.wordSpace > 0f) opt.wordSpace else 100f
+    /** Minimum and maximum word spacing as fractions of Desired (spaces are measured at Desired). */
+    private val wsMinF = ((if (opt.wordSpaceMin > 0f) opt.wordSpaceMin else wordSpacePct) / wordSpacePct).coerceIn(0.05f, 1f)
+    private val wsMaxF = ((if (opt.wordSpaceMax > 0f) opt.wordSpaceMax else wordSpacePct * 1.33f) / wordSpacePct).coerceAtLeast(1f)
 
     // Paragraph indents are in card px. The whole block is drawn with the horizontal scale applied to the canvas, so they
     // are divided by it here to stay the same size on the card.
@@ -233,18 +252,25 @@ class LayoutCore(
         return w
     }
 
-    /** Greedy wrap at [breakWidth]. A line is only wider than that when a single character does not fit. */
+    /**
+     * Breaks the text into lines at [breakWidth]. First a greedy pass (Photoshop's Single-line Composer): a word joins the
+     * line when the line still fits with its spaces at the minimum word spacing. A line is only wider than that when a
+     * single character does not fit. With the Every-line Composer, the soft breaks of each paragraph are then chosen again
+     * by [composeEveryLine].
+     */
     private fun wrap(m: Metrics, breakWidth: Float): Pair<List<RawLine>, List<Atom>> {
         val letterEm = opt.letterSpace
         val atoms = tokenize()
         val lines = ArrayList<RawLine>()
         var lineFirst = -1
-        var curW = 0f
+        // Width of the line being built: its pieces, and its spaces at Desired word spacing.
+        var curA = 0f
+        var curS = 0f
         var curAvail = 0f
         // The line being built is the first of its paragraph at the start and after every paragraph break.
         var pf = true
-        fun addLine(first: Int, last: Int, endsPara: Boolean) {
-            lines.add(RawLine(first, last, endsPara, pf))
+        fun addLine(first: Int, last: Int, endsPara: Boolean, soft: Boolean = false) {
+            lines.add(RawLine(first, last, endsPara, pf, soft))
             pf = endsPara
         }
         var i = 0
@@ -268,7 +294,8 @@ class LayoutCore(
                     continue
                 }
                 lineFirst = i
-                curW = a.width
+                curA = a.width
+                curS = 0f
                 curAvail = avail
             } else {
                 val prev = atoms[i - 1]
@@ -279,10 +306,11 @@ class LayoutCore(
                     lineFirst = -1
                     continue
                 }
-                if (a.lock >= 0 || curW + gap + a.width <= curAvail + 0.01f) {
-                    curW += gap + a.width
+                if (a.lock >= 0 || curA + a.width + (curS + gap) * wsMinF <= curAvail + 0.01f) {
+                    curA += a.width
+                    curS += gap
                 } else {
-                    addLine(lineFirst, i - 1, false)
+                    addLine(lineFirst, i - 1, false, soft = true)
                     lineFirst = -1
                     continue // place this piece again as the first of a new line
                 }
@@ -299,7 +327,110 @@ class LayoutCore(
         if (lineFirst >= 0) addLine(lineFirst, atoms.size - 1, true)
         // A text that ends with a paragraph break has an empty last line, like any editor.
         if (text.isEmpty() || text.endsWith("\n")) addLine(atoms.size, atoms.size - 1, true)
+        if (opt.composer == 1) return composeEveryLine(m, breakWidth, lines, atoms) to atoms
         return lines to atoms
+    }
+
+    /**
+     * Photoshop's Every-line Composer, as far as it can be copied: within each run of lines joined by soft breaks, choose
+     * the breaks that make the spacing most even across all the lines, instead of filling each line in turn.
+     *
+     * Adobe does not publish its scoring, so this uses the classic paragraph-breaking method (Knuth and Plass, as in TeX):
+     * each line scores how far its spaces must stretch or shrink from Desired, measured against the room up to Maximum or
+     * down to Minimum, cubed. Squeezing below Minimum is not allowed. The last line of a run is free as long as it fits.
+     * Every line also costs a little, so fewer lines win a tie. With this scoring the breaks of the Endymion proxy come out
+     * exactly (see LayoutCoreTest), which is the evidence it matches Photoshop closely enough.
+     */
+    private fun composeEveryLine(m: Metrics, breakWidth: Float, greedy: List<RawLine>, atoms: List<Atom>): List<RawLine> {
+        val out = ArrayList<RawLine>(greedy.size)
+        var k = 0
+        while (k < greedy.size) {
+            // A run: lines k..e where every line but the last ended softly (and none is a fixed [[ ]] line).
+            var e = k
+            while (e < greedy.size - 1 && greedy[e].soft && greedy[e].last >= greedy[e].first &&
+                atoms[greedy[e].first].lock < 0) e++
+            val run = greedy.subList(k, e + 1)
+            if (run.size < 2 || atoms[run[0].first].lock >= 0) {
+                out.addAll(run)
+            } else {
+                out.addAll(composeRun(m, breakWidth, run, atoms))
+            }
+            k = e + 1
+        }
+        return out
+    }
+
+    private fun composeRun(m: Metrics, breakWidth: Float, run: List<RawLine>, atoms: List<Atom>): List<RawLine> {
+        val letterEm = opt.letterSpace
+        val from = run.first().first
+        val to = run.last().last
+        val n = to - from + 1
+        // Gap after each atom (its spaces at Desired), used between it and the next atom on the same line.
+        val gapW = FloatArray(n) { spacesWidth(m, atoms[from + it].end, atoms[from + it].spaces, letterEm) }
+        val gapN = IntArray(n) { atoms[from + it].spaces }
+        val inf = Float.MAX_VALUE
+        // best[j]: lowest cost of breaking atoms from..from+j-1 into lines; prev[j]: where the last of those lines starts.
+        val best = FloatArray(n + 1) { inf }
+        val prev = IntArray(n + 1) { -1 }
+        best[0] = 0f
+        val firstPara = run.first().paraFirst
+        for (j in 1..n) {
+            val isLast = j == n
+            var aW = 0f
+            var sW = 0f
+            var spaces = 0
+            var i = j - 1
+            while (i >= 0) {
+                aW += atoms[from + i].width
+                if (i < j - 1) {
+                    sW += gapW[i]
+                    spaces += gapN[i]
+                }
+                val avail = lineAvail(breakWidth, i == 0 && firstPara)
+                val atMin = aW + sW * wsMinF
+                if (atMin > avail + 0.01f && i < j - 1) break // more pieces only make it wider
+                if (best[i] == inf) { i--; continue }
+                val bad: Float = when {
+                    isLast -> if (atMin <= avail + 0.01f || i == j - 1) 0f else inf
+                    spaces == 0 || sW <= 0f -> if (i == j - 1) 10000f else inf
+                    else -> {
+                        val q = (avail - aW) / sW // space width needed, as a fraction of Desired
+                        val t = if (q >= 1f) (q - 1f) / (wsMaxF - 1f).coerceAtLeast(0.01f) else (1f - q) / (1f - wsMinF).coerceAtLeast(0.01f)
+                        minOf(100f * t * t * t, 10000f)
+                    }
+                }
+                if (bad < inf) {
+                    val c = best[i] + bad + 1f
+                    if (c < best[j]) {
+                        best[j] = c
+                        prev[j] = i
+                    }
+                }
+                i--
+            }
+        }
+        if (best[n] == inf) return run
+        val starts = ArrayList<Int>()
+        var j = n
+        while (j > 0) {
+            starts.add(prev[j])
+            j = prev[j]
+        }
+        starts.reverse()
+        val res = ArrayList<RawLine>(starts.size)
+        for ((idx, s) in starts.withIndex()) {
+            val end = if (idx + 1 < starts.size) starts[idx + 1] - 1 else n - 1
+            val last = idx == starts.size - 1
+            res.add(
+                RawLine(
+                    from + s, from + end,
+                    endsParagraph = if (last) run.last().endsParagraph else false,
+                    paraFirst = idx == 0 && firstPara,
+                    soft = !last || run.last().soft,
+                )
+            )
+        }
+        return res
     }
 
     private fun lineHeightOf(m: Metrics): Float {
@@ -465,6 +596,10 @@ class LayoutCore(
                     justified = true
                     spread = extra / gaps
                 }
+            } else if (extra < -0.01f && gaps > 0) {
+                // The line only fits with its spaces squeezed toward the minimum word spacing (any alignment).
+                justified = true
+                spread = extra / gaps
             } else if (align == 0 && lines.size > 1 && extra > 0f && (gaps > 0 || (isLastLine && opt.lastStretch > 0f))) {
                 if (!endsParagraph) {
                     justified = gaps > 0

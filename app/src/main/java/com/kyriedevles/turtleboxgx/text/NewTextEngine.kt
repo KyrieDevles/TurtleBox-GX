@@ -145,6 +145,7 @@ class NewTextEngine(
             flow = opt.flow, spacing = opt.spacing,
             indentLeft = opt.indentLeft, indentRight = opt.indentRight, indentFirst = opt.indentFirst,
             spaceBefore = opt.spaceBefore, spaceAfter = opt.spaceAfter,
+            wordSpaceMin = opt.wordSpaceMin, wordSpaceMax = opt.wordSpaceMax, composer = opt.composer,
         ),
         { size -> materialsHeight(size) },
         baseSize,
