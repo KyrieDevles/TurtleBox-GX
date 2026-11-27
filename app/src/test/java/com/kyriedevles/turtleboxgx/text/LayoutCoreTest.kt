@@ -360,4 +360,33 @@ class LayoutCoreTest {
         val end = line.originX + (right(r, w, fr.text) - line.originX) * line.scaleX
         assertEquals(190f, end, 0.7f)
     }
+
+    @Test
+    fun automaticLeadingCountsLikeStaticLayout() {
+        // Fake font at size 20: top -20, ascent -18, descent 4, bottom 6. Lines are ascent-to-descent (22) apart; the font's
+        // full top-to-bottom height (26) only counts above the first line and below the last.
+        val r = core("a\nb\nc", 200f).place(20f, 1f)
+        assertEquals(22f, r.lineHeight, 0.001f)
+        assertEquals(20f, r.lines[0].baseline, 0.001f)
+        assertEquals(22f, r.lines[1].baseline - r.lines[0].baseline, 0.001f)
+        assertEquals(26f + 2 * 22f, r.textHeight, 0.001f)
+        assertEquals(26f, core("a", 200f).place(20f, 1f).textHeight, 0.001f)
+    }
+
+    @Test
+    fun leadingInPxKeepsEveryLineThatTall() {
+        val r = core("a\nb\nc", 200f, opt = LayoutOptions(leadingPx = 12.9f)).place(20f, 1f)
+        assertEquals(12.9f, r.lineHeight, 0.001f)
+        assertEquals(3 * 12.9f, r.textHeight, 0.001f)
+        assertEquals(18f, r.lines[0].baseline, 0.001f)
+    }
+
+    @Test
+    fun theFitUsesTheSameHeightAsThePlacedText() {
+        val t = (words + words).joinToString(" ")
+        val r = core(t, 300f, h = 180f, base = 30f).layout()
+        assertTrue("height ${r.textHeight}", r.textHeight <= 180.01f)
+        // The box is used fully: one more line would not fit.
+        assertTrue("height ${r.textHeight} is far below the box", r.textHeight > 180f - r.lineHeight * 1.5f)
+    }
 }

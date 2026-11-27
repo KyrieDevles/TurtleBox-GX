@@ -15,6 +15,12 @@ interface Metrics {
     val ascent: Float
     val descent: Float
     val bottom: Float
+    // The same four numbers rounded the way Paint.getFontMetricsInt gives them. Android's StaticLayout (the old engine)
+    // lays automatic-leading text out with these, so the New engine does too. They default to the exact ones.
+    val lineTop: Float get() = top
+    val lineAscent: Float get() = ascent
+    val lineDescent: Float get() = descent
+    val lineBottom: Float get() = bottom
 }
 
 fun interface MetricsFactory {
@@ -301,17 +307,30 @@ class LayoutCore(
             val h = m.descent - m.ascent
             if (h > 0f) opt.leadingPx / h else opt.spacing
         } else opt.spacing
-        val base = if (opt.leadingPx > 0f) m.descent - m.ascent else m.bottom - m.top
+        // Automatic leading, like StaticLayout: lines are ascent-to-descent apart. (The font's full top-to-bottom height
+        // only counts above the first line and below the last one, see blockHeight.)
+        val base = if (opt.leadingPx > 0f) m.descent - m.ascent else m.lineDescent - m.lineAscent
         return base * mult
     }
 
-    private fun firstBaseline(m: Metrics): Float = -(if (opt.leadingPx > 0f) m.ascent else m.top)
+    private fun firstBaseline(m: Metrics): Float = -(if (opt.leadingPx > 0f) m.ascent else m.lineTop)
+
+    /**
+     * Height of [n] lines without paragraph spacing. With Leading px every line is that tall. With automatic leading the
+     * first line starts at the font's top and the last ends at its bottom, and the lines in between are one line height
+     * apart, which is how StaticLayout (and so the old engine) counts.
+     */
+    private fun blockHeight(m: Metrics, n: Int): Float {
+        if (n <= 0) return 0f
+        val lh = lineHeightOf(m)
+        return if (opt.leadingPx > 0f) n * lh else (m.lineBottom - m.lineTop) + (n - 1) * lh
+    }
 
     /** How many lines the text takes at this size and squeeze, and how tall that is. Used by the fit search. */
     private fun heightAt(size: Float, scaleX: Float): Float {
         val m = factory.at(size, scaleX)
         val (lines, _) = wrap(m, wrapWidth)
-        return reserve(size) + lines.size * lineHeightOf(m) + paraSpacing(lines)
+        return reserve(size) + blockHeight(m, lines.size) + paraSpacing(lines)
     }
 
     private fun fits(size: Float, scaleX: Float): Boolean = heightAt(size, scaleX) <= boxHeight
@@ -478,7 +497,7 @@ class LayoutCore(
             laid.add(LaidLine(li, start, end, baseline, letterExtra, total, lineScale, lx))
             widest = maxOf(widest, lx + total)
         }
-        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, lines.size * lineH + extraY, widest)
+        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, blockHeight(m, lines.size) + extraY, widest)
     }
 
     /** Horizontal alignment: 0 left (and justified), 1 centre, 2 right. Set before [layout]. */

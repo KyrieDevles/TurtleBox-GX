@@ -55,6 +55,7 @@ class PaintMetrics(
     private val cache = HashMap<Int, TextPaint>()
     private val smallCache = HashMap<Int, TextPaint>()
     private val fm = plain.fontMetrics
+    private val fmi = plain.fontMetricsInt
 
     /** What a style id carries beyond bold and italic, or null. */
     fun extra(style: Int): RunExtra? = extraOf(style, extras)
@@ -100,6 +101,10 @@ class PaintMetrics(
     override val ascent get() = fm.ascent
     override val descent get() = fm.descent
     override val bottom get() = fm.bottom
+    override val lineTop get() = fmi.top.toFloat()
+    override val lineAscent get() = fmi.ascent.toFloat()
+    override val lineDescent get() = fmi.descent.toFloat()
+    override val lineBottom get() = fmi.bottom.toFloat()
 }
 
 /**
