@@ -263,4 +263,101 @@ class LayoutCoreTest {
             for (l in r.lines) assertTrue(l.width <= 360.5f)
         }
     }
+
+    // --- Paragraph settings (px) ---
+
+    private fun wordsOf(r: LayoutResult, line: Int) = r.words.filter { it.line == line }
+
+    @Test
+    fun leftIndentShiftsEveryLineAndNarrowsIt() {
+        val t = words.joinToString(" ")
+        val r = core(t, 300f, opt = LayoutOptions(indentLeft = 40f)).place(20f, 1f)
+        assertTrue(r.lines.size > 2)
+        for (p in r.words) {
+            assertTrue("word starts at ${p.x}", p.x >= 40f - 0.01f)
+            assertTrue("word ends at ${right(r, p, t)}", right(r, p, t) <= 300.5f)
+        }
+        // Full lines are still stretched, now to the indented width.
+        for (li in 0 until r.lines.size - 1) assertEquals(300f, right(r, wordsOf(r, li).last(), t), 0.6f)
+    }
+
+    @Test
+    fun rightIndentKeepsTextAwayFromTheRightEdge() {
+        val t = words.joinToString(" ")
+        val r = core(t, 300f, opt = LayoutOptions(indentRight = 50f)).place(20f, 1f)
+        for (p in r.words) assertTrue("word ends at ${right(r, p, t)}", right(r, p, t) <= 250.5f)
+        for (li in 0 until r.lines.size - 1) assertEquals(250f, right(r, wordsOf(r, li).last(), t), 0.6f)
+    }
+
+    @Test
+    fun firstLineIndentOnlyMovesTheFirstLineOfEachParagraph() {
+        val t = "aa bb cc dd ee ff gg hh ii jj kk ll\nmm nn oo pp qq rr ss tt uu vv ww xx"
+        val r = core(t, 100f, opt = LayoutOptions(indentFirst = 30f)).place(20f, 1f)
+        val firstLines = r.lines.indices.filter { li -> li == 0 || t[r.lines[li - 1].end].let { c -> c == '\n' } }
+        assertTrue(firstLines.size >= 2)
+        for (li in r.lines.indices) {
+            val x0 = wordsOf(r, li).first().x
+            if (li in firstLines) assertEquals("line $li", 30f, x0, 0.01f) else assertEquals("line $li", 0f, x0, 0.01f)
+        }
+    }
+
+    @Test
+    fun aHangingIndentStartsTheFirstLineAtTheEdge() {
+        val t = "aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp"
+        val r = core(t, 100f, opt = LayoutOptions(indentLeft = 30f, indentFirst = -30f)).place(20f, 1f)
+        assertEquals(0f, wordsOf(r, 0).first().x, 0.01f)
+        assertEquals(30f, wordsOf(r, 1).first().x, 0.01f)
+        // The first line is wider than the others.
+        assertTrue(wordsOf(r, 0).size >= wordsOf(r, 1).size)
+    }
+
+    @Test
+    fun spaceBeforeAndAfterAddHeightAtEveryParagraphBreakOnly() {
+        val plain = core("a\nb\nc", 200f).place(20f, 1f)
+        val spaced = core("a\nb\nc", 200f, opt = LayoutOptions(spaceBefore = 5f, spaceAfter = 7f)).place(20f, 1f)
+        val lh = plain.lineHeight
+        assertEquals(lh, plain.lines[1].baseline - plain.lines[0].baseline, 0.001f)
+        assertEquals(lh + 12f, spaced.lines[1].baseline - spaced.lines[0].baseline, 0.001f)
+        assertEquals(lh + 12f, spaced.lines[2].baseline - spaced.lines[1].baseline, 0.001f)
+        assertEquals(plain.textHeight + 24f, spaced.textHeight, 0.001f)
+    }
+
+    @Test
+    fun linesOfOneParagraphKeepNormalSpacing() {
+        val t = words.joinToString(" ")
+        val r = core(t, 200f, opt = LayoutOptions(spaceBefore = 9f, spaceAfter = 9f)).place(20f, 1f)
+        assertTrue(r.lines.size > 3)
+        for (li in 1 until r.lines.size) assertEquals(r.lineHeight, r.lines[li].baseline - r.lines[li - 1].baseline, 0.001f)
+    }
+
+    @Test
+    fun theFitCountsParagraphSpacing() {
+        val t = "one two three\nfour five six\nseven eight nine"
+        val r = core(t, 300f, h = 120f, base = 30f, opt = LayoutOptions(spaceBefore = 10f, spaceAfter = 10f)).layout()
+        assertTrue("height ${r.textHeight}", r.textHeight <= 120.01f)
+        assertTrue("size ${r.size}", r.size < 30f)
+    }
+
+    @Test
+    fun indentsStayTheSameSizeOnTheCardUnderHorizontalScale() {
+        // At 200% horizontal scale the block is drawn twice as wide, so a 40 px indent is 20 px in layout space.
+        val t = words.joinToString(" ")
+        val r = core(t, 300f, opt = LayoutOptions(hScale = 200f, indentLeft = 40f)).place(20f, 1f)
+        for (p in r.words) assertTrue(p.x >= 20f - 0.01f)
+        assertEquals(20f, r.lines[0].originX, 0.01f)
+    }
+
+    @Test
+    fun aLongFixedLineSqueezesToTheIndentedWidth() {
+        val t = "[[aaaa bbbb cccc dddd eeee ffff gggg]]"
+        val (c, fr) = fixedCore(t, 200f, LayoutOptions(indentLeft = 40f, indentRight = 10f))
+        val r = c.place(20f, 1f)
+        val line = r.lines[0]
+        assertTrue("scale ${line.scaleX}", line.scaleX < 1f)
+        assertEquals(40f, line.originX, 0.01f)
+        val w = wordsOf(r, 0).last()
+        // After the squeeze about the line's origin, the line ends at the right indent.
+        val end = line.originX + (right(r, w, fr.text) - line.originX) * line.scaleX
+        assertEquals(190f, end, 0.7f)
+    }
 }

@@ -68,6 +68,12 @@ class TextOptions(
     val fontScale: Float = 0f, // manual font size in % of the layout size (0 = automatic fit)
     val flow: Float = 0f, // % of the whole-text reflow toward the narrowest wrap with the same line count (0..100)
     val spacing: Float = 1f, // line spacing multiplier
+    // Paragraph settings in card px (New engine only). First-line indent may be negative (hanging).
+    val indentLeft: Float = 0f,
+    val indentRight: Float = 0f,
+    val indentFirst: Float = 0f,
+    val spaceBefore: Float = 0f,
+    val spaceAfter: Float = 0f,
 )
 
 /**

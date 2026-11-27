@@ -37,6 +37,12 @@ class LayoutOptions(
     val fontScale: Float = 0f,
     val flow: Float = 0f,
     val spacing: Float = 1f,
+    /** Paragraph settings in card px (like Photoshop's Paragraph panel). First-line indent may be negative (hanging). */
+    val indentLeft: Float = 0f,
+    val indentRight: Float = 0f,
+    val indentFirst: Float = 0f,
+    val spaceBefore: Float = 0f,
+    val spaceAfter: Float = 0f,
 )
 
 /** One word (or any unbreakable piece) of a line: text[start, end) drawn at [x] from the box's left edge. */
@@ -52,6 +58,8 @@ class LaidLine(
     val width: Float,
     /** Horizontal squeeze applied to the whole line (a non-breakable line that was too long). 1 = none. */
     val scaleX: Float = 1f,
+    /** Where the line starts, from the box's left edge (its paragraph indent). The squeeze above is applied about this x. */
+    val originX: Float = 0f,
 )
 
 class LayoutResult(
@@ -79,7 +87,8 @@ private class Atom(var start: Int, var end: Int, var spaces: Int, var endsParagr
     var lockJust = false
 }
 
-private class RawLine(val first: Int, val last: Int, val endsParagraph: Boolean)
+/** [paraFirst]: the line is the first of its paragraph (it gets the first-line indent and the space before). */
+private class RawLine(val first: Int, val last: Int, val endsParagraph: Boolean, val paraFirst: Boolean = false)
 
 class LayoutCore(
     private val src: Source,
@@ -98,6 +107,28 @@ class LayoutCore(
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
     private val wrapWidth = boxWidth / hs
     private val wordSpacePct = if (opt.wordSpace > 0f) opt.wordSpace else 100f
+
+    // Paragraph indents are in card px. The whole block is drawn with the horizontal scale applied to the canvas, so they
+    // are divided by it here to stay the same size on the card.
+    private val indL = opt.indentLeft / hs
+    private val indR = opt.indentRight / hs
+    private val indF = opt.indentFirst / hs
+
+    /** Where a line starts, from the box's left edge. */
+    private fun lineX(paraFirst: Boolean): Float = (indL + if (paraFirst) indF else 0f).coerceAtLeast(0f)
+
+    /** The width a line has between its indents, when the box is [breakWidth] wide. */
+    private fun lineAvail(breakWidth: Float, paraFirst: Boolean): Float =
+        (breakWidth - lineX(paraFirst) - indR).coerceAtLeast(1f)
+
+    /** Extra height of all the paragraph breaks: space after the paragraph above plus space before this one. */
+    private fun paraSpacing(lines: List<RawLine>): Float {
+        val per = opt.spaceBefore + opt.spaceAfter
+        if (per <= 0f) return 0f
+        var n = 0
+        for ((i, l) in lines.withIndex()) if (i > 0 && l.paraFirst) n++
+        return n * per
+    }
 
     private fun isCjk(c: Char): Boolean =
         c in '぀'..'ヿ' || c in '㐀'..'䶿' || c in '一'..'鿿' || c in '＀'..'￯' || c in '가'..'힯'
@@ -203,56 +234,65 @@ class LayoutCore(
         val lines = ArrayList<RawLine>()
         var lineFirst = -1
         var curW = 0f
+        var curAvail = 0f
+        // The line being built is the first of its paragraph at the start and after every paragraph break.
+        var pf = true
+        fun addLine(first: Int, last: Int, endsPara: Boolean) {
+            lines.add(RawLine(first, last, endsPara, pf))
+            pf = endsPara
+        }
         var i = 0
         while (i < atoms.size) {
             val a = atoms[i]
             a.width = runWidth(m, a.start, a.end, letterEm)
             if (lineFirst < 0) {
-                if (a.lock < 0 && a.width > breakWidth + 0.01f && a.end - a.start > 1) {
+                val avail = lineAvail(breakWidth, pf)
+                if (a.lock < 0 && a.width > avail + 0.01f && a.end - a.start > 1) {
                     // Too long for a line of its own: cut it where it stops fitting; the rest carries on.
                     var cut = a.start + 1
-                    while (cut < a.end && runWidth(m, a.start, cut + 1, letterEm) <= breakWidth + 0.01f) cut++
+                    while (cut < a.end && runWidth(m, a.start, cut + 1, letterEm) <= avail + 0.01f) cut++
                     val tail = Atom(cut, a.end, a.spaces, a.endsParagraph)
                     a.end = cut
                     a.spaces = 0
                     a.width = runWidth(m, a.start, a.end, letterEm)
                     atoms.add(i + 1, tail)
                     // A cut piece is a whole line by itself.
-                    lines.add(RawLine(i, i, false))
+                    addLine(i, i, false)
                     i++
                     continue
                 }
                 lineFirst = i
                 curW = a.width
+                curAvail = avail
             } else {
                 val prev = atoms[i - 1]
                 val gap = spacesWidth(m, prev.end, prev.spaces, letterEm)
                 if (a.lock != prev.lock) {
                     // A non-breakable line starts or ends here: it always has a line to itself.
-                    lines.add(RawLine(lineFirst, i - 1, false))
+                    addLine(lineFirst, i - 1, false)
                     lineFirst = -1
                     continue
                 }
-                if (a.lock >= 0 || curW + gap + a.width <= breakWidth + 0.01f) {
+                if (a.lock >= 0 || curW + gap + a.width <= curAvail + 0.01f) {
                     curW += gap + a.width
                 } else {
-                    lines.add(RawLine(lineFirst, i - 1, false))
+                    addLine(lineFirst, i - 1, false)
                     lineFirst = -1
                     continue // place this piece again as the first of a new line
                 }
             }
             if (a.endsParagraph) {
-                lines.add(RawLine(lineFirst, i, true))
+                addLine(lineFirst, i, true)
                 lineFirst = -1
             } else if (a.forced) {
-                lines.add(RawLine(lineFirst, i, false))
+                addLine(lineFirst, i, false)
                 lineFirst = -1
             }
             i++
         }
-        if (lineFirst >= 0) lines.add(RawLine(lineFirst, atoms.size - 1, true))
+        if (lineFirst >= 0) addLine(lineFirst, atoms.size - 1, true)
         // A text that ends with a paragraph break has an empty last line, like any editor.
-        if (text.isEmpty() || text.endsWith("\n")) lines.add(RawLine(atoms.size, atoms.size - 1, true))
+        if (text.isEmpty() || text.endsWith("\n")) addLine(atoms.size, atoms.size - 1, true)
         return lines to atoms
     }
 
@@ -271,7 +311,7 @@ class LayoutCore(
     private fun heightAt(size: Float, scaleX: Float): Float {
         val m = factory.at(size, scaleX)
         val (lines, _) = wrap(m, wrapWidth)
-        return reserve(size) + lines.size * lineHeightOf(m)
+        return reserve(size) + lines.size * lineHeightOf(m) + paraSpacing(lines)
     }
 
     private fun fits(size: Float, scaleX: Float): Boolean = heightAt(size, scaleX) <= boxHeight
@@ -363,11 +403,16 @@ class LayoutCore(
         val words = ArrayList<Placed>()
         var widest = 0f
         val plainSpace = m.advance(" ", 0, 1, 0, letterEm)
+        // Space after the paragraph above and before this one, added once per paragraph break.
+        var extraY = 0f
 
         for ((li, rl) in lines.withIndex()) {
-            val baseline = first + li * lineH
+            if (li > 0 && rl.paraFirst) extraY += opt.spaceBefore + opt.spaceAfter
+            val baseline = first + li * lineH + extraY
+            val lx = lineX(rl.paraFirst)
+            val avail = lineAvail(wrapWidth, rl.paraFirst)
             if (rl.last < rl.first) {
-                laid.add(LaidLine(li, text.length, text.length, baseline, 0f, 0f))
+                laid.add(LaidLine(li, text.length, text.length, baseline, 0f, 0f, 1f, lx))
                 continue
             }
             val atomsOfLine = atoms.subList(rl.first, rl.last + 1)
@@ -384,7 +429,7 @@ class LayoutCore(
             }
             val lw = natural(letterEm)
             val gaps = atomsOfLine.dropLast(1).sumOf { it.spaces }
-            val extra = wrapWidth - lw
+            val extra = avail - lw
             val isLastLine = li == lines.size - 1
             val endsParagraph = rl.endsParagraph || isLastLine
             var justified = false
@@ -395,8 +440,8 @@ class LayoutCore(
             var lineScale = 1f
 
             if (locked) {
-                if (lw > wrapWidth + 0.01f) {
-                    lineScale = (wrapWidth / lw).coerceAtLeast(0.3f)
+                if (lw > avail + 0.01f) {
+                    lineScale = (avail / lw).coerceAtLeast(0.3f)
                 } else if (atomsOfLine.first().lockJust && gaps > 0 && extra > 0f) {
                     justified = true
                     spread = extra / gaps
@@ -415,14 +460,14 @@ class LayoutCore(
                     letterExtra = minOf(extra / (contentLen.coerceAtLeast(1) * size), 0.08f)
                     val nw = natural(letterEm + letterExtra)
                     justified = true
-                    spread = maxOf(0f, (wrapWidth - nw) / gaps)
+                    spread = maxOf(0f, (avail - nw) / gaps)
                 }
             }
             val em = letterEm + letterExtra
-            val total = if (lineScale < 1f) wrapWidth else if (justified) natural(em) + spread * gaps else lw
-            var x = if (justified) 0f else when (align) {
-                2 -> wrapWidth - lw
-                1 -> (wrapWidth - lw) / 2f
+            val total = if (lineScale < 1f) avail else if (justified) natural(em) + spread * gaps else lw
+            var x = lx + if (justified) 0f else when (align) {
+                2 -> avail - lw
+                1 -> (avail - lw) / 2f
                 else -> 0f
             }
             for ((k, at) in atomsOfLine.withIndex()) {
@@ -430,10 +475,10 @@ class LayoutCore(
                 x += runWidth(m, at.start, at.end, em)
                 if (k < atomsOfLine.size - 1) x += spacesWidth(m, at.end, at.spaces, em) + spread * at.spaces
             }
-            laid.add(LaidLine(li, start, end, baseline, letterExtra, total, lineScale))
-            widest = maxOf(widest, total)
+            laid.add(LaidLine(li, start, end, baseline, letterExtra, total, lineScale, lx))
+            widest = maxOf(widest, lx + total)
         }
-        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, lines.size * lineH, widest)
+        return LayoutResult(size, scaleX, wrapWidth, lineH, laid, words, lines.size * lineH + extraY, widest)
     }
 
     /** Horizontal alignment: 0 left (and justified), 1 centre, 2 right. Set before [layout]. */

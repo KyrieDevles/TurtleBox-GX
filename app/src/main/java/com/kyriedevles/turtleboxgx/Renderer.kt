@@ -177,7 +177,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         if (text.isBlank()) return
         // Whole-box character styles from <allcaps> and <italic> children (values "on" or "off").
         fun flag(key: String) = ctx.sub(e.options[key] ?: "").trim().equals("on", ignoreCase = true)
-        if (flag("allcaps")) text = text.uppercase()
+        if (flag("allcaps")) text = com.kyriedevles.turtleboxgx.text.uppercaseOutsideTags(text)
         val font = pick(e.fonts)
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG or Paint.LINEAR_TEXT_FLAG)
         if (android.os.Build.VERSION.SDK_INT >= 33) paint.hinting = Paint.HINTING_OFF
@@ -262,7 +262,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             justify = num("justify"),
             lastStretch = num("justifylast"),
             flow = num("justifyflow"),
-            fontScale = num("fontscale"),
+            // Size in px (as in Photopea) turns into the same percent of the layout's font size that Size % uses.
+            fontScale = num("sizepx").takeIf { it > 0f }?.let { it * 100f / fontSize } ?: num("fontscale"),
             letterSpace = num("letterspace") + num("tracking") / 1000f,
             hScale = num("hscale").takeIf { it > 0f } ?: 100f,
             vScale = num("vscale").takeIf { it > 0f } ?: 100f,
@@ -270,6 +271,11 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             wordSpace = num("wordspace").takeIf { it > 0f } ?: 100f,
             leadingPx = num("leadingpx"),
             spacing = spacing,
+            indentLeft = num("indentleft"),
+            indentRight = num("indentright"),
+            indentFirst = num("indentfirst"),
+            spaceBefore = num("spacebefore"),
+            spaceAfter = num("spaceafter"),
         )
         var body = indentText(text, num("indent"))
         // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.
@@ -281,7 +287,11 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val matWidthPct = num("materialswidth").takeIf { it > 0f } ?: 100f
         val matLinePct = num("materialsline").takeIf { it > 0f } ?: 100f
         if (com.kyriedevles.turtleboxgx.text.TextSwitch.useNew) {
-            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
+            // <font=name> in the card text: a name from the layout's `namefonts` list, else a font file name.
+            val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
+                assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
+            }
+            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup)
             val used = engine.fit()
             engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         } else {
