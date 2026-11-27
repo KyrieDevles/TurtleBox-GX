@@ -70,6 +70,13 @@ class LayoutOptions(
      * old position (ATK/DEF values, small-caps fonts) would move.
      */
     val photoshopFirstBaseline: Boolean = false,
+    /**
+     * Justification, like Photoshop's paragraph alignment buttons. -1: the old rule (full lines justified when the
+     * alignment is left, never otherwise). 0: none (ragged, Photoshop's Left / Centre / Right). 1: full lines justified and
+     * the last line of each paragraph aligned by [LayoutCore.align] (Justify Last Left / Centred / Right). 2: every line
+     * justified, the last one too, by widening the spaces (Justify All).
+     */
+    val justifyMode: Int = -1,
 )
 
 /** One word (or any unbreakable piece) of a line: text[start, end) drawn at [x] from the box's left edge. */
@@ -567,6 +574,8 @@ class LayoutCore(
         val words = ArrayList<Placed>()
         var widest = 0f
         val plainSpace = m.advance(" ", 0, 1, 0, letterEm)
+        val justifyFull = if (opt.justifyMode < 0) align == 0 else opt.justifyMode >= 1
+        val justifyAll = opt.justifyMode == 2
         // Space after the paragraph above and before this one, added once per paragraph break.
         var extraY = 0f
 
@@ -595,7 +604,10 @@ class LayoutCore(
             val gaps = atomsOfLine.dropLast(1).sumOf { it.spaces }
             val extra = avail - lw
             val isLastLine = li == lines.size - 1
-            val endsParagraph = rl.endsParagraph || isLastLine
+            // A forced line break (<br>, Photoshop's Shift+Enter) ends the line like a paragraph end, for justification
+            // only: Photoshop does not stretch the line before it (seen in the user's template PSD).
+            val endsForced = atomsOfLine.last().forced
+            val endsParagraph = rl.endsParagraph || isLastLine || endsForced
             var justified = false
             var spread = 0f
             var letterExtra = 0f
@@ -614,10 +626,15 @@ class LayoutCore(
                 // The line only fits with its spaces squeezed toward the minimum word spacing (any alignment).
                 justified = true
                 spread = extra / gaps
-            } else if (align == 0 && lines.size > 1 && extra > 0f && (gaps > 0 || (isLastLine && opt.lastStretch > 0f))) {
+            } else if (justifyFull && (lines.size > 1 || justifyAll) && extra > 0f &&
+                (gaps > 0 || (isLastLine && opt.lastStretch > 0f))) {
                 if (!endsParagraph) {
                     justified = gaps > 0
                     spread = if (gaps > 0) extra / gaps else 0f
+                } else if (justifyAll && gaps > 0) {
+                    // Justify All: the last line is stretched too, by its spaces only (letter spacing 0, like Photoshop).
+                    justified = true
+                    spread = extra / gaps
                 } else if (opt.lastStretch > 0f && isLastLine) {
                     val want = extra * opt.lastStretch.coerceIn(0f, 100f) / 100f
                     letterExtra = minOf(want / (contentLen.coerceAtLeast(1) * size), 0.08f)

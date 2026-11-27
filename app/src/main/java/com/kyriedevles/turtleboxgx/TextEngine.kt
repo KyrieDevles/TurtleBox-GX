@@ -81,6 +81,8 @@ class TextOptions(
     val composer: Int = 0,
     // First baseline at the "d" height like Photoshop (New engine only; layout option firstbaseline = photoshop).
     val photoshopFirstBaseline: Boolean = false,
+    // Justification (New engine): -1 old rule, 0 none, 1 justify full lines, 2 justify all. See LayoutOptions.justifyMode.
+    val justifyMode: Int = -1,
 )
 
 /**

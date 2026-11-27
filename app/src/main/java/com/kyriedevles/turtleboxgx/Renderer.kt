@@ -199,11 +199,20 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         // Same rules as the old app: align tokens become Android gravity flags. Without a vertical token the
         // text sits at the top (TextView adds TOP), and "top"/"bottom" are not recognised, so they count as top.
         val flags = ctx.sub(pick(e.aligns) ?: "left").lowercase().split('|').map { it.trim() }
+        // Photoshop's paragraph alignments (New engine; Classic treats them as the nearest plain alignment):
+        // ragleft = Left (ragged), justcenter / justright = Justify Last Centred / Right, justall = Justify All.
+        // Plain "left" keeps its old meaning, which is Justify Last Left.
         val h = when {
-            "right" in flags -> 2
-            "left" in flags -> 0
-            "center" in flags || "hcenter" in flags || "center_horizontal" in flags -> 1
+            "right" in flags || "justright" in flags -> 2
+            "left" in flags || "ragleft" in flags || "justall" in flags -> 0
+            "center" in flags || "hcenter" in flags || "center_horizontal" in flags || "justcenter" in flags -> 1
             else -> 0
+        }
+        val justifyMode = when {
+            "justall" in flags -> 2
+            "justcenter" in flags || "justright" in flags -> 1
+            "ragleft" in flags -> 0
+            else -> -1
         }
         val singleLine = e.attrs["singleline"] == "true"
         var v = when {
@@ -280,6 +289,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             wordSpaceMax = num("wordspacemax"),
             composer = if (ctx.sub(e.options["composer"] ?: "").trim().equals("everyline", ignoreCase = true) || num("composer") >= 1f) 1 else 0,
             photoshopFirstBaseline = ctx.sub(e.options["firstbaseline"] ?: "").trim().equals("photoshop", ignoreCase = true),
+            justifyMode = justifyMode,
         )
         var body = indentText(text, num("indent"))
         // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.

@@ -183,16 +183,45 @@ class LayoutCoreTest {
     }
 
     @Test
-    fun aForcedBreakEndsTheLineButStillJustifiesIt() {
+    fun aForcedBreakEndsTheLineWithoutStretchingItLikePhotoshop() {
+        // Photoshop does not stretch the line before Shift+Enter (the user's template PSD); the next line is not a new
+        // paragraph either.
         val t = "aa bb\u2028cc dd ee"
-        val r = core(t, 200f).place(20f, 1f)
+        val r = core(t, 200f, opt = LayoutOptions(indentFirst = 30f)).place(20f, 1f)
         assertEquals(2, r.lines.size)
         val first = r.words.filter { it.line == 0 }
         assertEquals("aa", t.substring(first[0].start, first[0].end))
         assertEquals("bb", t.substring(first[1].start, first[1].end))
-        assertEquals(200f, right(r, first.last(), t), 0.6f)
+        // Natural width: 5 characters of 10 px after the 30 px first-line indent, not stretched to 200.
+        assertEquals(80f, right(r, first.last(), t), 0.6f)
         val second = r.words.filter { it.line == 1 }
         assertEquals("cc", t.substring(second[0].start, second[0].end))
+        assertEquals(0f, second[0].x, 0.01f)
+    }
+
+    @Test
+    fun justifyModesFollowPhotoshop() {
+        // Two paragraphs; the first wraps. Fake font: 10 px per character at size 20.
+        val t = "aa bb cc dd ee ff gg hh\nii jj"
+        fun lineEnds(mode: Int, align: Int): List<Float> {
+            val r = core(t, 100f, opt = LayoutOptions(justifyMode = mode), align = align).place(20f, 1f)
+            return r.lines.map { ln -> r.words.filter { it.line == ln.index }.maxOf { right(r, it, t) } }
+        }
+        // Left (ragged): nothing stretched.
+        assertTrue(lineEnds(0, 0).all { it < 99f })
+        // Justify Last Left: full lines reach the edge, the paragraph's last line does not.
+        val jl = lineEnds(1, 0)
+        assertEquals(100f, jl[0], 0.6f)
+        assertTrue(jl.last() < 99f)
+        // Justify Last Right: full lines justified, the last line of each paragraph pushed to the right edge.
+        val jr = lineEnds(1, 2)
+        assertTrue(jr.all { Math.abs(it - 100f) < 0.6f })
+        // Justify All: every line reaches the edge, last lines included.
+        assertTrue(lineEnds(2, 0).all { Math.abs(it - 100f) < 0.6f })
+        // The old rule (mode -1) is still Justify Last Left for left alignment and ragged for centre.
+        assertEquals(jl, lineEnds(-1, 0))
+        val oldCentre = core(t, 100f, align = 1).place(20f, 1f)
+        assertTrue(oldCentre.lines.size == lineEnds(0, 1).size)
     }
 
     @Test
