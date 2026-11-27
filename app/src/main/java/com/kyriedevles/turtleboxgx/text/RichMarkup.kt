@@ -143,7 +143,7 @@ private fun applyTag(
             if (closing) { if (fonts.isNotEmpty()) fonts.removeAt(fonts.size - 1) }
             else {
                 // keepWord boxes glue "/" with a word joiner; a font file path must not carry it.
-                val f = (value ?: return false).replace("⁠", "").trim()
+                val f = (value ?: return false).replace("\u2060", "").trim()
                 if (f.isEmpty()) return false
                 fonts.add(f)
             }

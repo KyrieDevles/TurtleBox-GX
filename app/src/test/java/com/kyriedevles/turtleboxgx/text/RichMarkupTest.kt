@@ -96,7 +96,7 @@ class RichMarkupTest {
 
     @Test
     fun aFontTagKeepsItsNameWithoutWordJoiners() {
-        val r = parseRich("<font=font/RO⁠ rush.otf>ab</font>c")
+        val r = parseRich("<font=font/RO\u2060 rush.otf>ab</font>c")
         assertEquals("abc", r.text)
         assertEquals("font/RO rush.otf", extraAt(r, 0)!!.font)
         assertNull(extraAt(r, 2))

@@ -9,7 +9,7 @@ import java.util.Random
 private class FakeMetrics(val size: Float, val scaleX: Float) : Metrics {
     override fun advance(text: String, from: Int, to: Int, style: Int, letterEm: Float): Float {
         var n = 0
-        for (i in from until to) if (text[i] != '⁠') n++
+        for (i in from until to) if (text[i] != '\u2060') n++
         val bold = if ((style and 1) != 0) 1.2f else 1f
         return n * (size * 0.5f * scaleX * bold + letterEm * size)
     }
@@ -127,12 +127,12 @@ class LayoutCoreTest {
 
     @Test
     fun aWordJoinerStopsTheBreakAfterASlash() {
-        val t = "xx ab/⁠cd"
+        val t = "xx ab/\u2060cd"
         val r = core(t, 70f).place(20f, 1f)
         assertEquals(2, r.lines.size)
         val second = r.words.filter { it.line == 1 }
         assertEquals(1, second.size)
-        assertEquals("ab/⁠cd", t.substring(second[0].start, second[0].end))
+        assertEquals("ab/\u2060cd", t.substring(second[0].start, second[0].end))
     }
 
     @Test

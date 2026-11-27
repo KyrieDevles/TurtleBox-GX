@@ -125,7 +125,7 @@ class NewTextEngine(
     private val fontLookup: (String) -> Typeface? = { null },
 ) {
     // <br> is a forced line break inside a paragraph (like Photoshop's Shift+Enter): the line before it is still justified.
-    private val parsed = parseRich(rawText.replace("<br>", " ", ignoreCase = true))
+    private val parsed = parseRich(rawText.replace("<br>", "\u2028", ignoreCase = true))
     // [[ ]] around a whole line: it never wraps; too long it squeezes, short it stretches to the full width.
     private val fixedLines = extractFixedLines(parsed.text, parsed.styles)
     private val styled = StyledTextView(fixedLines.text, fixedLines.styles)
@@ -256,7 +256,8 @@ class NewTextEngine(
             off = if (strike) -sz * 0.3f else sz * 0.12f
             thick = sz / 16f
         }
-        val t = thick.coerceAtLeast(1f)
+        // Card px: 1 px here is 2-3 px in the exported image, so allow a thin line.
+        val t = thick.coerceAtLeast(0.4f)
         linePaint.color = p.color
         val top = baseline + off
         c.drawRect(x0, top, x1, top + t, linePaint)

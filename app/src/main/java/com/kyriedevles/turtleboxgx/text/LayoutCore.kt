@@ -198,9 +198,9 @@ class LayoutCore(
                         contentEnd = i
                         val next = if (i < n) text[i] else '\u0000'
                         val breakHere = (c == '-' && i < n && next != ' ' && next != '\n' && s < i - 1) ||
-                            (c == '/' && next != '⁠' && i < n && next != ' ' && next != '\n') ||
-                            c == '​' ||
-                            (i < n && next != ' ' && next != '\n' && (isCjk(c) || isCjk(next)) && next != '⁠')
+                            (c == '/' && next != '\u2060' && i < n && next != ' ' && next != '\n') ||
+                            c == '\u200b' ||
+                            (i < n && next != ' ' && next != '\n' && (isCjk(c) || isCjk(next)) && next != '\u2060')
                         if (breakHere) done = true
                     }
                 }
