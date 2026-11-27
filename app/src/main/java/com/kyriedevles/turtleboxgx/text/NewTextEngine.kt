@@ -117,6 +117,7 @@ class PaintMetrics(
         if (r.isEmpty || r.top >= 0f) -fm.ascent else -r.top
     }
     override val firstLineAscent get() = dHeight
+    override val emSize get() = size
 }
 
 /**
@@ -136,8 +137,12 @@ class NewTextEngine(
     private val materialsLinePct: Float = 100f,
     /** Finds the typeface a <font=name> tag asks for; null when the name is unknown (the box's own font is kept). */
     private val fontLookup: (String) -> Typeface? = { null },
+    /** Fit steps (preset size / leading / tracking), tried in order. Empty: the smooth auto-fit. */
+    private val fitSteps: List<FitStep> = emptyList(),
+    /** Squeeze limits in % for texts of 1, 2 and 3+ paragraphs, used with [fitSteps]. */
+    private val squeezeLimits: List<Float> = emptyList(),
 ) {
-    // <br> is a forced line break inside a paragraph (like Photoshop's Shift+Enter): the line before it is still justified.
+    // <br> is a forced line break inside a paragraph (like Photoshop's Shift+Enter): the line before it is not stretched.
     private val parsed = parseRich(rawText.replace("<br>", "\u2028", ignoreCase = true))
     // [[ ]] around a whole line: it never wraps; too long it squeezes, short it stretches to the full width.
     private val fixedLines = extractFixedLines(parsed.text, parsed.styles)
@@ -146,12 +151,7 @@ class NewTextEngine(
     private val baseSize = paint.textSize
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
     private val vs = (opt.vScale.takeIf { it > 0f } ?: 100f) / 100f
-    private val core = LayoutCore(
-        Source(text, styled.styles),
-        { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup) },
-        boxWidth,
-        boxHeight,
-        LayoutOptions(
+    private val baseOptions = LayoutOptions(
             condense = opt.condense, fitMode = opt.fitMode, minSizePct = opt.minSizePct, maxSizePct = opt.maxSizePct,
             minLines = opt.minLines, justify = opt.justify, letterSpace = opt.letterSpace, lastStretch = opt.lastStretch,
             hScale = opt.hScale, wordSpace = opt.wordSpace, leadingPx = opt.leadingPx, fontScale = opt.fontScale,
@@ -160,11 +160,21 @@ class NewTextEngine(
             spaceBefore = opt.spaceBefore, spaceAfter = opt.spaceAfter,
             wordSpaceMin = opt.wordSpaceMin, wordSpaceMax = opt.wordSpaceMax, composer = opt.composer,
             photoshopFirstBaseline = opt.photoshopFirstBaseline, justifyMode = opt.justifyMode,
-        ),
+        )
+
+    private fun makeCore(o: LayoutOptions) = LayoutCore(
+        Source(text, styled.styles),
+        { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup) },
+        boxWidth,
+        boxHeight,
+        o,
         { size -> materialsHeight(size) },
         baseSize,
         fixedLines.spans,
     )
+
+    /** The layout in use: the plain auto-fit one, or the one of the fit step that was chosen. */
+    private var core = makeCore(baseOptions)
     private var result: LayoutResult? = null
     private var placedAlign = 0
     private var matLayout: StaticLayout? = null
@@ -195,9 +205,23 @@ class NewTextEngine(
 
     /** Chooses the size and squeeze and lays the text out. Returns the height used, materials row included. */
     fun fit(): Float {
-        core.align = 0
         placedAlign = 0
-        val r = core.layout()
+        val r: LayoutResult
+        // Fit steps apply unless the size was set by hand (Size % or Size px), like the auto-fit they replace.
+        if (fitSteps.isNotEmpty() && opt.fontScale <= 0f) {
+            val paragraphs = text.split('\n').count { it.isNotBlank() }
+            val chosen = chooseFitStep(
+                fitSteps, squeezeLimitFor(paragraphs, squeezeLimits), baseOptions, baseSize,
+                { o -> makeCore(o).also { it.align = 0 } },
+                { res -> res.textHeight + materialsHeight(res.size) <= boxHeight + 0.01f },
+            )
+            core = chosen.first
+            r = chosen.second
+        } else {
+            core = makeCore(baseOptions)
+            core.align = 0
+            r = core.layout()
+        }
         result = r
         matLayout = null
         matH = 0f

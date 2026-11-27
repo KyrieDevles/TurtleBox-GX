@@ -305,7 +305,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
                 assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
             }
-            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup)
+            // Fit steps: <fitsteps>on</fitsteps> with <fitstep1>..<fitstep6> ("size px / leading px / tracking") and
+            // <fitsqueeze> (squeeze limits in % for 1 / 2 / 3+ paragraphs).
+            val steps = if (ctx.sub(e.options["fitsteps"] ?: "").trim().equals("on", ignoreCase = true))
+                (1..6).mapNotNull { com.kyriedevles.turtleboxgx.text.parseFitStep(ctx.sub(e.options["fitstep$it"] ?: "")) }
+            else emptyList()
+            val squeeze = ctx.sub(e.options["fitsqueeze"] ?: "").split('/', ',', ' ', ';').mapNotNull { it.trim().toFloatOrNull() }.filter { it > 0f }
+            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup, steps, squeeze)
             val used = engine.fit()
             engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         } else {

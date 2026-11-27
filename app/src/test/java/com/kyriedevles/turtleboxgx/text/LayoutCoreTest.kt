@@ -17,6 +17,7 @@ private class FakeMetrics(val size: Float, val scaleX: Float) : Metrics {
     override val ascent = -size * 0.9f
     override val descent = size * 0.2f
     override val bottom = size * 0.3f
+    override val emSize = size
 }
 
 private val fake = MetricsFactory { s, x -> FakeMetrics(s, x) }

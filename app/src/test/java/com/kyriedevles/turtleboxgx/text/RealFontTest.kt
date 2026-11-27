@@ -47,6 +47,7 @@ private class MatrixMetrics(val size: Float, val scaleX: Float) : Metrics {
     override val ascent = -MatrixBook.ascent / 1000f * size
     override val descent = MatrixBook.descent / 1000f * size
     override val bottom = -MatrixBook.yMin / 1000f * size
+    override val emSize = size
     // Height of "d" in MatrixBook (760 units), which is where Photoshop puts the first baseline.
     override val firstLineAscent = 0.760f * size
 }
@@ -153,5 +154,84 @@ class RealFontTest {
             val r = core.place(16f, 1f)
             for (line in r.lines) assertTrue("line ${line.index} is ${line.width} wide in a $w box", line.width <= w + 0.05f)
         }
+    }
+
+    // Fit steps for the monster effect box (template box 353.7 x 78.05 card px): the template's 6-line and 7-line layers,
+    // then ygocarder's smaller sizes.
+    private val effectSteps = listOf(
+        FitStep(12.58f, 12.83f, 7f), FitStep(10.65f, 11.14f, -5f),
+        FitStep(9.74f, 9.74f, 0f), FitStep(8.65f, 8.65f, 0f), FitStep(7.77f, 7.77f, 0f),
+    )
+    private val effectBase = LayoutOptions(wordSpace = 100f, wordSpaceMin = 80f, wordSpaceMax = 133f, photoshopFirstBaseline = true)
+
+    private fun fitEffect(text: String, base: LayoutOptions = effectBase): LayoutResult {
+        val paragraphs = text.split('\n').count { it.isNotBlank() }
+        val limit = squeezeLimitFor(paragraphs, listOf(64.5f, 66.5f, 68.5f))
+        return chooseFitStep(effectSteps, limit, base, 12f,
+            { o -> LayoutCore(Source(text, IntArray(text.length)), matrix, 353.7f, 78.05f, o, { 0f }, 12f) },
+            { r -> r.textHeight <= 78.05f + 0.01f }).second
+    }
+
+    @Test
+    fun aNormalEffectUsesTheTemplateSizeUnsqueezed() {
+        val r = fitEffect(spellEffect)
+        assertEquals(12.58f, r.size, 0.01f)
+        assertEquals(1f, r.scaleX, 0.001f)
+        assertEquals(12.83f, r.lineHeight, 0.001f)
+    }
+
+    @Test
+    fun aLongEffectIsSqueezedBeforeItShrinks() {
+        // Endymion's effect needs about 67% squeeze at the template size, inside the 64.5% limit, so it keeps 12.58 px.
+        val r = fitEffect(endymionEffect.joinToString(" "))
+        assertEquals(12.58f, r.size, 0.01f)
+        assertTrue("squeeze ${r.scaleX}", r.scaleX < 0.8f && r.scaleX >= 0.645f)
+        assertTrue(r.lines.size <= 6)
+    }
+
+    @Test
+    fun aVeryLongEffectMovesToASmallerStepAndStillFits() {
+        val text = endymionEffect.joinToString(" ") + " " + spellEffect
+        val r = fitEffect(text)
+        assertTrue("size ${r.size}", r.size < 12.58f)
+        assertTrue(effectSteps.any { Math.abs(it.sizePx - r.size) < 0.01f })
+        assertTrue(r.textHeight <= 78.06f)
+        assertTrue(r.scaleX >= 0.645f)
+    }
+
+    @Test
+    fun beyondTheLastStepTheTextShrinksSmoothlyAndFits() {
+        val text = List(4) { endymionEffect.joinToString(" ") }.joinToString(" ")
+        val r = fitEffect(text)
+        assertTrue("size ${r.size}", r.size < 7.77f)
+        assertTrue(r.textHeight <= 78.06f)
+        // The last step's leading ratio is kept.
+        assertEquals(r.size, r.lineHeight, 0.01f)
+    }
+
+    @Test
+    fun theUsersLeadingReplacesTheSteps() {
+        val r = fitEffect(spellEffect, effectBase.copy(leadingPx = 12f))
+        assertEquals(12f, r.lineHeight, 0.001f)
+    }
+
+    @Test
+    fun squeezeLimitsDependOnParagraphCount() {
+        val l = listOf(64.5f, 66.5f, 68.5f)
+        assertEquals(0.645f, squeezeLimitFor(1, l), 1e-5f)
+        assertEquals(0.665f, squeezeLimitFor(2, l), 1e-5f)
+        assertEquals(0.685f, squeezeLimitFor(3, l), 1e-5f)
+        assertEquals(0.685f, squeezeLimitFor(7, l), 1e-5f)
+    }
+
+    @Test
+    fun fitStepsParseFromTheLayout() {
+        val s = parseFitStep("12.58 / 12.83 / 7")!!
+        assertEquals(12.58f, s.sizePx, 1e-5f)
+        assertEquals(12.83f, s.leadingPx, 1e-5f)
+        assertEquals(7f, s.tracking, 1e-5f)
+        assertEquals(-5f, parseFitStep("10.65,11.14,-5")!!.tracking, 1e-5f)
+        assertEquals(0f, parseFitStep("9.74/9.74")!!.tracking, 1e-5f)
+        assertTrue(parseFitStep("") == null && parseFitStep(null) == null && parseFitStep("abc") == null)
     }
 }

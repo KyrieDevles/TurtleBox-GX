@@ -27,6 +27,8 @@ interface Metrics {
      * default is the font ascent, which is what the engine used before.
      */
     val firstLineAscent: Float get() = -ascent
+    /** The font size these metrics are for (px). Used by leading given as a ratio of the size. */
+    val emSize: Float get() = descent - ascent
 }
 
 fun interface MetricsFactory {
@@ -34,7 +36,7 @@ fun interface MetricsFactory {
 }
 
 /** The options the layout needs, already as numbers. Zero means "not set" where it says so. Same meaning as TextOptions. */
-class LayoutOptions(
+data class LayoutOptions(
     val condense: Float = 0f,
     val fitMode: Int = 1,
     val minSizePct: Float = 0f,
@@ -77,6 +79,8 @@ class LayoutOptions(
      * justified, the last one too, by widening the spaces (Justify All).
      */
     val justifyMode: Int = -1,
+    /** Leading as a ratio of the font size (1.02 = 102%), like Photoshop's auto leading. 0 = not used. Wins over leadingPx. */
+    val leadingRatio: Float = 0f,
 )
 
 /** One word (or any unbreakable piece) of a line: text[start, end) drawn at [x] from the box's left edge. */
@@ -453,6 +457,7 @@ class LayoutCore(
     }
 
     private fun lineHeightOf(m: Metrics): Float {
+        if (opt.leadingRatio > 0f) return m.emSize * opt.leadingRatio
         val mult = if (opt.leadingPx > 0f) {
             val h = m.descent - m.ascent
             if (h > 0f) opt.leadingPx / h else opt.spacing
@@ -475,7 +480,9 @@ class LayoutCore(
     private fun blockHeight(m: Metrics, n: Int): Float {
         if (n <= 0) return 0f
         val lh = lineHeightOf(m)
-        return if (opt.leadingPx > 0f) n * lh else (m.lineBottom - m.lineTop) + (n - 1) * lh
+        // With Photoshop's first-line rule the text runs from the box top to the last line's descent.
+        if (opt.photoshopFirstBaseline) return m.firstLineAscent + (n - 1) * lh + m.descent
+        return if (opt.leadingPx > 0f || opt.leadingRatio > 0f) n * lh else (m.lineBottom - m.lineTop) + (n - 1) * lh
     }
 
     /** How many lines the text takes at this size and squeeze, and how tall that is. Used by the fit search. */
@@ -719,4 +726,66 @@ fun extractFixedLines(text: String, styles: IntArray): FixedResult {
         i++
     }
     return FixedResult(out.toString(), outSt.toIntArray(), spans)
+}
+
+
+/** One preset of the fit steps: font size and leading in card px, tracking in 1/1000 em. */
+class FitStep(val sizePx: Float, val leadingPx: Float, val tracking: Float)
+
+/**
+ * Parses "12.58 / 12.83 / 7" (size px / leading px / tracking). Commas, slashes and spaces all separate. Returns null for
+ * an empty or invalid entry, so a blank step in the layout is simply skipped.
+ */
+fun parseFitStep(raw: String?): FitStep? {
+    val p = raw?.split('/', ',', ' ', ';')?.mapNotNull { it.trim().toFloatOrNull() } ?: return null
+    if (p.size < 2 || p[0] <= 0f || p[1] <= 0f) return null
+    return FitStep(p[0], p[1], p.getOrElse(2) { 0f })
+}
+
+/**
+ * Fit steps: preset sizes tried from the largest, like the size tables of ygocarder and the "6 lines / 7 lines" layers of a
+ * proxy template. At each step the text keeps the step's size, leading and tracking and is squeezed horizontally as little
+ * as needed, but not below [squeezeLimit] (a fraction, 0.645 = 64.5%). The first step where it fits is used. If none fits,
+ * the text shrinks smoothly below the last step, keeping that step's leading-to-size ratio and tracking.
+ *
+ * [base] carries everything else (alignment, word spacing, composer, scales, the user's own tracking, which is added to
+ * the step's). A user leading in px (base.leadingPx > 0) replaces the steps' leading. [fitsHeight] says whether a result
+ * fits the box, including anything the caller reserves (the materials row).
+ */
+fun chooseFitStep(
+    steps: List<FitStep>,
+    squeezeLimit: Float,
+    base: LayoutOptions,
+    baseSize: Float,
+    make: (LayoutOptions) -> LayoutCore,
+    fitsHeight: (LayoutResult) -> Boolean,
+): Pair<LayoutCore, LayoutResult> {
+    require(steps.isNotEmpty())
+    for (st in steps) {
+        val pct = st.sizePx * 100f / baseSize
+        val o = base.copy(
+            fontScale = 0f, minSizePct = pct, maxSizePct = pct, minLines = 0f,
+            condense = squeezeLimit, fitMode = 1,
+            leadingPx = if (base.leadingPx > 0f) base.leadingPx else st.leadingPx, leadingRatio = 0f,
+            letterSpace = base.letterSpace + st.tracking / 1000f,
+        )
+        val core = make(o)
+        val r = core.layout()
+        if (fitsHeight(r)) return core to r
+    }
+    val last = steps.last()
+    val o = base.copy(
+        fontScale = 0f, maxSizePct = last.sizePx * 100f / baseSize, minSizePct = 0f, minLines = 0f,
+        condense = squeezeLimit, fitMode = 1,
+        leadingPx = 0f, leadingRatio = if (base.leadingPx > 0f) 0f else last.leadingPx / last.sizePx,
+        letterSpace = base.letterSpace + last.tracking / 1000f,
+    ).let { if (base.leadingPx > 0f) it.copy(leadingPx = base.leadingPx) else it }
+    val core = make(o)
+    return core to core.layout()
+}
+
+/** The squeeze limit for a text with [paragraphs] paragraphs, from limits for 1, 2 and 3+ paragraphs in percent. */
+fun squeezeLimitFor(paragraphs: Int, limits: List<Float>): Float {
+    val l = if (limits.isEmpty()) listOf(64.5f, 66.5f, 68.5f) else limits
+    return l[(paragraphs.coerceAtLeast(1) - 1).coerceAtMost(l.size - 1)] / 100f
 }
