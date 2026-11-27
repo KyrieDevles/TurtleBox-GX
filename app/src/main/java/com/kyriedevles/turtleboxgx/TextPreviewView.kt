@@ -90,11 +90,24 @@ class TextPreviewView(ctx: Context) : View(ctx) {
         setMeasuredDimension(w, h)
     }
 
+    /** Pinch zoom of the preview (1 = fitted); while zoomed, [ox] and [oy] keep where the picture sits. */
+    private var zoom = 1f
+
     override fun onDraw(c: Canvas) {
         val b = bmp ?: return
-        k = minOf(width.toFloat() / b.width, (height - 8 * dp) / b.height, MAX_ZOOM)
-        ox = (width - b.width * k) / 2f
-        oy = 4 * dp
+        val base = minOf(width.toFloat() / b.width, (height - 8 * dp) / b.height, MAX_ZOOM)
+        k = base * zoom
+        if (zoom <= 1.001f) {
+            ox = (width - b.width * k) / 2f
+            oy = 4 * dp
+        } else {
+            // Zoomed: keep the picture covering the view (or centred on an axis where it is still smaller).
+            val bw = b.width * k
+            val bh = b.height * k
+            ox = if (bw > width) ox.coerceIn(width - bw, 0f) else (width - bw) / 2f
+            oy = if (bh > height) oy.coerceIn(height - bh, 0f) else (height - bh) / 2f
+        }
+        c.clipRect(0f, 0f, width.toFloat(), height.toFloat())
         // A light checkerboard behind, as on the card: a text layer is drawn alone, so dark text stays readable on the
         // dark menu and see-through parts show as such. (Card text boxes come with the card behind them.)
         c.drawRect(ox, oy, ox + b.width * k, oy + b.height * k, checker())
@@ -203,8 +216,49 @@ class TextPreviewView(ctx: Context) : View(ctx) {
         return (if (start) r.left else r.right) to r.bottom + 7f * dp
     }
 
+    private val scaler = android.view.ScaleGestureDetector(ctx, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(d: android.view.ScaleGestureDetector): Boolean {
+            val nz = (zoom * d.scaleFactor).coerceIn(1f, 5f)
+            // Zoom around the fingers.
+            val r = nz / zoom
+            ox = d.focusX - (d.focusX - ox) * r
+            oy = d.focusY - (d.focusY - oy) * r
+            zoom = nz
+            invalidate()
+            return true
+        }
+    })
+    private var pinching = false
+    private var lastFx = 0f
+    private var lastFy = 0f
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (bmp == null) return false
+        // Two fingers: zoom the preview (for small text) and move it; the highlight is left as it is.
+        scaler.onTouchEvent(e)
+        if (e.pointerCount >= 2 || scaler.isInProgress) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+            val fx = (e.getX(0) + e.getX(minOf(1, e.pointerCount - 1))) / 2f
+            val fy = (e.getY(0) + e.getY(minOf(1, e.pointerCount - 1))) / 2f
+            if (pinching && e.actionMasked == MotionEvent.ACTION_MOVE && !scaler.isInProgress) {
+                ox += fx - lastFx
+                oy += fy - lastFy
+                invalidate()
+            }
+            if (!pinching) {
+                pinching = true
+                dragging = 0
+                val cancel = MotionEvent.obtain(e)
+                cancel.action = MotionEvent.ACTION_CANCEL
+                gestures.onTouchEvent(cancel)
+                cancel.recycle()
+            }
+            lastFx = fx
+            lastFy = fy
+            return true
+        }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) pinching = false
+        if (pinching) return true
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 dragging = 0

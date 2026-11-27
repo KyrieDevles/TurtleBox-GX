@@ -2275,10 +2275,14 @@ class MainActivity : Activity() {
      * layer drawn alone and unrotated (3x). Letter boxes come with it, in the preview's pixels.
      */
     private fun makePreview(r: Renderer, full: Bitmap, l: Layout, ctx: Ctx, a: Assets, st: CardState): TextProbe.Preview? {
-        val rects = r.probeRects ?: return null
-        val box = r.probeBox ?: return null
+        var rects = r.probeRects ?: return null
+        var box = r.probeBox ?: return null
         val layer = r.probeLayer
-        if (layer != null) {
+        if (layer != null && layer.rot == 0f && !layer.mx && !layer.fy) {
+            // An unrotated box text layer: crop it from the card like card text, so the card shows behind it.
+            box = RectF(layer.cx - layer.w / 2f, layer.cy - layer.h / 2f, layer.cx + layer.w / 2f, layer.cy + layer.h / 2f)
+            rects = rects.map { it?.let { g -> RectF(g.left + layer.cx, g.top + layer.cy, g.right + layer.cx, g.bottom + layer.cy) } }.toTypedArray()
+        } else if (layer != null) {
             val r2 = Renderer(l, ctx, a, st.values)
             r2.probeName = r.probeName
             val k = 2f
