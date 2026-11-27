@@ -2256,7 +2256,7 @@ class MainActivity : Activity() {
             st.values["template"] = selectedTemplate
         }
         state = st
-        runOnUiThread { refreshSetsPage() }
+        runOnUiThread { refreshSetsPage(); cardView.resetZoom() }
         renderState(st)
     }
 

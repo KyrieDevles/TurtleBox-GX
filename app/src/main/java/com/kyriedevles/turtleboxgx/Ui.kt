@@ -273,24 +273,189 @@ class CardView(context: Context) : View(context) {
         val k = minOf((width - 2 * pad) / b.width, (height - insetBottom - 2 * pad) / b.height)
         val w = b.width * k
         val h = b.height * k
-        dest.set((width - w) / 2f, (height - insetBottom - h) / 2f, (width + w) / 2f, (height - insetBottom + h) / 2f)
+        fit.set((width - w) / 2f, (height - insetBottom - h) / 2f, (width + w) / 2f, (height - insetBottom + h) / 2f)
+        clampPan()
+        val zw = w * zoom
+        val zh = h * zoom
+        val cx = fit.centerX() + panX
+        val cy = fit.centerY() + panY
+        dest.set(cx - zw / 2f, cy - zh / 2f, cx + zw / 2f, cy + zh / 2f)
         c.drawBitmap(b, null, dest, bmpPaint)
         editor?.draw(c, dest, resources.displayMetrics.density)
         boxEditor?.draw(c, dest, resources.displayMetrics.density)
+        if (zoom > 1.01f) drawChip(c)
+    }
+
+    // ---- Zoom and move (pinch, drag when zoomed, double-tap) ----
+
+    /** The card's zoom over its fitted size (1 = fitted) and how far it is moved from the middle, in view px. */
+    private var zoom = 1f
+    private var panX = 0f
+    private var panY = 0f
+    private val fit = RectF()
+    private val chip = RectF()
+    private val chipBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(200, 20, 12, 18) }
+    private val chipEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Hot.pinkDeep; strokeWidth = 2f }
+    private val chipText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+        textSize = 13f * resources.displayMetrics.scaledDensity
+    }
+
+    /** Back to the fitted card (a different card was opened, or Fit was chosen). */
+    fun resetZoom() {
+        zoom = 1f
+        panX = 0f
+        panY = 0f
+        invalidate()
+    }
+
+    private fun clampPan() {
+        // Keep at least part of the card on screen.
+        val maxX = maxOf(0f, (fit.width() * zoom - fit.width()) / 2f + fit.width() * 0.4f)
+        val maxY = maxOf(0f, (fit.height() * zoom - fit.height()) / 2f + fit.height() * 0.4f)
+        if (zoom <= 1.001f) { panX = 0f; panY = 0f; return }
+        panX = panX.coerceIn(-maxX, maxX)
+        panY = panY.coerceIn(-maxY, maxY)
+    }
+
+    /** Zooms to [z] keeping the card point under ([fx], [fy]) where it is. */
+    private fun zoomTo(z: Float, fx: Float, fy: Float) {
+        val nz = z.coerceIn(1f, 8f)
+        val cx = fit.centerX() + panX
+        val cy = fit.centerY() + panY
+        val r = nz / zoom
+        panX = fx - (fx - cx) * r - fit.centerX()
+        panY = fy - (fy - cy) * r - fit.centerY()
+        zoom = nz
+        clampPan()
+        invalidate()
+    }
+
+    private fun drawChip(c: Canvas) {
+        val d = resources.displayMetrics.density
+        val label = (if (zoom < 9.95f) String.format(java.util.Locale.US, "%.1f×", zoom) else "${zoom.toInt()}×").replace(".0×", "×")
+        val w = chipText.measureText(label) + 22f * d
+        val h = 28f * d
+        chip.set(width - w - 10f * d, 10f * d, width - 10f * d, 10f * d + h)
+        c.drawRoundRect(chip, 8f * d, 8f * d, chipBg)
+        c.drawRoundRect(chip, 8f * d, 8f * d, chipEdge)
+        c.drawText(label, chip.centerX(), chip.centerY() - (chipText.ascent() + chipText.descent()) / 2f, chipText)
+    }
+
+    private fun chipMenu() {
+        val pm = android.widget.PopupMenu(context, this, android.view.Gravity.END)
+        pm.menu.add(0, 1, 0, "Fit")
+        pm.menu.add(0, 2, 1, "2×")
+        pm.menu.add(0, 4, 2, "4×")
+        pm.menu.add(0, 8, 3, "8×")
+        pm.setOnMenuItemClickListener { item ->
+            if (item.itemId == 1) resetZoom() else zoomTo(item.itemId.toFloat(), fit.centerX() + panX, fit.centerY() + panY)
+            true
+        }
+        pm.show()
+    }
+
+    private val scaler = android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(d: android.view.ScaleGestureDetector): Boolean {
+            zoomTo(zoom * d.scaleFactor, d.focusX, d.focusY)
+            return true
+        }
+    })
+
+    private var lastFocusX = 0f
+    private var lastFocusY = 0f
+
+    private val gestures = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent) = true
+
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            if (zoom > 1.01f && chip.contains(e.x, e.y)) { chipMenu(); return true }
+            if (bitmap != null && dest.contains(e.x, e.y)) {
+                onTapCard?.invoke((e.x - dest.left) / dest.width(), (e.y - dest.top) / dest.height())
+            }
+            return true
+        }
+
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            if (zoom > 1.01f) resetZoom() else zoomTo(2f, e.x, e.y)
+            return true
+        }
+
+        override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (zoom <= 1.01f || e2.pointerCount > 1) return false
+            panX -= dx
+            panY -= dy
+            clampPan()
+            invalidate()
+            return true
+        }
+    })
+
+    /** Two fingers on the card while a text box is being edited: zoom and move the card instead. */
+    private var twoFinger = false
+
+    /** This touch became a pinch. */
+    private var multi = false
+
+    /** Two-finger move (pan) while pinching. */
+    private fun twoFingerPan(ev: MotionEvent) {
+        if (ev.pointerCount < 2) return
+        val fx = (ev.getX(0) + ev.getX(1)) / 2f
+        val fy = (ev.getY(0) + ev.getY(1)) / 2f
+        if (ev.actionMasked == MotionEvent.ACTION_MOVE) {
+            panX += fx - lastFocusX
+            panY += fy - lastFocusY
+            clampPan()
+            invalidate()
+        }
+        lastFocusX = fx
+        lastFocusY = fy
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
-        boxEditor?.let { e ->
+        // Moving a layer on the card uses its own two-finger pinch, so it keeps every touch.
+        editor?.let { e ->
             if (bitmap != null) return e.touch(ev, dest, resources.displayMetrics.density)
         }
-        editor?.let { e ->
+        boxEditor?.let { e ->
             if (bitmap != null) {
+                if (ev.actionMasked == MotionEvent.ACTION_POINTER_DOWN && !twoFinger) {
+                    // Second finger: stop the box drag and zoom instead.
+                    twoFinger = true
+                    val cancel = MotionEvent.obtain(ev)
+                    cancel.action = MotionEvent.ACTION_CANCEL
+                    e.touch(cancel, dest, resources.displayMetrics.density)
+                    cancel.recycle()
+                }
+                if (twoFinger) {
+                    scaler.onTouchEvent(ev)
+                    twoFingerPan(ev)
+                    if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) twoFinger = false
+                    return true
+                }
                 return e.touch(ev, dest, resources.displayMetrics.density)
             }
         }
-        if (ev.action == MotionEvent.ACTION_UP && bitmap != null && dest.contains(ev.x, ev.y)) {
-            onTapCard?.invoke((ev.x - dest.left) / dest.width(), (ev.y - dest.top) / dest.height())
+        if (bitmap == null) return true
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) multi = false
+        scaler.onTouchEvent(ev)
+        if (ev.pointerCount >= 2 || scaler.isInProgress) {
+            if (!multi) {
+                // A pinch started: the one-finger gesture (tap, drag) is over.
+                multi = true
+                val cancel = MotionEvent.obtain(ev)
+                cancel.action = MotionEvent.ACTION_CANCEL
+                gestures.onTouchEvent(cancel)
+                cancel.recycle()
+            }
+            twoFingerPan(ev)
+            return true
         }
+        // After a pinch, the finger left on the card does nothing until it is lifted.
+        if (multi) return true
+        gestures.onTouchEvent(ev)
         return true
     }
 }
