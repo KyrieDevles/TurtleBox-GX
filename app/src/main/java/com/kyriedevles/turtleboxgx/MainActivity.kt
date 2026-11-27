@@ -945,7 +945,7 @@ class MainActivity : Activity() {
         all.add(layer)
         ImageLayers.write(st.values, all)
         TextLayers.newValues(st.values, l, id, "Text")
-        TextLayers.sync(l, st.values)
+        syncText(l, st)
         renderState(st)
         layersPanel?.close()
         openEditor("layermenu_" + TextLayers.tm(id))
@@ -1004,7 +1004,7 @@ class MainActivity : Activity() {
         // A text layer is moved as a picture of itself; point text that is scaled changes its Size px.
         var pointH = 0f
         val textBmp: Bitmap? = if (!layer.isText) null else try {
-            TextLayers.sync(l, st.values)
+            syncText(l, st)
             val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
             try {
                 val rr = Renderer(l, Ctx(l, st.values), a, st.values)
@@ -1238,6 +1238,23 @@ class MainActivity : Activity() {
         }
     }
 
+    private var layoutFontsFor: String? = null
+    private var layoutFonts: List<String> = emptyList()
+
+    /** Text layer menus, with every font file of the layout (read once per layout file) and the card's imported fonts. */
+    private fun syncText(l: Layout, st: CardState) {
+        val z = zipFile
+        val key = z?.let { "${it.path}|${it.lastModified()}|${selectedTemplate}" }
+        if (key != layoutFontsFor) {
+            layoutFontsFor = key
+            layoutFonts = try {
+                Assets(z, emptyMap(), cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir()).let { a -> try { a.fontFiles() } finally { a.close() } }
+            } catch (e: Exception) { emptyList() }
+        }
+        val own = st.files.keys.filter { it.endsWith(".ttf", true) || it.endsWith(".otf", true) }
+        TextLayers.sync(l, st.values, own + layoutFonts)
+    }
+
     private fun openEditor(click: String) {
         val l = layout
         val st = state
@@ -1245,15 +1262,16 @@ class MainActivity : Activity() {
             toast("Choose a layout folder first.")
             return
         }
-        TextLayers.sync(l, st.values)
+        syncText(l, st)
         Editor(
             this, l, st,
             onChanged = { renderState(st) },
             pickImage = { key ->
                 pendingImageKey = key
+                val font = l.datas[key]?.type == "fontfile"
                 startActivityForResult(
-                    Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),
-                    REQ_IMAGE,
+                    Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(if (font) "*/*" else "image/*"),
+                    if (font) REQ_FONT else REQ_IMAGE,
                 )
             },
             onBox = { name, after -> beginBoxEdit(name, after) },
@@ -2038,6 +2056,31 @@ class MainActivity : Activity() {
                 scanSetsFolder()
             }
             REQ_LAYER -> handleLayerImage(uri)
+            REQ_FONT -> {
+                val key = pendingImageKey ?: return
+                val l = layout ?: return
+                val st = state ?: return
+                try {
+                    var name = (DocumentFile.fromSingleUri(this, uri)?.name ?: "font.ttf").substringAfterLast('/')
+                    val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                    if (!name.endsWith(".ttf", true) && !name.endsWith(".otf", true)) {
+                        // OpenType starts with "OTTO"; anything else is treated as TrueType.
+                        name += if (bytes.size >= 4 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "OTTO") ".otf" else ".ttf"
+                    }
+                    val file = TextLayers.FONT_DIR + name.replace(Regex("[^A-Za-z0-9._ -]"), "_")
+                    val tmp = java.io.File(cacheDir, "fontcheck.tmp").apply { writeBytes(bytes) }
+                    try { android.graphics.Typeface.createFromFile(tmp) } catch (e: Exception) { throw IllegalArgumentException("That file is not a font.") } finally { tmp.delete() }
+                    st.files[file] = bytes
+                    val target = key.replaceFirst("fontimport_", "font_")
+                    st.values[target] = file
+                    syncText(l, st)
+                    renderState(st)
+                    toast("Imported ${name.substringBeforeLast('.')}")
+                    TextLayers.ownerOf(key)?.let { openEditor("layermenu_" + TextLayers.tm(it)) }
+                } catch (e: Exception) {
+                    toast(e.message ?: "Could not import that font.")
+                }
+            }
             REQ_IMAGE -> {
                 val key = pendingImageKey ?: return
                 val l = layout ?: return
@@ -2310,7 +2353,7 @@ class MainActivity : Activity() {
     private fun renderState(st: CardState) {
         val l = layout ?: return
         val z = zipFile
-        TextLayers.sync(l, st.values)
+        syncText(l, st)
         thread {
             val t0 = SystemClock.elapsedRealtime()
             var bmp: Bitmap? = null
@@ -2403,6 +2446,7 @@ class MainActivity : Activity() {
         private const val REQ_TREE = 1001
         private const val REQ_SET = 1002
         private const val REQ_IMAGE = 1003
+        private const val REQ_FONT = 1009
         private const val REQ_SAVE = 1004
         private const val REQ_PNG = 1005
     }

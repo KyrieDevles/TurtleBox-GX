@@ -85,6 +85,12 @@ class TextOptions(
     val justifyMode: Int = -1,
     // Lines that do not fit in the box are not drawn, like Photoshop's overset text (New engine; <overflow>hide</overflow>).
     val hideOverflow: Boolean = false,
+    // Automatic leading is 120% of the size, like Photoshop (New engine; <autoleading>photoshop</autoleading>).
+    // Leading % scales it; Leading px and fit steps replace it.
+    val autoLeading: Boolean = false,
+    // Tracking goes after each letter, like Photoshop, instead of half before and half after (New engine;
+    // <trackingside>after</trackingside>). Letters move by half the tracking; widths and line breaks stay the same.
+    val trackAfter: Boolean = false,
 )
 
 /**

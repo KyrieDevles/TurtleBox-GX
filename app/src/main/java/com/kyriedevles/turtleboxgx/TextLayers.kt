@@ -14,7 +14,26 @@ object TextLayers {
 
     const val DEFAULT_SIZE = 24f
 
-    private val ownKeys = listOf("text", "mode", "font", "color", "style")
+    private val ownKeys = listOf("text", "mode", "font", "fontimport", "color", "style")
+
+    /** Folder (inside the card's files) that imported fonts are kept in. */
+    const val FONT_DIR = "fonts/"
+
+    /**
+     * The Font choices: the layout's namefonts first (by their labels), then every other font file in the layout and
+     * the card (imported ones), by file name.
+     */
+    fun fontItems(layout: Layout, files: List<String>): List<Pair<String, String>> {
+        val named = layout.datas["namefonts"]?.items ?: emptyList()
+        val out = ArrayList(named)
+        val seen = named.map { it.second.lowercase() }.toHashSet()
+        for (f in files) {
+            if (!seen.add(f.lowercase())) continue
+            val label = f.substringAfterLast('/').substringBeforeLast('.')
+            out.add((if (f.startsWith(FONT_DIR, true)) "$label (imported)" else label) to f)
+        }
+        return out
+    }
 
     /** Values for a new text layer. */
     fun newValues(values: MutableMap<String, String>, layout: Layout, id: String, text: String) {
@@ -51,6 +70,8 @@ object TextLayers {
         e.options["textmenu"] = t
         e.options["firstbaseline"] = "photoshop"
         e.options["overflow"] = "hide"
+        e.options["autoleading"] = "photoshop"
+        e.options["trackingside"] = "after"
         e.options["namestyle"] = "{{style_$t}}"
         TextMenu.expand(datas, listOf(e))
         // The layer handles taps and moving itself.
@@ -63,7 +84,7 @@ object TextLayers {
      * Adds the settings and menus of every text layer to the layout (they are what the edit menu and the defaults read).
      * Call on the main thread before drawing or opening a menu; it only adds what is missing and refreshes each menu.
      */
-    fun sync(layout: Layout, values: MutableMap<String, String>) {
+    fun sync(layout: Layout, values: MutableMap<String, String>, fontFiles: List<String> = emptyList()) {
         @Suppress("UNCHECKED_CAST")
         val datas = layout.datas as? MutableMap<String, DataDef> ?: return
         convertToBox(values)
@@ -78,8 +99,11 @@ object TextLayers {
             }
             def("text_$t", "Text", "text", "Text")
             def("mode_$t", "point", null, "Type", listOf("Point text" to "point", "Box text" to "box"))
-            val fonts = layout.datas["namefonts"]?.items ?: emptyList()
+            // Rebuilt every time, so newly imported fonts show up.
+            val fonts = fontItems(layout, fontFiles)
+            datas.remove("font_$t")
             if (fonts.isNotEmpty()) def("font_$t", defaultFont(layout), null, "Font", fonts) else def("font_$t", "", "text", "Font file")
+            def("fontimport_$t", "", "fontfile", "Font from your phone (.ttf / .otf)")
             def("color_$t", "#000000", "text", "Colour (hex, e.g. #ffffff)")
             def("style_$t", "auto", "namestyle", "Layer Effects")
             def("box_$t", "", "box", "Move / resize text box…")
@@ -121,6 +145,9 @@ object TextLayers {
     }
 
     private val ownerRx = Regex("_tl([0-9a-z]+)$")
+
+    /** The layer id a text layer setting belongs to. */
+    fun ownerOf(name: String): String? = ownerRx.find(name)?.groupValues?.get(1)
 
     /** True for a setting of a text layer that no longer exists (left out when saving). */
     fun isOrphan(name: String, values: Map<String, String>): Boolean {

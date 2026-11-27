@@ -119,6 +119,17 @@ class Assets(
         return z.getInputStream(entry).use { it.readBytes() }
     }
 
+    /** Every font file (.ttf / .otf) this card can use: imported with the card first, then the layout's own. */
+    fun fontFiles(): List<String> {
+        fun isFont(n: String) = n.endsWith(".ttf", true) || n.endsWith(".otf", true)
+        val out = LinkedHashMap<String, String>()
+        fun add(n: String) { if (isFont(n)) out.putIfAbsent(n.lowercase(), n) }
+        setFiles.keys.forEach(::add)
+        dirIndex.values.forEach { f -> layoutZip?.let { add(f.relativeTo(it).path.replace('\\', '/')) } }
+        zipIndex.values.forEach(::add)
+        return out.values.filterNot { it.startsWith("templates/", true) || it.startsWith("__MACOSX", true) }
+    }
+
     fun bitmap(name: String): Bitmap? {
         val b = bytes(name)
         if (b == null) {

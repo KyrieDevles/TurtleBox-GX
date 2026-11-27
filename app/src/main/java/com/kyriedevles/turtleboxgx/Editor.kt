@@ -119,7 +119,7 @@ class Editor(
 
     fun open(click: String) {
         val d = find(click) ?: return
-        if (d.type == "image") {
+        if (d.type == "image" || d.type == "fontfile") {
             pickImage(d.name)
             return
         }
@@ -210,7 +210,7 @@ class Editor(
         }
         // ---- Highlighted text (TextPreviewView): Characters then edits only the highlighted letters, as inline tags ----
         val probeName = fields.firstOrNull {
-            it.items.isEmpty() && it.type != "image" && it.type != "box" && it.type != "fitstatus" && sliderRange(it.name) == null &&
+            it.items.isEmpty() && it.type != "image" && it.type != "fontfile" && it.type != "box" && it.type != "fitstatus" && sliderRange(it.name) == null &&
                 (it.name.endsWith("text", ignoreCase = true) || it.name.startsWith("text_tl"))
         }?.name
         val preview = TextPreviewView(activity)
@@ -489,13 +489,19 @@ class Editor(
                 paintStatus()
                 return
             }
-            val inlineSlider = f.items.isEmpty() && f.type != "image" && sliderRange(f.name) != null
+            val inlineSlider = f.items.isEmpty() && f.type != "image" && f.type != "fontfile" && sliderRange(f.name) != null
             if (!inlineSlider) into.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
             val current = state.values[f.name] ?: ctx.value(f.name)
             when {
                 f.type == "image" -> {
                     val b = hotButton("Choose image…")
                     b.setOnClickListener { commitAll(commits); pickImage(f.name) }
+                    into.addView(b, row())
+                }
+                f.type == "fontfile" -> {
+                    // Imports a .ttf / .otf into the card; the menu reopens with it chosen.
+                    val b = hotButton("Import font…")
+                    b.setOnClickListener { commitAll(commits); dlgRef?.dismiss(); pickImage(f.name) }
                     into.addView(b, row())
                 }
                 f.items.isNotEmpty() && f.items.size <= 8 && f.items.all { it.first.length <= 34 } -> {

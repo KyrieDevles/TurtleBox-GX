@@ -229,10 +229,12 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val lw = exactWidth(p, line)
             val x = -tw / 2f + when (anchor) { 1 -> (tw - lw) / 2f; 2 -> tw - lw; else -> 0f }
             val y = top - fm.ascent + i * lead
+            // Tracking after each letter, like Photoshop (Android puts half of it before).
+            val tx = x - p.letterSpacing * p.textSize * p.textScaleX / 2f
             if (fx != null) {
-                NameFx.draw(c, line, x, y, p, RectF(x, y + fm.ascent, x + lw, y + fm.descent), lw, fx, curScale, layout.width, layout, assets)
+                NameFx.draw(c, line, tx, y, p, RectF(x, y + fm.ascent, x + lw, y + fm.descent), lw, fx, curScale, layout.width, layout, assets)
             } else {
-                c.drawText(line, x, y, p)
+                c.drawText(line, tx, y, p)
             }
         }
         c.restore()
@@ -506,6 +508,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             photoshopFirstBaseline = ctx.sub(e.options["firstbaseline"] ?: "").trim().equals("photoshop", ignoreCase = true),
             justifyMode = justifyMode,
             hideOverflow = ctx.sub(e.options["overflow"] ?: "").trim().equals("hide", ignoreCase = true),
+            autoLeading = ctx.sub(e.options["autoleading"] ?: "").trim().equals("photoshop", ignoreCase = true),
+            trackAfter = ctx.sub(e.options["trackingside"] ?: "").trim().equals("after", ignoreCase = true),
         )
         var body = indentText(text, num("indent"))
         // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.

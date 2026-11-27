@@ -32,6 +32,8 @@ private fun spanStyle(v: Int): Int = when (v and 3) {
 private const val SCRIPT_SIZE = 0.583f
 private const val SCRIPT_SHIFT = 0.333f
 private const val SMALL_CAPS_SIZE = 0.7f
+// Photoshop's Auto Leading: 120% of the size.
+private const val AUTO_LEADING = 1.2f
 
 /** Calls [block] for each stretch of text[from, to) that is all lowercase or all not lowercase. */
 private inline fun runsByCase(text: String, from: Int, to: Int, block: (Int, Int, Boolean) -> Unit) {
@@ -165,6 +167,7 @@ class NewTextEngine(
             spaceBefore = opt.spaceBefore, spaceAfter = opt.spaceAfter,
             wordSpaceMin = opt.wordSpaceMin, wordSpaceMax = opt.wordSpaceMax, composer = opt.composer,
             photoshopFirstBaseline = opt.photoshopFirstBaseline, justifyMode = opt.justifyMode,
+            leadingRatio = if (opt.autoLeading && opt.leadingPx <= 0f) AUTO_LEADING * opt.spacing else 0f,
         )
 
     /** The per-run Character settings the layout needs (size, tracking, leading), from the tags. */
@@ -292,7 +295,7 @@ class NewTextEngine(
         } - (ex?.baseline ?: 0f)
         if (ex == null || !ex.smallCaps) {
             val p = pm.paintFor(st, em)
-            c.drawText(text, a, b, x, y, p)
+            c.drawText(text, a, b, x - trackLead(p), y, p)
             return exactWidth(p, text.substring(a, b))
         }
         var cx = x
@@ -300,16 +303,22 @@ class NewTextEngine(
             if (lower) {
                 val p = pm.smallPaintFor(st, em)
                 val seg = text.substring(s, e).uppercase()
-                c.drawText(seg, cx, y, p)
+                c.drawText(seg, cx - trackLead(p), y, p)
                 cx += exactWidth(p, seg)
             } else {
                 val p = pm.paintFor(st, em)
-                c.drawText(text, s, e, cx, y, p)
+                c.drawText(text, s, e, cx - trackLead(p), y, p)
                 cx += exactWidth(p, text.substring(s, e))
             }
         }
         return cx - x
     }
+
+    /**
+     * Android puts half of the tracking before each letter and half after; Photoshop puts all of it after. Drawing this
+     * much further left puts each letter where Photoshop has it (widths and line breaks do not change).
+     */
+    private fun trackLead(p: TextPaint): Float = if (opt.trackAfter) p.letterSpacing * p.textSize * p.textScaleX / 2f else 0f
 
     /** Underline or strikethrough from [x0] to [x1], using the run's own font metrics where the system gives them. */
     private fun drawLine(c: Canvas, p: TextPaint, baseline: Float, x0: Float, x1: Float, strike: Boolean) {
