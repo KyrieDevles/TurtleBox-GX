@@ -133,7 +133,8 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         return p
     }
 
-    private fun pointLines(l: Layer): List<String> = layerText(l).replace(Regex("<br>", RegexOption.IGNORE_CASE), "\n").split('\n')
+    // Spaces at the end of a line do not count for alignment (they hang past the edge in Photoshop).
+    private fun pointLines(l: Layer): List<String> = layerText(l).replace(Regex("<br>", RegexOption.IGNORE_CASE), "\n").split('\n').map { it.trimEnd() }
 
     /** Line pitch of point text: Leading px, else Photoshop's automatic 120% of the size. */
     private fun pointLeading(l: Layer, p: Paint): Float = layerValue("leadingpx", l).toFloatOrNull()?.takeIf { it > 0f } ?: p.textSize * 1.2f
