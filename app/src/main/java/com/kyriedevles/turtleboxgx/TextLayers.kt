@@ -81,7 +81,7 @@ object TextLayers {
             val fonts = layout.datas["namefonts"]?.items ?: emptyList()
             if (fonts.isNotEmpty()) def("font_$t", defaultFont(layout), null, "Font", fonts) else def("font_$t", "", "text", "Font file")
             def("color_$t", "#000000", "text", "Colour (hex, e.g. #ffffff)")
-            def("style_$t", "auto", "namestyle", "Text style")
+            def("style_$t", "auto", "namestyle", "Layer Effects")
             def("box_$t", "", "box", "Move / resize text box…")
             // Point text: one line, so only the character settings that apply to it.
             val pc = DataDef("pointchars_$t", null, "multi_select", "Characters")

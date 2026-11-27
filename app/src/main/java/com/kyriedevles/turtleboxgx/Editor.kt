@@ -399,7 +399,9 @@ class Editor(
             if (f.type == "namestyle") {
                 val cur = state.values[f.name] ?: ctx.value(f.name)
                 val mode = cur.substringBefore('|').ifBlank { "auto" }
-                val b = hotButton((f.desc?.takeIf { it.isNotBlank() } ?: "Name Style") + "   ●  " + mode)
+                // One name for the effects editor everywhere (card name, text layers, any styled box), like Photoshop's
+                // Layer Style; the layout's desc is not used for it.
+                val b = hotButton("Layer Effects   ●  " + mode)
                 b.setOnClickListener {
                     commitAll(commits)
                     dlgRef?.dismiss()
