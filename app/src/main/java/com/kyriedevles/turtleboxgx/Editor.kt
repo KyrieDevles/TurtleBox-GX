@@ -176,11 +176,15 @@ class Editor(
         // Scale show the values the card uses, dimmed. The first edit of any of them writes all four (manual).
         val autoRows = HashMap<String, SliderRow>()
         val fitRefreshers = ArrayList<() -> Unit>()
+        // Rows that follow the highlighted text while something is highlighted (set up below).
+        var selActiveNow: () -> Boolean = { false }
+        val selNames = HashSet<String>()
         fun sizeSet(g: AutoFit.Group): Boolean =
             (g.size?.let { (state.values[it] ?: ctx.value(it)).trim().toFloatOrNull() } ?: 0f) > 0f
         fun autoOf(name: String): AutoFit.Group? = AutoFit.groupFor(name)?.takeIf { it.auto && !sizeSet(it) }
         fun refreshFit() {
             for ((n, r) in autoRows) {
+                if (selActiveNow() && n in selNames) continue
                 val g = autoOf(n)
                 if (g != null) r.show(g.values[n] ?: 0f, true)
                 else if (r.auto()) r.show((state.values[n] ?: ctx.value(n)).trim().toFloatOrNull() ?: 0f, false)
@@ -203,6 +207,111 @@ class Editor(
             refreshFit()
             liveApply()
         }
+        // ---- Highlighted text (TextPreviewView): Characters then edits only the highlighted letters, as inline tags ----
+        val probeName = fields.firstOrNull {
+            it.items.isEmpty() && it.type != "image" && it.type != "box" && it.type != "fitstatus" && sliderRange(it.name) == null &&
+                (it.name.endsWith("text", ignoreCase = true) || it.name.startsWith("text_tl"))
+        }?.name
+        val preview = TextPreviewView(activity)
+        var textEt: EditText? = null
+        var programmatic = false
+        var selA = 0
+        var selB = 0
+        fun selActive() = probeName != null && selB > selA
+        selActiveNow = { selActive() }
+        class SelRow(val name: String, val tag: String, val row: SliderRow)
+        val selRows = ArrayList<SelRow>()
+        val boxOnly = HashMap<String, List<View>>()
+        val selStatus = TextView(activity).apply {
+            setTextColor(Theme.muted)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        }
+        val selTools = ArrayList<View>()
+        fun rawText(): String = probeName?.let { state.values[it] ?: ctx.value(it) } ?: ""
+        fun tagFor(name: String): String? {
+            val n = name.lowercase()
+            return when {
+                n.startsWith("sizepx") -> "size"
+                n.startsWith("tracking") -> "tracking"
+                n.startsWith("leadingpx") -> "leading"
+                n.startsWith("hscale") -> "scale"
+                n.startsWith("baseline") -> "baseline"
+                else -> null
+            }
+        }
+        fun isBoxOnly(name: String): Boolean {
+            val n = name.lowercase()
+            return n.startsWith("allcaps") || n.startsWith("italic") || n.startsWith("vscale") || n.startsWith("weight")
+        }
+        fun boxValue(name: String) = (state.values[name] ?: ctx.value(name)).trim().toFloatOrNull()
+        fun enableDeep(v: View, on: Boolean) {
+            v.isEnabled = on
+            if (v is ViewGroup) for (i in 0 until v.childCount) enableDeep(v.getChildAt(i), on)
+        }
+        fun refreshSel() {
+            val raw = rawText()
+            val active = selActive()
+            for (sr in selRows) {
+                if (!active) {
+                    val g = autoOf(sr.name)
+                    if (g != null) sr.row.show(g.values[sr.name] ?: 0f, true, null) else sr.row.show(boxValue(sr.name) ?: 0f, false, null)
+                    continue
+                }
+                when (val v = com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(raw, selA, selB, sr.tag)) {
+                    is com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same -> {
+                        val own = v.v?.removeSuffix("%")?.removeSuffix("px")?.trim()?.toFloatOrNull()
+                        if (own != null) sr.row.show(own, false, if (v.v?.endsWith("%") == true) "· selection (%)" else "· selection")
+                        else sr.row.show(autoOf(sr.name)?.values?.get(sr.name) ?: boxValue(sr.name) ?: 0f, true, "· box")
+                    }
+                    else -> sr.row.show(null, false, "· mixed")
+                }
+            }
+            for (views in boxOnly.values) views.forEach { it.alpha = if (active) 0.35f else 1f; enableDeep(it, !active) }
+            selTools.forEach { it.alpha = if (active) 1f else 0.4f; it.isEnabled = active }
+            val n = selB - selA
+            selStatus.text = if (active) "Selection · $n character${if (n == 1) "" else "s"}" else "Whole box · long-press a word to highlight"
+        }
+        fun syncFieldSelection() {
+            val et = textEt ?: return
+            val raw = et.text.toString()
+            val rr = com.kyriedevles.turtleboxgx.text.TagEdit.rawRange(raw, selA, selB)
+            programmatic = true
+            et.setSelection(rr.first.coerceIn(0, raw.length), (rr.last + 1).coerceIn(0, raw.length))
+            programmatic = false
+        }
+        fun writeRaw(newRaw: String) {
+            val pn = probeName ?: return
+            track(pn)
+            state.values[pn] = newRaw
+            textEt?.let { et ->
+                programmatic = true
+                et.setText(newRaw)
+                programmatic = false
+            }
+            syncFieldSelection()
+            liveApply()
+        }
+        /** Sets (or with null, removes) a tag on the highlight. Everything highlighted: the box setting takes it instead. */
+        fun applySel(tag: String, value: String?, boxName: String?, boxV: Float?) {
+            val raw = rawText()
+            val n = com.kyriedevles.turtleboxgx.text.TagEdit.plain(raw).length
+            if (selA <= 0 && selB >= n && boxName != null && boxV != null) {
+                writeRaw(com.kyriedevles.turtleboxgx.text.TagEdit.set(raw, 0, n, tag, null))
+                val g = autoOf(boxName)
+                if (g != null) freeze(g, boxName, boxV) else { track(boxName); state.values[boxName] = fmt(boxV) }
+                liveApply()
+            } else {
+                writeRaw(com.kyriedevles.turtleboxgx.text.TagEdit.set(raw, selA, selB, tag, value))
+            }
+            refreshSel()
+        }
+        preview.onSelect = { a, b ->
+            selA = a
+            selB = b
+            syncFieldSelection()
+            refreshSel()
+        }
+
         fun changedIn(g: DataDef): Boolean = g.items.mapNotNull { find(it.second) }.any { m ->
             if (m.type == "multi_select") changedIn(m)
             else if (m.type == "box") (state.values[m.name] ?: "").isNotBlank()
@@ -246,7 +355,12 @@ class Editor(
                 val saved = into
                 into = body
                 depth++
-                for (m in f.items.mapNotNull { find(it.second) }) build(m)
+                for (m in f.items.mapNotNull { find(it.second) }) {
+                    val t = into
+                    val n0 = t.childCount
+                    build(m)
+                    if (probeName != null && isBoxOnly(m.name)) boxOnly[m.name] = (n0 until t.childCount).map { t.getChildAt(it) }
+                }
                 depth--
                 into = saved
                 paintHead()
@@ -461,11 +575,19 @@ class Editor(
                     val (lo, hi) = sliderRange(f.name)!!
                     val start = (current.toFloatOrNull() ?: f.default?.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
                     track(f.name)
+                    val tag = if (probeName != null) tagFor(f.name) else null
                     val r = sliderRowFull(into, f, start, { v ->
-                        val g = autoOf(f.name)
-                        if (g != null) freeze(g, f.name, v) else state.values[f.name] = fmt(v)
-                        liveApply()
-                    }, { }, dp(8))
+                        if (tag != null && selActive()) {
+                            applySel(tag, fmt(v), f.name, v)
+                        } else {
+                            val g = autoOf(f.name)
+                            if (g != null) freeze(g, f.name, v) else state.values[f.name] = fmt(v)
+                            liveApply()
+                        }
+                    }, { }, dp(8), onReset = {
+                        if (tag != null && selActive()) { applySel(tag, null, null, null); true } else false
+                    })
+                    if (tag != null) { selRows.add(SelRow(f.name, tag, r)); selNames.add(f.name) }
                     if (AutoFit.groupFor(f.name) != null) {
                         autoRows[f.name] = r
                         autoOf(f.name)?.let { g -> r.show(g.values[f.name] ?: start, true) }
@@ -473,7 +595,7 @@ class Editor(
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || f.name.startsWith("text_tl") || current.contains('\n')
-                    val et = EditText(activity).apply {
+                    val et = (if (f.name == probeName) SelEditText(activity) else EditText(activity)).apply {
                         setText(current)
                         setTextColor(Color.WHITE)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
@@ -497,9 +619,32 @@ class Editor(
                         override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
                         override fun afterTextChanged(e: Editable?) {
                             state.values[f.name] = e?.toString() ?: ""
+                            // Typing changes the characters, so a highlight would point at the wrong ones: drop it.
+                            if (f.name == probeName && !programmatic && selActive()) {
+                                selA = 0; selB = 0
+                                preview.setSelection(0, 0)
+                                refreshSel()
+                            }
                             liveApply()
                         }
                     })
+                    if (et is SelEditText) {
+                        textEt = et
+                        // Selecting in the field highlights the same letters in the preview.
+                        et.onSel = { a, b ->
+                            if (!programmatic && et.hasFocus()) {
+                                val raw = et.text.toString()
+                                val va = com.kyriedevles.turtleboxgx.text.TagEdit.visibleAt(raw, minOf(a, b))
+                                val vb = com.kyriedevles.turtleboxgx.text.TagEdit.visibleAt(raw, maxOf(a, b))
+                                if (vb > va || selActive()) {
+                                    selA = va
+                                    selB = maxOf(va, vb)
+                                    preview.setSelection(selA, selB)
+                                    refreshSel()
+                                }
+                            }
+                        }
+                    }
                     commits.add {
                         val v = et.text.toString()
                         if (v != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = v
@@ -525,6 +670,60 @@ class Editor(
         }
         for (f in fields) build(f)
 
+        // The preview and its tools sit above the scrolling menu, so they stay in view.
+        val selPanel = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, dp(14), dp(4))
+            visibility = View.GONE
+        }
+        if (probeName != null) {
+            selPanel.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            val tools = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, 0) }
+            tools.addView(selStatus, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            fun chip(t: String, always: Boolean = false, click: () -> Unit) = TextView(activity).apply {
+                text = t
+                gravity = Gravity.CENTER
+                setTextColor(pink)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
+                setOnClickListener { click() }
+                if (!always) selTools.add(this)
+                tools.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { leftMargin = dp(5) })
+                setPadding(dp(10), 0, dp(10), 0)
+            }
+            chip("All", always = true) {
+                selA = 0
+                selB = com.kyriedevles.turtleboxgx.text.TagEdit.plain(rawText()).length
+                preview.setSelection(selA, selB)
+                syncFieldSelection()
+                refreshSel()
+            }
+            fun toggle(tag: String) {
+                val on = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, tag) as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v == ""
+                applySel(tag, if (on) null else "", null, null)
+            }
+            chip("B") { toggle("b") }.typeface = Typeface.DEFAULT_BOLD
+            chip("I") { toggle("i") }.setTypeface(null, Typeface.BOLD_ITALIC)
+            chip("U") { toggle("u") }.paintFlags = android.graphics.Paint.UNDERLINE_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
+            chip("Colour") {
+                val cur = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, "color") as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v ?: ""
+                val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "#ff0000 (empty = box colour)"; setText(cur) }
+                val cd = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Colour of the highlight").setView(input)
+                    .setPositiveButton("Apply") { _, _ ->
+                        val t = input.text.toString().trim()
+                        if (t.isEmpty()) applySel("color", null, null, null)
+                        else if (com.kyriedevles.turtleboxgx.text.parseHexColor(t) != null) applySel("color", t, null, null)
+                    }
+                    .setNegativeButton("Cancel", null).create()
+                cd.show()
+                style(cd)
+            }
+            selPanel.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            refreshSel()
+        }
+
         val scroll = object : ScrollView(activity) {
                 // Content may spill sideways (glow) but not into the top and bottom padding, where an off-screen row's glow would show without its row.
                 override fun dispatchDraw(canvas: android.graphics.Canvas) {
@@ -544,6 +743,7 @@ class Editor(
         val content: View = if (restores.isNotEmpty()) LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             addView(gripBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            if (probeName != null) addView(selPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else scroll
         val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
@@ -563,8 +763,22 @@ class Editor(
         dlgRef = dlg
         val fitListener: () -> Unit = { refreshFit() }
         AutoFit.listener = fitListener
+        val probeListener: (TextProbe.Preview) -> Unit = { p ->
+            val map = com.kyriedevles.turtleboxgx.text.TagEdit.align(com.kyriedevles.turtleboxgx.text.TagEdit.plain(rawText()), p.engineText)
+            preview.setPreview(p.bitmap, p.rects, p.engineText, map)
+            selPanel.visibility = View.VISIBLE
+        }
+        if (probeName != null && restores.isNotEmpty()) {
+            TextProbe.name = probeName
+            TextProbe.listener = probeListener
+            liveApply()
+        }
         dlg.setOnDismissListener {
             if (AutoFit.listener === fitListener) AutoFit.listener = null
+            if (TextProbe.listener === probeListener) {
+                TextProbe.listener = null
+                TextProbe.name = null
+            }
             if (restores.isNotEmpty()) onTop?.invoke(-1)
         }
         dlg.show()
@@ -748,9 +962,15 @@ class Editor(
         sliderRowFull(parent, f, startV, onValue, onDone, gap).reset
 
     /** A slider row: [reset] puts the default back; [show] sets the value without reporting it, dimmed when auto. */
-    private class SliderRow(val reset: () -> Unit, val show: (Float, Boolean) -> Unit, val auto: () -> Boolean)
+    private class SliderRow(val reset: () -> Unit, val show: (Float?, Boolean, String?) -> Unit, val auto: () -> Boolean) {
+        fun show(v: Float, auto: Boolean) = show(v, auto, null)
+    }
 
-    private fun sliderRowFull(parent: LinearLayout, f: DataDef, startV: Float, onValue: (Float) -> Unit, onDone: () -> Unit, gap: Int = 0): SliderRow {
+    /**
+     * [onReset]: called first when the reset button is tapped; returning true means it was handled (a highlighted
+     * selection drops its own value instead of taking the default).
+     */
+    private fun sliderRowFull(parent: LinearLayout, f: DataDef, startV: Float, onValue: (Float) -> Unit, onDone: () -> Unit, gap: Int = 0, onReset: (() -> Boolean)? = null): SliderRow {
         val (lo, hi) = sliderRange(f.name) ?: (0 to 200)
         var autoNow = false
         val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, gap, 0, 0) }
@@ -788,7 +1008,10 @@ class Editor(
             }
             contentDescription = "Reset this option"
             // While auto, the value belongs to fit steps: Back to auto fit / editing is the way to change it.
-            setOnClickListener { if (!autoNow) num.setText(fmt(f.default?.toFloatOrNull() ?: 100f)) }
+            setOnClickListener {
+                if (onReset?.invoke() == true) return@setOnClickListener
+                if (!autoNow) num.setText(fmt(f.default?.toFloatOrNull() ?: 100f))
+            }
         }
         head.addView(one, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(6) })
         parent.addView(head)
@@ -836,13 +1059,14 @@ class Editor(
         val nameText = name.text.toString()
         val numBg = num.background as GradientDrawable
         val resetBg = one.background as GradientDrawable
-        val show: (Float, Boolean) -> Unit = { v, auto ->
+        val show: (Float?, Boolean, String?) -> Unit = { v, auto, suffix ->
             autoNow = auto
-            // Do not rewrite the number the user is typing in.
+            // Do not rewrite the number the user is typing in. A null value (mixed selection) shows blank.
             if (auto || !num.hasFocus()) {
                 busy = true
-                if (num.text.toString() != fmt(v)) num.setText(fmt(v))
-                bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
+                val t = v?.let { fmt(it) } ?: ""
+                if (num.text.toString() != t) num.setText(t)
+                if (v != null) bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
                 busy = false
             }
             val ink = if (auto) Theme.muted else pink
@@ -851,7 +1075,11 @@ class Editor(
             numBg.setStroke(dp(2), edge)
             one.setTextColor(if (auto) Color.parseColor("#4a4550") else pink)
             resetBg.setStroke(dp(2), edge)
-            name.text = if (auto) "$nameText  · auto" else nameText
+            name.text = when {
+                suffix != null -> "$nameText  $suffix"
+                auto -> "$nameText  · auto"
+                else -> nameText
+            }
             name.setTextColor(if (auto) Theme.muted else Theme.label)
             val tint = android.content.res.ColorStateList.valueOf(ink)
             bar.progressTintList = tint
@@ -1108,5 +1336,14 @@ private class AlignIcon(ctx: Context, private val kind: String) : TextView(ctx) 
             val y = top + i * gap
             c.drawRoundRect(x, y, x + bw, y + bh, d, d, p)
         }
+    }
+}
+
+/** A text field that reports selection changes (to highlight the same letters in the preview). */
+private class SelEditText(c: Context) : EditText(c) {
+    var onSel: ((Int, Int) -> Unit)? = null
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        onSel?.invoke(selStart, selEnd)
     }
 }

@@ -52,6 +52,8 @@ class PaintMetrics(
     scaleX: Float,
     private val extras: List<RunExtra> = emptyList(),
     private val fonts: (String) -> Typeface? = { null },
+    /** The box's Horizontal Scale (1 = 100%). A <scale=..> run is absolute, like Photoshop's: it replaces this. */
+    private val boxHScale: Float = 1f,
 ) : Metrics {
     private val plain = TextPaint(base).also { it.textSize = size; it.textScaleX = scaleX }
     private val boxScaleX = scaleX
@@ -74,7 +76,7 @@ class PaintMetrics(
         if (ex != null && ex.script != 0) mul *= SCRIPT_SIZE
         // <size=..> and <scale=..> runs.
         p.textSize = (ex?.sizeAt(size) ?: size) * mul
-        if (ex != null && ex.scale > 0f) p.textScaleX = boxScaleX * ex.scale / 100f
+        if (ex != null && ex.scale > 0f) p.textScaleX = boxScaleX * ex.scale / 100f / boxHScale.coerceAtLeast(0.01f)
         return p
     }
 
@@ -174,7 +176,7 @@ class NewTextEngine(
 
     private fun makeCore(o: LayoutOptions) = LayoutCore(
         Source(text, styled.styles, runSpecs),
-        { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup) },
+        { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup, hs) },
         boxWidth,
         boxHeight,
         o,
@@ -329,6 +331,53 @@ class NewTextEngine(
         c.drawRect(x0, top, x1, top + t, linePaint)
     }
 
+    /** The text as the engine lays it out (tags removed, <br> as U+2028, [[ ]] removed). */
+    val engineText: String get() = text
+
+    /**
+     * Where each character of [engineText] was drawn by the last [draw] at ([left], [top]), in the same coordinates
+     * (null for characters not drawn, such as line breaks). Used to highlight text in the edit menu's preview.
+     */
+    fun glyphRects(left: Float, top: Float): Array<android.graphics.RectF?> {
+        val out = arrayOfNulls<android.graphics.RectF>(text.length)
+        val r = result ?: return out
+        val pm = PaintMetrics(paint, r.size, r.scaleX, parsed.extras, fontLookup, hs)
+        val styles = styled.styles
+        val bodyTop = top + matH
+        var wi = 0
+        for (line in r.lines) {
+            val baseline = bodyTop + line.baseline - opt.baselineShift
+            val em = usedTracking / 1000f + line.letterExtraEm
+            val ox = left + line.originX
+            fun toCard(x: Float): Float = left + hs * (ox + line.scaleX * (x - ox) - left)
+            while (wi < r.words.size && r.words[wi].line == line.index) {
+                val w = r.words[wi++]
+                var x = left + w.x
+                for (k in w.start until w.end) {
+                    val st = styles[k]
+                    val adv = pm.advance(text, k, k + 1, st, core.runEm(st, em))
+                    val ex = pm.extra(st)
+                    val rs = ex?.sizeAt(r.size) ?: r.size
+                    val y = baseline - (ex?.baseline ?: 0f)
+                    out[k] = android.graphics.RectF(toCard(x), y - rs * 0.8f * vs, toCard(x + adv), y + rs * 0.25f * vs)
+                    // The space after a word belongs to it, so a highlight across words has no gaps.
+                    x += adv
+                }
+                val next = r.words.getOrNull(wi)?.takeIf { it.line == line.index }
+                if (next != null) {
+                    var k = w.end
+                    val nx = left + next.x
+                    while (k < next.start && k < text.length) {
+                        val prev = out[k - 1] ?: break
+                        out[k] = android.graphics.RectF(prev.right, prev.top, toCard(nx), prev.bottom)
+                        k++
+                    }
+                }
+            }
+        }
+        return out
+    }
+
     /** Draws the laid-out text with its top at [top]. [h] is 0 left, 1 centre, 2 right. */
     fun draw(c: Canvas, left: Float, top: Float, h: Int) {
         var r = result ?: return
@@ -342,7 +391,7 @@ class NewTextEngine(
         val saved = c.save()
         if (hs != 1f) c.scale(hs, 1f, left, top)
         val bodyTop = top + matH
-        val pm = PaintMetrics(paint, r.size, r.scaleX, parsed.extras, fontLookup)
+        val pm = PaintMetrics(paint, r.size, r.scaleX, parsed.extras, fontLookup, hs)
         val styles = styled.styles
         var wi = 0
         for (line in r.lines) {

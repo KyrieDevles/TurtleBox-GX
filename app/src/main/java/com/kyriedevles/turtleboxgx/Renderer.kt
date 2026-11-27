@@ -35,6 +35,19 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** Fit steps of the text boxes drawn, for the edit menu (see [AutoFit]). */
     val fitGroups = ArrayList<AutoFit.Group>()
 
+    /** Text field to report letter positions for (see [TextProbe]); the results are below after [render]. */
+    var probeName: String? = null
+    var probeRects: Array<RectF?>? = null
+        private set
+    var probeText: String = ""
+        private set
+    /** The text box drawn, in card px (or the text layer's own unrotated coordinates, see [probeLayer]). */
+    var probeBox: RectF? = null
+        private set
+    var probeLayer: Layer? = null
+        private set
+    private var drawingLayer: Layer? = null
+
     /** Natural size (card px) of each text layer drawn: the line for point text, the box for box text. */
     val textSizes = HashMap<String, Pair<Float, Float>>()
 
@@ -159,7 +172,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         c.scale(if (l.mx) -1f else 1f, if (l.fy) -1f else 1f)
         val alpha = (l.opacity.coerceIn(0f, 1f) * 255).toInt()
         if (alpha < 255) c.saveLayerAlpha(null, alpha)
+        drawingLayer = l
         val size = try { drawTextLayerContent(c, l) } catch (e: Exception) { assets.missing.add("text layer failed: ${e.javaClass.simpleName}"); l.w to l.h }
+        drawingLayer = null
         c.restore()
         textSizes[l.id] = size
         // Tap area: the rotated box's bounds.
@@ -180,7 +195,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val c = Canvas(bmp)
         c.scale(scale, scale)
         c.translate(size.first / 2f, size.second / 2f)
+        drawingLayer = l
         drawTextLayerContent(c, l)
+        drawingLayer = null
         return bmp to size
     }
 
@@ -422,7 +439,16 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup, steps, squeeze)
             val used = engine.fit()
             publishFit(e, opt, engine, steps.size)
-            engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
+            val top = size.top + (size.height - used).coerceAtLeast(0f) * v
+            engine.draw(c, size.left, top, h)
+            probeName?.let { pn ->
+                if (e.text.contains("{{$pn}}")) {
+                    probeRects = engine.glyphRects(size.left, top)
+                    probeText = engine.engineText
+                    probeBox = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
+                    probeLayer = drawingLayer
+                }
+            }
         } else {
             val engine = TextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
             val used = engine.fit()

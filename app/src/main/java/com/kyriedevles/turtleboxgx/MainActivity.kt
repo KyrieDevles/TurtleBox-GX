@@ -2230,6 +2230,34 @@ class MainActivity : Activity() {
         renderState(st)
     }
 
+    /**
+     * The edit menu's preview of the text box being edited: cropped from the card just drawn (at 2x), or for a box text
+     * layer drawn alone and unrotated (3x). Letter boxes come with it, in the preview's pixels.
+     */
+    private fun makePreview(r: Renderer, full: Bitmap, l: Layout, ctx: Ctx, a: Assets, st: CardState): TextProbe.Preview? {
+        val rects = r.probeRects ?: return null
+        val box = r.probeBox ?: return null
+        val layer = r.probeLayer
+        if (layer != null) {
+            val r2 = Renderer(l, ctx, a, st.values)
+            r2.probeName = r.probeName
+            val k = 3f
+            val (b, size) = r2.renderTextLayer(layer, k)
+            val rr = r2.probeRects ?: return null
+            val out = rr.map { it?.let { g -> RectF((g.left + size.first / 2f) * k, (g.top + size.second / 2f) * k, (g.right + size.first / 2f) * k, (g.bottom + size.second / 2f) * k) } }.toTypedArray()
+            return TextProbe.Preview(b, out, r2.probeText)
+        }
+        val k = 2f
+        val pad = 3f
+        val left = ((box.left - pad) * k).toInt().coerceIn(0, full.width - 1)
+        val top = ((box.top - pad) * k).toInt().coerceIn(0, full.height - 1)
+        val right = ((box.right + pad) * k).toInt().coerceIn(left + 1, full.width)
+        val bottom = ((box.bottom + pad) * k).toInt().coerceIn(top + 1, full.height)
+        val crop = Bitmap.createBitmap(full, left, top, right - left, bottom - top)
+        val out = rects.map { it?.let { g -> RectF(g.left * k - left, g.top * k - top, g.right * k - left, g.bottom * k - top) } }.toTypedArray()
+        return TextProbe.Preview(crop, out, r.probeText)
+    }
+
     /** Draws the card being edited on a background thread and shows it. */
     private fun renderState(st: CardState) {
         val l = layout ?: return
@@ -2247,6 +2275,7 @@ class MainActivity : Activity() {
                 assets = Assets(z, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                 val r = Renderer(l, ctx, assets, st.values)
                 r.hideLayerId = editingLayerId
+                r.probeName = TextProbe.name
                 var aboveBmp: Bitmap? = null
                 val fits = ArrayList<AutoFit.Group>()
                 val editing = editingLayerId?.let { id -> ImageLayers.read(st.values).firstOrNull { it.id == id } }
@@ -2264,6 +2293,7 @@ class MainActivity : Activity() {
                 editAbove = aboveBmp
                 fits.addAll(r.fitGroups)
                 AutoFit.publish(fits)
+                bmp?.let { full -> makePreview(r, full, l, ctx, assets!!, st)?.let { TextProbe.publish(it) } }
                 val ms = SystemClock.elapsedRealtime() - t0
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
                 val real = assets.missing.filter { !isBlankOnPurpose(it) }
