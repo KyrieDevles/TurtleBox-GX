@@ -31,7 +31,7 @@ class DataDef(val name: String, val default: String?, val type: String?, val des
 }
 
 /** One `<image>` or `<text>` element of the layout. Children with a `when` attribute are tried in order. */
-class Element(val kind: String, val attrs: Map<String, String>, val order: Int) {
+class Element(val kind: String, val attrs: MutableMap<String, String>, val order: Int) {
     val sizes = ArrayList<Cond<Rect4>>()
     val srcs = ArrayList<Cond<String>>()
     val colors = ArrayList<Cond<String>>()
@@ -187,10 +187,12 @@ object LayoutParser {
             }
         } catch (e: Exception) {
         }
+        // <textmenu>id</textmenu> on a text element builds its settings and menu (after labels: the menu title uses it).
+        TextMenu.expand(datas, elements)
         return Layout(width, height, datas, bools, elements, styleInfo, tiles)
     }
 
-    private fun attrsOf(p: XmlPullParser): Map<String, String> {
+    private fun attrsOf(p: XmlPullParser): MutableMap<String, String> {
         val m = HashMap<String, String>()
         for (i in 0 until p.attributeCount) m[p.getAttributeName(i)] = p.getAttributeValue(i)
         return m
