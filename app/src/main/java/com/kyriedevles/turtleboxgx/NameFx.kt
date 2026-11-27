@@ -268,7 +268,7 @@ object NameFx {
         val shBlur = if (on("shadow")) fl("shblur", 0f).coerceAtLeast(0f) * u else 0f
         val shx = if (on("shadow")) fl("shx", 0f) * u else 0f
         val shy = if (on("shadow")) fl("shy", 0f) * u else 0f
-        val pad = Math.ceil((thick * k / 2f + olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + 12f).toDouble()).toInt()
+        val pad = Math.ceil((thick * k / 2f + olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + glowReach(m, u) + 12f).toDouble()).toInt()
         val lw = Math.ceil((rect.width() * k).toDouble()).toInt() + 2 * pad
         val lh = Math.ceil((rect.height() * k).toDouble()).toInt() + 2 * pad
         val fillColor = col(m["fill"], base.color)
@@ -304,7 +304,7 @@ object NameFx {
             fp.strokeJoin = Paint.Join.ROUND
         }
         lc.drawText(text, x, y, fp)
-        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, RectF(x, top - 1f, x + drawW, bottom + 1f), olR, olx, oly, shBlur, shx, shy)
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, RectF(x, top - 1f, x + drawW, bottom + 1f), olR, olx, oly, shBlur, shx, shy, u)
     }
 
     /**
@@ -332,7 +332,7 @@ object NameFx {
         val shBlur = if (on("shadow")) fl("shblur", 0f).coerceAtLeast(0f) * u else 0f
         val shx = if (on("shadow")) fl("shx", 0f) * u else 0f
         val shy = if (on("shadow")) fl("shy", 0f) * u else 0f
-        val pad = Math.ceil((olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + 12f).toDouble()).toInt()
+        val pad = Math.ceil((olR + max(abs(olx), abs(oly)) + shBlur * 2f + max(abs(shx), abs(shy)) + glowReach(m, u) + 12f).toDouble()).toInt()
         val lw = Math.ceil((rect.width() * k).toDouble()).toInt() + 2 * pad
         val lh = Math.ceil((rect.height() * k).toDouble()).toInt() + 2 * pad
         if (lw <= 0 || lh <= 0 || lw.toLong() * lh > 9_000_000L) return drawContent(c)
@@ -351,14 +351,20 @@ object NameFx {
             fp.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             lc.drawRect(RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k), fp)
         }
-        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, rect, olR, olx, oly, shBlur, shx, shy)
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, rect, olR, olx, oly, shBlur, shx, shy, u)
+    }
+
+    /** How far a glow reaches past the letters, in layer px. */
+    private fun glowReach(m: Map<String, String>, u: Float): Float {
+        if (m["glow"] != "1") return 0f
+        return ((m["glblur"]?.toFloatOrNull() ?: 8f) * 2f + (m["glspread"]?.toFloatOrNull() ?: 0f)).coerceAtLeast(0f) * u
     }
 
     /** Pattern, emboss, outline and shadow around the letters drawn on [layer0], then the result onto [c]. */
     private fun compose(
         c: Canvas, layer0: Bitmap, lw: Int, lh: Int, pad: Int, k: Float, rect: RectF, m: Map<String, String>,
         layout: Layout, assets: Assets, patRect: RectF,
-        olR: Float, olx: Float, oly: Float, shBlur: Float, shx: Float, shy: Float,
+        olR: Float, olx: Float, oly: Float, shBlur: Float, shx: Float, shy: Float, u: Float,
     ) {
         fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
         fun on(key: String) = m[key] == "1"
@@ -430,6 +436,36 @@ object NameFx {
             val sp = Paint(Paint.FILTER_BITMAP_FLAG)
             sp.color = col(m["shcolor"], Color.BLACK)
             fc.drawBitmap(a, off[0] + shx, off[1] + shy, sp)
+        }
+        // Outer glow (Photoshop's): the letters' shape spread by [glspread], blurred by [glblur], in [glcolor], behind them.
+        if (on("glow")) {
+            val gBlur = fl("glblur", 8f).coerceAtLeast(0f) * u
+            val gSpread = fl("glspread", 0f).coerceAtLeast(0f) * u
+            var src = shape
+            if (gSpread > 0.01f) {
+                val sp = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+                val scv = Canvas(sp)
+                val mask = shape.extractAlpha()
+                val mp = Paint(Paint.FILTER_BITMAP_FLAG)
+                scv.drawBitmap(mask, 0f, 0f, mp)
+                for (ring in 1..3) {
+                    val rr = gSpread * ring / 3f
+                    val n = min(48, max(8, Math.round(rr * 4f)))
+                    for (i in 0 until n) {
+                        val a = 2.0 * Math.PI * i / n
+                        scv.drawBitmap(mask, (rr * cos(a)).toFloat(), (rr * sin(a)).toFloat(), mp)
+                    }
+                }
+                src = sp
+            }
+            val bp = Paint()
+            if (gBlur > 0.5f) bp.maskFilter = BlurMaskFilter(gBlur, BlurMaskFilter.Blur.NORMAL)
+            val off = IntArray(2)
+            val a = src.extractAlpha(bp, off)
+            val gp = Paint(Paint.FILTER_BITMAP_FLAG)
+            gp.color = col(m["glcolor"], Color.WHITE)
+            fl("glopacity", 100f).coerceIn(0f, 100f).let { gp.alpha = (Color.alpha(gp.color) * it / 100f).toInt() }
+            fc.drawBitmap(a, off[0].toFloat(), off[1].toFloat(), gp)
         }
         fc.drawBitmap(shape, 0f, 0f, null)
 

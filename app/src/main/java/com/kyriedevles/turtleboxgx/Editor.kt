@@ -94,7 +94,8 @@ class Editor(
     private val state: CardState,
     private val onChanged: () -> Unit,
     private val pickImage: (String) -> Unit,
-    private val namePreview: ((List<Map<String, String>?>) -> List<android.graphics.Bitmap>)? = null,
+    /** Style samples for the style editor: the styles, and the setting being edited (a text layer shows its own text). */
+    private val namePreview: ((List<Map<String, String>?>, String) -> List<android.graphics.Bitmap>)? = null,
     /** Called with the screen y where a docked menu starts (so the card can fit above it), or -1 when it closes. */
     private val onTop: ((Int) -> Unit)? = null,
     /** Starts moving and resizing a text box on the card (data name, what to run when finished). */
@@ -403,7 +404,8 @@ class Editor(
                     commitAll(commits)
                     dlgRef?.dismiss()
                     onChanged()
-                    NameStyleEditor(activity, layout, state, f.name, onChanged, namePreview) { open(click) }.show()
+                    val pv = namePreview
+                    NameStyleEditor(activity, layout, state, f.name, onChanged, pv?.let { p -> { maps: List<Map<String, String>?> -> p(maps, f.name) } }) { open(click) }.show()
                 }
                 into.addView(b, row())
                 return

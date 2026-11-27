@@ -1243,10 +1243,18 @@ class MainActivity : Activity() {
                 }
                 cardView.invalidate()
             },
-            namePreview = { maps ->
+            namePreview = { maps, key ->
                 val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
                 try {
-                    Renderer(l, Ctx(l, st.values), a).previewName(maps, 360, 110)
+                    val r = Renderer(l, Ctx(l, st.values), a, st.values)
+                    // A text layer's style shows that layer's own first line, font and colour instead of "Card Name".
+                    val id = key.removePrefix("style_tl").takeIf { key.startsWith("style_tl") }
+                    if (id != null) {
+                        val t = TextLayers.tm(id)
+                        val sample = (st.values["text_$t"] ?: "").replace(Regex("<[^>]*>"), "").lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(24)?.ifBlank { null } ?: "Text"
+                        val color = try { android.graphics.Color.parseColor(st.values["color_$t"] ?: "#000000") } catch (e: Exception) { android.graphics.Color.BLACK }
+                        r.previewName(maps, 360, 110, sample, TextLayers.fontFile(l, st.values, id), color)
+                    } else r.previewName(maps, 360, 110)
                 } finally {
                     a.close()
                 }

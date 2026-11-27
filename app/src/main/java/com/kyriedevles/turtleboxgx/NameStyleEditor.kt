@@ -555,6 +555,13 @@ class NameStyleEditor(
                         }
                     }
                 }
+                "Glow" -> {
+                    header("Has Glow?", "glow")
+                    cur = card(null); slider("Size", "glblur", 0f, 30f, 8f)
+                    cur = card(null); slider("Spread", "glspread", 0f, 10f, 0f)
+                    cur = card(null); slider("Opacity %", "glopacity", 0f, 100f, 100f, true)
+                    cur = card("Glow colour"); colorPicker(null, "glcolor", "#ffffff", false)
+                }
                 "Emboss" -> {
                     header("Use Emboss?", "emboss", "Emboss overrides some text features. Change the colour in the Color row.")
                     cur = card(null); slider("Thickness", "ethick", 0f, 10f, 0f)
@@ -656,6 +663,7 @@ class NameStyleEditor(
         val rowUpd = LinkedHashMap<String, () -> Unit>()
         fun used(s: String) = when (s) {
             "Shadow" -> st.v["shadow"] == "1"
+            "Glow" -> st.v["glow"] == "1"
             "Outline" -> st.v["outline"] == "1"
             "Gradient" -> st.v["grad"] == "1"
             "Pattern" -> !st.v["pattern"].isNullOrEmpty()
@@ -877,9 +885,9 @@ class NameStyleEditor(
                 }
                 "custom" -> {
                     tabRow.removeAllViews()
-                    for (s in listOf("Color", "Shadow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
+                    for (s in listOf("Color", "Shadow", "Glow", "Outline", "Gradient", "Pattern", "Font", "Emboss")) {
                         val open = section == s
-                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
+                        val toggleKey = when (s) { "Shadow" -> "shadow"; "Glow" -> "glow"; "Outline" -> "outline"; "Gradient" -> "grad"; "Emboss" -> "emboss"; else -> null }
                         val tg = SkewToggle(activity)
                         val sum = TextView(activity).apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.END }
                         fun val_(k: String) = st.v[k] ?: ""
@@ -887,6 +895,7 @@ class NameStyleEditor(
                             val (v, rest) = when (s) {
                                 "Color" -> val_("fill").ifEmpty { "#000000" } to ""
                                 "Shadow" -> if (used(s)) "${val_("shx").ifEmpty { "0" }}, ${val_("shy").ifEmpty { "0" }}" to " · blur ${val_("shblur").ifEmpty { "0" }}" else "off" to ""
+                                "Glow" -> if (used(s)) "${val_("glblur").ifEmpty { "8" }} px" to " · ${val_("glcolor").ifEmpty { "#ffffff" }}" else "off" to ""
                                 "Outline" -> if (used(s)) "${val_("olw").ifEmpty { "0" }} px" to " · ${val_("olcolor").ifEmpty { "#000000" }}" else "off" to ""
                                 "Gradient" -> if (used(s)) "${val_("gstops").split(',').count { it.contains('|') }} stops" to " · ${val_("gangle").ifEmpty { "0" }}°" else "off" to ""
                                 "Pattern" -> val_("pattern").ifEmpty { "none" } to ""
