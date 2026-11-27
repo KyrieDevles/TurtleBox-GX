@@ -55,7 +55,7 @@ object SetWriter {
         sb.append("</style>")
         val written = HashSet<String>()
         for (d in layout.datas.values) {
-            if (d.type == "multi_select" || d.type == "button") continue
+            if (d.type == "multi_select" || d.type == "button" || d.type == "fitstatus") continue
             written.add(d.name)
             sb.append("<data><key>").append(esc(d.name)).append("</key><value>")
                 .append(esc(state.values[d.name] ?: ctx.value(d.name))).append("</value></data>")
@@ -128,15 +128,20 @@ class Editor(
         val fields = if (d.type == "multi_select") d.items.mapNotNull { find(it.second) } else listOf(d)
         if (fields.isEmpty()) return
         // An item whose value starts with # is a section heading (<item name="Spacing" value="#"/>): it is shown above the next field.
+        // Headings work inside the collapsible sections too (Word spacing, Leading... in Paragraph).
         val headings = HashMap<String, String>()
-        if (d.type == "multi_select") {
+        val seenGroups = HashSet<String>()
+        fun collectHeadings(g: DataDef) {
+            if (!seenGroups.add(g.name)) return
             var pending: String? = null
-            for ((nm, v) in d.items) {
+            for ((nm, v) in g.items) {
                 if (v.startsWith("#")) { pending = nm; continue }
                 val f = find(v) ?: continue
                 if (pending != null) { headings[f.name] = pending; pending = null }
+                if (f.type == "multi_select") collectHeadings(f)
             }
         }
+        if (d.type == "multi_select") collectHeadings(d)
 
         val ctx = Ctx(layout, state.values)
         val commits = ArrayList<() -> Unit>()
@@ -157,11 +162,46 @@ class Editor(
             liveHandler.postDelayed({ livePending = false; onChanged() }, 90)
         }
         // Changes show on the card at once; Cancel puts the old values back.
+        val tracked = HashSet<String>()
         fun track(name: String) {
+            if (!tracked.add(name)) return
             val old = state.values[name]
             restores.add { if (old == null) state.values.remove(name) else state.values[name] = old }
         }
         var into: LinearLayout = box
+        var depth = 0
+
+        // Auto / Manual (see AutoFit): while fit steps size the text, Size px, Leading px, Tracking and Horizontal
+        // Scale show the values the card uses, dimmed. The first edit of any of them writes all four (manual).
+        val autoRows = HashMap<String, SliderRow>()
+        val fitRefreshers = ArrayList<() -> Unit>()
+        fun sizeSet(g: AutoFit.Group): Boolean =
+            (g.size?.let { (state.values[it] ?: ctx.value(it)).trim().toFloatOrNull() } ?: 0f) > 0f
+        fun autoOf(name: String): AutoFit.Group? = AutoFit.groupFor(name)?.takeIf { it.auto && !sizeSet(it) }
+        fun refreshFit() {
+            for ((n, r) in autoRows) {
+                val g = autoOf(n)
+                if (g != null) r.show(g.values[n] ?: 0f, true)
+                else if (r.auto()) r.show((state.values[n] ?: ctx.value(n)).trim().toFloatOrNull() ?: 0f, false)
+            }
+            fitRefreshers.forEach { it() }
+        }
+        fun freeze(g: AutoFit.Group, name: String, v: Float) {
+            for (n in g.names()) {
+                track(n)
+                state.values[n] = if (n == name) fmt(v) else g.values[n]?.let { fmt(it) } ?: (state.values[n] ?: ctx.value(n))
+            }
+            refreshFit()
+        }
+        fun backToAuto(sizeName: String) {
+            val g = AutoFit.groupFor(sizeName) ?: return
+            for (n in g.names()) {
+                track(n)
+                state.values[n] = find(n)?.default ?: ""
+            }
+            refreshFit()
+            liveApply()
+        }
         fun changedIn(g: DataDef): Boolean = g.items.mapNotNull { find(it.second) }.any { m ->
             if (m.type == "multi_select") changedIn(m)
             else if (m.type == "box") (state.values[m.name] ?: "").isNotBlank()
@@ -204,12 +244,25 @@ class Editor(
                 Theme.unclip(body)
                 val saved = into
                 into = body
+                depth++
                 for (m in f.items.mapNotNull { find(it.second) }) build(m)
+                depth--
                 into = saved
                 paintHead()
                 return
             }
-            headings[f.name]?.let { h ->
+            headings[f.name]?.takeIf { depth > 0 }?.let { h ->
+                // Inside a section: a pink caps line, no new card.
+                into.addView(TextView(activity).apply {
+                    text = h.uppercase()
+                    setTextColor(Theme.hot)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    letterSpacing = 0.14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setPadding(0, dp(16), 0, dp(2))
+                })
+            }
+            headings[f.name]?.takeIf { depth == 0 }?.let { h ->
                 box.addView(TextView(activity).apply {
                     text = h.uppercase()
                     setTextColor(Theme.pink)
@@ -272,6 +325,51 @@ class Editor(
                 }
                 return
             }
+            if (f.type == "fitstatus") {
+                // Fit steps status: AUTO (which step), MANUAL (your values, with Back to auto fit) or OFF.
+                val sizeName = f.default?.takeIf { it.isNotBlank() } ?: return
+                val line = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, 0) }
+                line.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: "Status"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                val chip = TextView(activity).apply {
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    letterSpacing = 0.12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                }
+                line.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                into.addView(line, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                val sub = TextView(activity).apply {
+                    setTextColor(Theme.muted)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setPadding(0, dp(6), 0, 0)
+                }
+                into.addView(sub, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                val back = hotButton("Back to auto fit")
+                back.setOnClickListener { backToAuto(sizeName) }
+                into.addView(back, row())
+                fun paintStatus() {
+                    val g = AutoFit.groupFor(sizeName)
+                    val auto = autoOf(sizeName) != null
+                    val word = when { g == null -> "—"; !g.on -> "OFF"; auto -> "AUTO"; else -> "MANUAL" }
+                    chip.text = word
+                    chip.setTextColor(if (auto) Theme.onPink else Theme.text)
+                    chip.background = if (auto) Theme.segment(true, dp(6).toFloat())
+                        else GradientDrawable().apply { setColor(Color.parseColor("#2d2d31")); cornerRadius = dp(4).toFloat() }
+                    sub.text = when {
+                        g == null -> "Shows once the card has been drawn."
+                        !g.on -> "Smooth fit: the text shrinks and squeezes freely, within the limits under When Fit steps is off."
+                        auto -> (if (g.step >= 0) "Step ${g.step + 1} of ${g.steps}" else "Below the last step: shrunk to fit") +
+                            (if (g.squeeze < 0.995f) " · squeezed to ${Math.round(g.squeeze * 100f)}%" else "") +
+                            ". Edit any value in Characters to take over."
+                        else -> "Your Characters values are used. Back to auto fit lets the steps size the text again."
+                    }
+                    back.visibility = if (g != null && g.on && !auto) View.VISIBLE else View.GONE
+                }
+                fitRefreshers.add { paintStatus() }
+                paintStatus()
+                return
+            }
             val inlineSlider = f.items.isEmpty() && f.type != "image" && sliderRange(f.name) != null
             if (!inlineSlider) into.addView(label(f.desc?.takeIf { it.isNotBlank() } ?: f.name))
             val current = state.values[f.name] ?: ctx.value(f.name)
@@ -284,7 +382,14 @@ class Editor(
                 f.items.isNotEmpty() && f.items.size <= 8 && f.items.all { it.first.length <= 34 } -> {
                     var chosen = current
                     // Two or three short choices share one joined bar; longer sets are a list of full-width octagons.
-                    val joined = f.items.size <= 3 && f.items.all { it.first.length <= 12 }
+                    // Alignment (4 or more of the 7 Photoshop alignments): one joined bar of icons.
+                    val icons = f.items.size >= 4 && f.items.all { it.second in AlignIcon.KINDS }
+                    val joined = icons || (f.items.size <= 3 && f.items.all { it.first.length <= 12 })
+                    val iconName = if (icons) TextView(activity).apply {
+                        setTextColor(Theme.muted)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setPadding(dp(2), dp(6), 0, 0)
+                    } else null
                     val flow: LinearLayout = LinearLayout(activity).apply {
                         orientation = if (joined) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
                         if (joined) {
@@ -299,17 +404,20 @@ class Editor(
                             tv.setTextColor(if (on) Theme.onPink else Theme.muted)
                             tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.create("sans-serif-medium", Typeface.NORMAL)
                             tv.background = if (joined) Theme.segment(on, dp(8).toFloat()) else Theme.choice(on, dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(5).toFloat())
+                            tv.invalidate()
                         }
+                        iconName?.text = f.items.firstOrNull { it.second == chosen }?.first ?: ""
                     }
                     for ((name, v) in f.items) {
-                        val tv = TextView(activity).apply {
-                            text = name
+                        val tv = (if (icons) AlignIcon(activity, v) else TextView(activity)).apply {
+                            text = if (icons) "" else name
+                            if (icons) contentDescription = name
                             isAllCaps = true
                             letterSpacing = 0.08f
                             gravity = android.view.Gravity.CENTER
                             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                            setPadding(dp(14), 0, dp(14), 0)
-                            minimumHeight = dp(if (joined) 38 else 40)
+                            setPadding(if (icons) 0 else dp(14), 0, if (icons) 0 else dp(14), 0)
+                            minimumHeight = dp(if (icons) 40 else if (joined) 38 else 40)
                             setOnClickListener {
                                 chosen = v
                                 paint()
@@ -325,6 +433,7 @@ class Editor(
                     track(f.name)
                     commits.add { if (chosen != (state.values[f.name] ?: ctx.value(f.name))) state.values[f.name] = chosen }
                     into.addView(flow, row())
+                    iconName?.let { into.addView(it) }
                 }
                 f.items.isNotEmpty() -> {
                     var chosen = current
@@ -351,7 +460,15 @@ class Editor(
                     val (lo, hi) = sliderRange(f.name)!!
                     val start = (current.toFloatOrNull() ?: f.default?.toFloatOrNull() ?: lo.toFloat()).coerceIn(lo.toFloat(), hi.toFloat())
                     track(f.name)
-                    sliderRow(into, f, start, { v -> state.values[f.name] = fmt(v); liveApply() }, { }, dp(8))
+                    val r = sliderRowFull(into, f, start, { v ->
+                        val g = autoOf(f.name)
+                        if (g != null) freeze(g, f.name, v) else state.values[f.name] = fmt(v)
+                        liveApply()
+                    }, { }, dp(8))
+                    if (AutoFit.groupFor(f.name) != null) {
+                        autoRows[f.name] = r
+                        autoOf(f.name)?.let { g -> r.show(g.values[f.name] ?: start, true) }
+                    }
                 }
                 else -> {
                     val multi = f.name.endsWith("text", ignoreCase = true) || current.contains('\n')
@@ -443,7 +560,12 @@ class Editor(
             }
             .create()
         dlgRef = dlg
-        if (restores.isNotEmpty()) dlg.setOnDismissListener { onTop?.invoke(-1) }
+        val fitListener: () -> Unit = { refreshFit() }
+        AutoFit.listener = fitListener
+        dlg.setOnDismissListener {
+            if (AutoFit.listener === fitListener) AutoFit.listener = null
+            if (restores.isNotEmpty()) onTop?.invoke(-1)
+        }
         dlg.show()
         // Docked at the bottom, half height, no dimming: the card stays visible above while sliders apply live.
         if (restores.isNotEmpty()) {
@@ -621,8 +743,15 @@ class Editor(
     }
 
     /** One number option as a name, a typed value, a reset button and a slider. Returns what resets it. */
-    private fun sliderRow(parent: LinearLayout, f: DataDef, startV: Float, onValue: (Float) -> Unit, onDone: () -> Unit, gap: Int = 0): () -> Unit {
+    private fun sliderRow(parent: LinearLayout, f: DataDef, startV: Float, onValue: (Float) -> Unit, onDone: () -> Unit, gap: Int = 0): () -> Unit =
+        sliderRowFull(parent, f, startV, onValue, onDone, gap).reset
+
+    /** A slider row: [reset] puts the default back; [show] sets the value without reporting it, dimmed when auto. */
+    private class SliderRow(val reset: () -> Unit, val show: (Float, Boolean) -> Unit, val auto: () -> Boolean)
+
+    private fun sliderRowFull(parent: LinearLayout, f: DataDef, startV: Float, onValue: (Float) -> Unit, onDone: () -> Unit, gap: Int = 0): SliderRow {
         val (lo, hi) = sliderRange(f.name) ?: (0 to 200)
+        var autoNow = false
         val head = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, gap, 0, 0) }
         val name = label(f.desc?.takeIf { it.isNotBlank() }?.substringBefore(" (") ?: f.name)
         head.addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -657,7 +786,8 @@ class Editor(
                 cornerRadius = dp(10).toFloat()
             }
             contentDescription = "Reset this option"
-            setOnClickListener { num.setText(fmt(f.default?.toFloatOrNull() ?: 100f)) }
+            // While auto, the value belongs to fit steps: Back to auto fit / editing is the way to change it.
+            setOnClickListener { if (!autoNow) num.setText(fmt(f.default?.toFloatOrNull() ?: 100f)) }
         }
         head.addView(one, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(6) })
         parent.addView(head)
@@ -702,10 +832,35 @@ class Editor(
             } else false
         }
         parent.addView(bar, row())
-        return {
+        val nameText = name.text.toString()
+        val numBg = num.background as GradientDrawable
+        val resetBg = one.background as GradientDrawable
+        val show: (Float, Boolean) -> Unit = { v, auto ->
+            autoNow = auto
+            // Do not rewrite the number the user is typing in.
+            if (auto || !num.hasFocus()) {
+                busy = true
+                if (num.text.toString() != fmt(v)) num.setText(fmt(v))
+                bar.progress = Math.round((v - lo) * 10f).coerceIn(0, bar.max)
+                busy = false
+            }
+            val ink = if (auto) Theme.muted else pink
+            val edge = if (auto) Color.parseColor("#4a4550") else hot
+            num.setTextColor(ink)
+            numBg.setStroke(dp(2), edge)
+            one.setTextColor(if (auto) Color.parseColor("#4a4550") else pink)
+            resetBg.setStroke(dp(2), edge)
+            name.text = if (auto) "$nameText  · auto" else nameText
+            name.setTextColor(if (auto) Theme.muted else Theme.label)
+            val tint = android.content.res.ColorStateList.valueOf(ink)
+            bar.progressTintList = tint
+            bar.thumbTintList = tint
+        }
+        val reset = {
             val d = (f.default?.toFloatOrNull() ?: 100f)
             num.setText(fmt(d))
         }
+        return SliderRow(reset, show, { autoNow })
     }
 
     private fun openPanelFields(title: String, fields: List<DataDef>, after: () -> Unit) {
@@ -918,6 +1073,39 @@ class FlowLayout(context: Context, private val gap: Int) : ViewGroup(context) {
             c.layout(x, y, x + c.measuredWidth, y + c.measuredHeight)
             x += c.measuredWidth + gap
             rowH = maxOf(rowH, c.measuredHeight)
+        }
+    }
+}
+
+/** One of Photoshop's 7 paragraph alignments drawn as four lines (the icon of the alignment bar). */
+private class AlignIcon(ctx: Context, private val kind: String) : TextView(ctx) {
+    companion object {
+        val KINDS = setOf("ragleft", "hcenter", "right", "left", "justcenter", "justright", "justall")
+    }
+
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onDraw(c: Canvas) {
+        super.onDraw(c)
+        val d = resources.displayMetrics.density
+        val w = 20f * d
+        val bh = 2.4f * d
+        val gap = 4.6f * d
+        val left = (width - w) / 2f
+        val top = (height - (3 * gap + bh)) / 2f
+        val widths = when (kind) {
+            "ragleft", "right" -> floatArrayOf(1f, 0.73f, 0.91f, 0.55f)
+            "hcenter" -> floatArrayOf(1f, 0.64f, 0.82f, 0.45f)
+            "justall" -> floatArrayOf(1f, 1f, 1f, 1f)
+            else -> floatArrayOf(1f, 1f, 1f, 0.55f)
+        }
+        val anchor = when (kind) { "right", "justright" -> 2; "hcenter", "justcenter" -> 1; else -> 0 }
+        p.color = if (currentTextColor == Theme.onPink) Theme.onPink else Theme.text
+        for (i in 0..3) {
+            val bw = w * widths[i]
+            val x = when (anchor) { 2 -> left + w - bw; 1 -> left + (w - bw) / 2f; else -> left }
+            val y = top + i * gap
+            c.drawRoundRect(x, y, x + bw, y + bh, d, d, p)
         }
     }
 }

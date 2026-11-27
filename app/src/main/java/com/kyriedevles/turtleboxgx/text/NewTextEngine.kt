@@ -175,6 +175,18 @@ class NewTextEngine(
 
     /** The layout in use: the plain auto-fit one, or the one of the fit step that was chosen. */
     private var core = makeCore(baseOptions)
+
+    /** Which fit step the last [fit] used (-1 = below the last step or no steps) and the tracking it used (1/1000 em). */
+    var usedStep = -1
+        private set
+    var usedTracking = opt.letterSpace * 1000f
+        private set
+
+    /** The values the last [fit] used, as the Characters panel shows them: size px, leading px, tracking, horizontal scale %. */
+    fun usedValues(): FloatArray? {
+        val r = result ?: return null
+        return floatArrayOf(r.size, r.lineHeight, usedTracking, hs * r.scaleX * 100f)
+    }
     private var result: LayoutResult? = null
     private var placedAlign = 0
     private var matLayout: StaticLayout? = null
@@ -215,12 +227,16 @@ class NewTextEngine(
                 { o -> makeCore(o).also { it.align = 0 } },
                 { res -> res.textHeight + materialsHeight(res.size) <= boxHeight + 0.01f },
             )
-            core = chosen.first
-            r = chosen.second
+            core = chosen.core
+            r = chosen.result
+            usedStep = chosen.step
+            usedTracking = chosen.tracking
         } else {
             core = makeCore(baseOptions)
             core.align = 0
             r = core.layout()
+            usedStep = -1
+            usedTracking = opt.letterSpace * 1000f
         }
         result = r
         matLayout = null

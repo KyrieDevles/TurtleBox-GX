@@ -2123,6 +2123,7 @@ class MainActivity : Activity() {
                 val r = Renderer(l, ctx, assets, st.values)
                 r.hideLayerId = editingLayerId
                 var aboveBmp: Bitmap? = null
+                val fits = ArrayList<AutoFit.Group>()
                 val editing = editingLayerId?.let { id -> ImageLayers.read(st.values).firstOrNull { it.id == id } }
                 if (editing != null) {
                     r.splitZ = editing.z
@@ -2132,9 +2133,12 @@ class MainActivity : Activity() {
                     r2.splitZ = editing.z
                     r2.part = 2
                     aboveBmp = r2.render(2f)
+                    fits.addAll(r2.fitGroups)
                 }
                 bmp = r.render(2f)
                 editAbove = aboveBmp
+                fits.addAll(r.fitGroups)
+                AutoFit.publish(fits)
                 val ms = SystemClock.elapsedRealtime() - t0
                 val blank = assets.missing.filter { isBlankOnPurpose(it) }
                 val real = assets.missing.filter { !isBlankOnPurpose(it) }

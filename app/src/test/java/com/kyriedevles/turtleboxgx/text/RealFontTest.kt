@@ -169,7 +169,7 @@ class RealFontTest {
         val limit = squeezeLimitFor(paragraphs, listOf(64.5f, 66.5f, 68.5f))
         return chooseFitStep(effectSteps, limit, base, 12f,
             { o -> LayoutCore(Source(text, IntArray(text.length)), matrix, 353.7f, 78.05f, o, { 0f }, 12f) },
-            { r -> r.textHeight <= 78.05f + 0.01f }).second
+            { r -> r.textHeight <= 78.05f + 0.01f }).result
     }
 
     @Test

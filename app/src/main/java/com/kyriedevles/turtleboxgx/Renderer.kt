@@ -32,6 +32,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     /** The natural (layout) rectangle of every text box that can be moved, by its boxdata name. */
     val boxes = HashMap<String, RectF>()
 
+    /** Fit steps of the text boxes drawn, for the edit menu (see [AutoFit]). */
+    val fitGroups = ArrayList<AutoFit.Group>()
+
     /** Debug notes shown under the card. */
     val notes = ArrayList<String>()
 
@@ -313,6 +316,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             val squeeze = ctx.sub(e.options["fitsqueeze"] ?: "").split('/', ',', ' ', ';').mapNotNull { it.trim().toFloatOrNull() }.filter { it > 0f }
             val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup, steps, squeeze)
             val used = engine.fit()
+            publishFit(e, opt, engine, steps.size)
             engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         } else {
             val engine = TextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
@@ -320,6 +324,31 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
         }
         drawn++
+    }
+
+    /**
+     * Tell the edit menu what fit steps chose, through the menu fields named in this box's option tags
+     * (`<sizepx>{{sizepx_effect}}</sizepx>` and so on). Only boxes that have fit steps written in take part.
+     */
+    private fun publishFit(e: Element, opt: TextOptions, engine: com.kyriedevles.turtleboxgx.text.NewTextEngine, stepCount: Int) {
+        val hasSteps = (1..6).any { com.kyriedevles.turtleboxgx.text.parseFitStep(ctx.sub(e.options["fitstep$it"] ?: "")) != null }
+        if (!hasSteps) return
+        val refRx = Regex("^\\s*\\{\\{\\s*([A-Za-z0-9_]+)\\s*\\}\\}\\s*$")
+        fun ref(key: String): String? = e.options[key]?.let { refRx.find(it)?.groupValues?.get(1) }
+        val g = AutoFit.Group(ref("sizepx"), ref("leadingpx"), ref("tracking"), ref("hscale"))
+        if (g.names().isEmpty()) return
+        g.on = stepCount > 0
+        g.auto = g.on && opt.fontScale <= 0f
+        g.step = engine.usedStep
+        g.steps = stepCount
+        engine.usedValues()?.let { u ->
+            g.squeeze = if (opt.hScale > 0f) u[3] / opt.hScale else 1f
+            g.size?.let { g.values[it] = u[0] }
+            g.leading?.let { g.values[it] = u[1] }
+            g.tracking?.let { g.values[it] = u[2] }
+            g.hscale?.let { g.values[it] = u[3] }
+        }
+        fitGroups.add(g)
     }
 
     /** First-line indent: non-breaking spaces at the start of every paragraph, like the old app (1 to 8). */

@@ -729,6 +729,12 @@ fun extractFixedLines(text: String, styles: IntArray): FixedResult {
 }
 
 
+/**
+ * What [chooseFitStep] picked: the layout and its result, the step's index ([FitChoice.step], -1 = below the last step) and
+ * the tracking in use (1/1000 em, the user's plus the step's).
+ */
+class FitChoice(val core: LayoutCore, val result: LayoutResult, val step: Int, val tracking: Float)
+
 /** One preset of the fit steps: font size and leading in card px, tracking in 1/1000 em. */
 class FitStep(val sizePx: Float, val leadingPx: Float, val tracking: Float)
 
@@ -759,9 +765,9 @@ fun chooseFitStep(
     baseSize: Float,
     make: (LayoutOptions) -> LayoutCore,
     fitsHeight: (LayoutResult) -> Boolean,
-): Pair<LayoutCore, LayoutResult> {
+): FitChoice {
     require(steps.isNotEmpty())
-    for (st in steps) {
+    for ((i, st) in steps.withIndex()) {
         val pct = st.sizePx * 100f / baseSize
         val o = base.copy(
             fontScale = 0f, minSizePct = pct, maxSizePct = pct, minLines = 0f,
@@ -771,7 +777,7 @@ fun chooseFitStep(
         )
         val core = make(o)
         val r = core.layout()
-        if (fitsHeight(r)) return core to r
+        if (fitsHeight(r)) return FitChoice(core, r, i, o.letterSpace * 1000f)
     }
     val last = steps.last()
     val o = base.copy(
@@ -781,7 +787,7 @@ fun chooseFitStep(
         letterSpace = base.letterSpace + last.tracking / 1000f,
     ).let { if (base.leadingPx > 0f) it.copy(leadingPx = base.leadingPx) else it }
     val core = make(o)
-    return core to core.layout()
+    return FitChoice(core, core.layout(), -1, o.letterSpace * 1000f)
 }
 
 /** The squeeze limit for a text with [paragraphs] paragraphs, from limits for 1, 2 and 3+ paragraphs in percent. */
