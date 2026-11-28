@@ -662,7 +662,25 @@ class NameStyleEditor(
                         values.add(f)
                     }
                     importRow("Import pattern…", "pattern") { setV("pattern", it); rebuildFwd() }
-                    tiles(list, { n -> (st.v["pattern"] ?: "") == values[n] }) { n -> setV("pattern", values[n]) }
+                    tiles(list, { n -> (st.v["pattern"] ?: "") == values[n] }) { n -> setV("pattern", values[n]); rebuildFwd() }
+                    if (!st.v["pattern"].isNullOrEmpty()) {
+                        // Photoshop's Pattern Overlay placement. Drag on the preview above to move the pattern.
+                        choice("Fit", "pfit", listOf("Stretch" to "stretch", "Tile" to "tile"), "stretch")
+                        cur = card(null); slider("Scale %", "pscale", 10f, 400f, 100f, true)
+                        cur = card("Angle"); dial("Angle", "pangle", 0, cur, 130)
+                        cur = card(null); slider("Offset X", "pox", -300f, 300f, 0f)
+                        cur = card(null); slider("Offset Y", "poy", -300f, 300f, 0f)
+                        host.addView(Button(activity).apply {
+                            text = "Snap to Origin"
+                            setAllCaps(false)
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(pink)
+                            tidyBtn(this, 13f)
+                            background = Theme.choice(false, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
+                            setOnClickListener { st.v.remove("pox"); st.v.remove("poy"); commit(); rebuildFwd() }
+                        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(4); bottomMargin = dp(8) })
+                        host.addView(label("Drag on the preview to move the pattern."))
+                    }
                 }
                 "Font" -> {
                     // namefonts (stored by label, as before), then every other font file in the layout and the card.
@@ -699,6 +717,37 @@ class NameStyleEditor(
         val strip = ImageView(activity).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             background = GradientDrawable().apply { setColor(Color.parseColor("#8a8a90")); setStroke(dp(2), Color.parseColor("#3a1a2c")); cornerRadius = dp(12).toFloat() }
+        }
+        // In the Pattern section, dragging on the preview moves the pattern (Photoshop: drag on the canvas).
+        run {
+            var lx = 0f
+            var ly = 0f
+            var dragging = false
+            var lastDrag = 0L
+            strip.setOnTouchListener { v, ev ->
+                if (st.mode != "custom" || section != "Pattern" || st.v["pattern"].isNullOrEmpty()) return@setOnTouchListener false
+                val d = strip.drawable ?: return@setOnTouchListener false
+                when (ev.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> { lx = ev.x; ly = ev.y; dragging = true; v.parent?.requestDisallowInterceptTouchEvent(true) }
+                    android.view.MotionEvent.ACTION_MOVE -> if (dragging) {
+                        // view px -> preview px -> card px -> style px
+                        val fit = minOf(strip.width.toFloat() / d.intrinsicWidth, strip.height.toFloat() / d.intrinsicHeight).coerceAtLeast(0.01f)
+                        val perStyle = fit * Renderer.lastPreviewScale.coerceAtLeast(0.01f) * layout.width / 813f
+                        fun bump(k: String, dv: Float) { st.v[k] = String.format(java.util.Locale.US, "%.1f", (st.v[k]?.toFloatOrNull() ?: 0f) + dv) }
+                        bump("pox", (ev.x - lx) / perStyle)
+                        bump("poy", (ev.y - ly) / perStyle)
+                        lx = ev.x; ly = ev.y
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastDrag > 60) { lastDrag = now; refreshPreview() }
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> if (dragging) {
+                        dragging = false
+                        commit()
+                        rebuildFwd()
+                    }
+                }
+                true
+            }
         }
         val tabRow = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL }
         val tabScroll = android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tabRow) }

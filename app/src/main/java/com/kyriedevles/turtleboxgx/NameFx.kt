@@ -1,6 +1,8 @@
 package com.kyriedevles.turtleboxgx
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.Matrix
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -490,7 +492,28 @@ object NameFx {
                 place(tc)
                 val pp = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
                 pp.xfermode = PorterDuffXfermode(mode)
-                tc.drawBitmap(pbmp, null, patRect, pp)
+                // Placement (Photoshop's Pattern Overlay): Stretch over the letters (the original look) or Tile at the
+                // picture's own size; Scale %, Angle and an offset in style px (dragged on the preview) for both.
+                val su = u / k // card px per style px
+                val ps = (m["pscale"]?.toFloatOrNull() ?: 100f).coerceIn(1f, 1000f) / 100f
+                val pa = m["pangle"]?.toFloatOrNull() ?: 0f
+                val ox = (m["pox"]?.toFloatOrNull() ?: 0f) * su
+                val oy = (m["poy"]?.toFloatOrNull() ?: 0f) * su
+                if (m["pfit"] == "tile") {
+                    val mx = Matrix()
+                    mx.setScale(ps * su, ps * su)
+                    mx.postRotate(pa)
+                    mx.postTranslate(patRect.left + ox, patRect.top + oy)
+                    pp.shader = BitmapShader(pbmp, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT).apply { setLocalMatrix(mx) }
+                    tc.drawRect(RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k), pp)
+                } else {
+                    tc.save()
+                    tc.translate(ox, oy)
+                    tc.rotate(pa, patRect.centerX(), patRect.centerY())
+                    tc.scale(ps, ps, patRect.centerX(), patRect.centerY())
+                    tc.drawBitmap(pbmp, null, patRect, pp)
+                    tc.restore()
+                }
                 val mp = Paint()
                 mp.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                 Canvas(tmp).drawBitmap(layer, 0f, 0f, mp)

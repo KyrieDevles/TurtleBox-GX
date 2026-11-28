@@ -20,6 +20,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         /** Longest style sample: longer text would make the preview so small its effects are hard to see. */
         const val SAMPLE_MAX = 16
 
+        /** Preview bitmap px per card px of the last style preview drawn (for dragging a pattern on it). */
+        @Volatile var lastPreviewScale = 1f
+
         /** A style preview's text: the first line of [raw] without tags, cut to [SAMPLE_MAX] letters with "…", or "Sample". */
         fun shortSample(raw: String): String {
             val line = raw.replace(Regex("<br>", RegexOption.IGNORE_CASE), "\n").replace(Regex("<[^>]*>"), "")
@@ -145,6 +148,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             if (bmp != null) {
                 val c = Canvas(out)
                 val k = minOf((w - 16f) / bmp.width, (h - 16f) / bmp.height)
+                lastPreviewScale = 1f
                 val dw = bmp.width * k
                 val dh = bmp.height * k
                 val dst = RectF((w - dw) / 2f, (h - dh) / 2f, (w + dw) / 2f, (h + dh) / 2f)
@@ -335,6 +339,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             }
             val tw = exactWidth(paint, sample)
             val k = ((w - 16f) / (tw + 8f)).coerceAtMost(h / (paint.textSize * 1.5f))
+            lastPreviewScale = k
             c.scale(k, k)
             val wu = w / k
             val hu = h / k
