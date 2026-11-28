@@ -274,7 +274,11 @@ class Editor(
             for (sr in selRows) {
                 if (!active) {
                     val g = autoOf(sr.name)
-                    if (g != null) sr.row.show(g.values[sr.name] ?: 0f, true, null) else sr.row.show(boxValue(sr.name) ?: 0f, false, null)
+                    // A paragraph with its own value is not what this row shows: say so.
+                    val differ = sr.tag.startsWith("para.") && com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(raw, 0, com.kyriedevles.turtleboxgx.text.TagEdit.plain(raw).length, sr.tag)
+                        .let { !(it is com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same && it.v == null) }
+                    val note = if (differ) "· box (a paragraph has its own)" else null
+                    if (g != null) sr.row.show(g.values[sr.name] ?: 0f, true, note) else sr.row.show(boxValue(sr.name) ?: 0f, false, note)
                     continue
                 }
                 when (val v = com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(raw, selA, selB, sr.tag)) {
@@ -328,6 +332,15 @@ class Editor(
             liveApply()
         }
         /** Sets (or with null, removes) a tag on the highlight. Everything highlighted: the box setting takes it instead. */
+        /** Removes one Paragraph setting ("para.left", ...) from every paragraph of the text. */
+        fun clearParaKey(tag: String) {
+            val raw = rawText()
+            val n = com.kyriedevles.turtleboxgx.text.TagEdit.plain(raw).length
+            val cur = com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(raw, 0, n, tag)
+            if (cur is com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same && cur.v == null) return
+            writeRaw(com.kyriedevles.turtleboxgx.text.TagEdit.set(raw, 0, n, tag, null))
+        }
+
         fun applySel(tag: String, value0: String?, boxName: String?, boxV: Float?) {
             // A paragraph setting back at the box's value is removed, so no <para ...> tag is left behind.
             val value = if (tag.startsWith("para.") && value0 != null && boxName != null &&
@@ -609,6 +622,10 @@ class Editor(
                                     // All of the text: the box's alignment, and no paragraph keeps its own.
                                     writeRaw(com.kyriedevles.turtleboxgx.text.TagEdit.set(raw, 0, n, "para.align", null))
                                     whole = true
+                                } else if (icons && probeName != null) {
+                                    // Nothing highlighted is the whole box too.
+                                    clearParaKey("para.align")
+                                    whole = true
                                 }
                                 chosen = v
                                 paint()
@@ -657,6 +674,9 @@ class Editor(
                         if (tag != null && selActive()) {
                             applySel(tag, fmt(v), f.name, v)
                         } else {
+                            // The whole box: paragraphs that had their own value follow the box again (like
+                            // Photoshop with all the text selected).
+                            if (tag != null && tag.startsWith("para.")) clearParaKey(tag)
                             val g = autoOf(f.name)
                             if (g != null) freeze(g, f.name, v) else state.values[f.name] = fmt(v)
                             liveApply()
