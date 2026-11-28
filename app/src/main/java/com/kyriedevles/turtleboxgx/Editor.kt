@@ -236,6 +236,8 @@ class Editor(
         // (null = any value, e.g. a colour or a font).
         class ChipState(val view: TextView, val tag: String, val on: String?)
         val chipStates = ArrayList<ChipState>()
+        // Rows that show something about the highlight (the Alignment bar), redrawn when it changes.
+        val selRefreshers = ArrayList<() -> Unit>()
         fun rawText(): String = probeName?.let { state.values[it] ?: ctx.value(it) } ?: ""
         fun tagFor(name: String): String? {
             val n = name.lowercase()
@@ -286,6 +288,7 @@ class Editor(
             }
             for (views in boxOnly.values) views.forEach { it.alpha = if (active) 0.35f else 1f; enableDeep(it, !active) }
             selTools.forEach { it.alpha = if (active) 1f else 0.4f; it.isEnabled = active }
+            selRefreshers.forEach { it() }
             // Lit when the whole highlight has it, outlined when only part of it does.
             for (cs in chipStates) {
                 val v = if (active) com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(raw, selA, selB, cs.tag) else null
@@ -555,15 +558,30 @@ class Editor(
                         }
                     }
                     val chips = ArrayList<Pair<TextView, String>>()
+                    // With a highlight, the bar shows the highlighted paragraphs' own alignment (Photoshop shows the
+                    // paragraph's); null = they differ.
+                    var shown: String? = chosen
+                    var suffix = ""
                     fun paint() {
+                        if (!(icons && probeName != null && selActive())) { shown = chosen; suffix = "" }
                         for ((tv, v) in chips) {
-                            val on = v == chosen
+                            val on = v == shown
                             tv.setTextColor(if (on) Theme.onPink else Theme.muted)
                             tv.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.create("sans-serif-medium", Typeface.NORMAL)
                             tv.background = if (joined) Theme.segment(on, dp(8).toFloat()) else Theme.choice(on, dp(10).toFloat(), dp(1).toFloat() * 1.5f, dp(5).toFloat())
                             tv.invalidate()
                         }
-                        iconName?.text = f.items.firstOrNull { it.second == chosen }?.first ?: ""
+                        iconName?.text = (f.items.firstOrNull { it.second == shown }?.first ?: if (shown == null) "Mixed" else "") + suffix
+                    }
+                    if (icons) selRefreshers.add {
+                        if (probeName != null && selActive()) {
+                            when (val pv = com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, "para.align")) {
+                                is com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same ->
+                                    if (pv.v != null) { shown = pv.v; suffix = " · paragraph" } else { shown = chosen; suffix = " · box" }
+                                else -> { shown = null; suffix = " · paragraphs differ" }
+                            }
+                        }
+                        paint()
                     }
                     for ((name, v) in f.items) {
                         val tv = (if (icons) AlignIcon(activity, v) else TextView(activity)).apply {
@@ -577,15 +595,23 @@ class Editor(
                             minimumHeight = dp(if (icons) 40 else if (joined) 38 else 40)
                             setOnClickListener {
                                 // With a highlight, Alignment goes on the paragraphs it touches, like Photoshop.
+                                var whole = false
                                 if (icons && probeName != null && selActive()) {
-                                    applySel("para.align", v, null, null)
-                                    iconName?.text = "$name · paragraph"
-                                    return@setOnClickListener
+                                    val raw = rawText()
+                                    val n = com.kyriedevles.turtleboxgx.text.TagEdit.plain(raw).length
+                                    if (selA > 0 || selB < n) {
+                                        applySel("para.align", v, null, null)
+                                        return@setOnClickListener
+                                    }
+                                    // All of the text: the box's alignment, and no paragraph keeps its own.
+                                    writeRaw(com.kyriedevles.turtleboxgx.text.TagEdit.set(raw, 0, n, "para.align", null))
+                                    whole = true
                                 }
                                 chosen = v
                                 paint()
                                 state.values[f.name] = chosen
                                 liveApply()
+                                if (whole) refreshSel()
                             }
                         }
                         chips.add(tv to v)
