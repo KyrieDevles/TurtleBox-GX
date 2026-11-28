@@ -789,12 +789,26 @@ class Editor(
             }
             fun ask(title: String, hint: String, tag: String, ok: (String) -> Boolean) {
                 val cur = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, tag) as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v ?: ""
-                val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); this.hint = hint; setText(cur) }
+                val input = EditText(activity).apply {
+                    setSingleLine(true)
+                    setTextColor(Color.WHITE)
+                    setHintTextColor(Theme.muted)
+                    inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+                    this.hint = "0"
+                    setText(cur)
+                    setSelection(text.length)
+                }
+                val box = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(20), dp(4), dp(20), 0)
+                    addView(TextView(activity).apply { text = hint; setTextColor(Theme.muted); setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f) })
+                    addView(input)
+                }
                 val cd = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
-                    .setTitle(title).setView(input)
+                    .setTitle(title).setView(box)
                     .setPositiveButton("Apply") { _, _ ->
                         val t = input.text.toString().trim()
-                        if (t.isEmpty()) applySel(tag, null, null, null) else if (ok(t)) applySel(tag, t, null, null)
+                        if (t.isEmpty() || t.toFloatOrNull() == 0f) applySel(tag, null, null, null) else if (ok(t)) applySel(tag, t, null, null)
                     }
                     .setNegativeButton("Cancel", null).create()
                 cd.show()
@@ -823,7 +837,7 @@ class Editor(
                 style(dlg)
             }
             val kernChip = chip2("Kern") {
-                ask("Kerning (1/1000 em after each letter)", "-20 (empty = none)", "kern") { it.toFloatOrNull() != null }
+                ask("Kerning", "Space after each highlighted letter, in 1/1000 em (−20 tighter, 20 looser). Empty or 0 removes it.", "kern") { it.toFloatOrNull()?.let { v -> v != 0f } == true }
             }
             chipStates.add(ChipState(colourChip, "color", null))
             chipStates.add(ChipState(fontChip, "font", null))
