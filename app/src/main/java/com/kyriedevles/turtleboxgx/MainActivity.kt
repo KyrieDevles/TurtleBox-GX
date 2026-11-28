@@ -255,7 +255,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Theme.glass = prefs.getBoolean("bg_image", true)
-        com.kyriedevles.turtleboxgx.text.TextSwitch.useNew = prefs.getBoolean("new_text", false)
         val crashFile = File(filesDir, "crash.txt")
         val prevHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
@@ -1464,22 +1463,6 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
         add(bgCard, 12)
 
-        val txCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Theme.card(dp(18).toFloat(), dp(5).toFloat(), dp(3).toFloat())
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        val useNew = com.kyriedevles.turtleboxgx.text.TextSwitch.useNew
-        txCard.addView(label("Text engine", 12f, Theme.pink))
-        txCard.addView(label(if (useNew) "New (beta)" else "Classic", 15f, Color.WHITE, bold = true).apply { setPadding(0, dp(2), 0, 0) })
-        txCard.addView(label(if (useNew) "Lines are broken, justified and drawn from one measurement, so text stays inside its box. Applies to multi-line text boxes."
-            else "The original engine. Switch to try the new one; you can switch back at any time.", 13f, Theme.muted).apply { setPadding(0, dp(4), 0, 0) })
-        txCard.addView(pill(if (useNew) "Use Classic" else "Try New (beta)", false) {
-            prefs.edit().putBoolean("new_text", !useNew).apply()
-            com.kyriedevles.turtleboxgx.text.TextSwitch.useNew = !useNew
-            recreate()
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { topMargin = dp(10) })
-        add(txCard, 12)
 
         add(label("Files in use", 12f, Theme.pink), 18)
         if (xmlName.isNotBlank() || xmlError != null) {

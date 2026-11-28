@@ -15,11 +15,6 @@ import com.kyriedevles.turtleboxgx.exactWidth
 
 private class StyledTextView(val text: String, val styles: IntArray)
 
-/** Which text engine draws multi-line text boxes. The old one stays available while the new one is proven. */
-object TextSwitch {
-    @JvmField var useNew: Boolean = false
-}
-
 private fun spanStyle(v: Int): Int = when (v and 3) {
     1 -> Typeface.BOLD
     2 -> Typeface.ITALIC

@@ -466,7 +466,6 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             }
         }
 
-        val width = size.width.toInt().coerceAtLeast(1)
         val nameFx: Map<String, String>? = e.options["namestyle"]?.let { NameStyle.resolve(ctx.sub(it), layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "") }
         if (singleLine && nameFx != null) {
             nameFx["font"]?.takeIf { it.isNotBlank() }?.let { fn ->
@@ -539,45 +538,39 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val matPct = num("materialssize").takeIf { it > 0f } ?: 100f
         val matWidthPct = num("materialswidth").takeIf { it > 0f } ?: 100f
         val matLinePct = num("materialsline").takeIf { it > 0f } ?: 100f
-        if (com.kyriedevles.turtleboxgx.text.TextSwitch.useNew) {
-            // <font=name> in the card text: a name from the layout's `namefonts` list, else a font file name.
-            val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
-                assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
-            }
-            // Fit steps: <fitsteps>on</fitsteps> with <fitstep1>..<fitstep6> ("size px / leading px / tracking") and
-            // <fitsqueeze> (squeeze limits in % for 1 / 2 / 3+ paragraphs).
-            val steps = if (ctx.sub(e.options["fitsteps"] ?: "").trim().equals("on", ignoreCase = true))
-                (1..6).mapNotNull { com.kyriedevles.turtleboxgx.text.parseFitStep(ctx.sub(e.options["fitstep$it"] ?: "")) }
-            else emptyList()
-            val squeeze = ctx.sub(e.options["fitsqueeze"] ?: "").split('/', ',', ' ', ';').mapNotNull { it.trim().toFloatOrNull() }.filter { it > 0f }
-            val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup, steps, squeeze)
-            val used = engine.fit()
-            publishFit(e, opt, engine, steps.size)
-            val top = size.top + (size.height - used).coerceAtLeast(0f) * v
-            if (nameFx != null) {
-                // Name Style effects (outline, shadow, gradient...) around the whole block of lines.
-                val block = RectF(size.left, minOf(size.top, top), size.left + size.width, maxOf(size.top + size.height, top + used))
-                NameFx.drawBlock(c, block, nameFx, curScale, layout.width, layout, assets) { cv -> engine.draw(cv, size.left, top, h) }
-            } else {
-                engine.draw(c, size.left, top, h)
-            }
-            if (engine.hiddenLines > 0) {
-                val what = drawingLayer?.name ?: e.label ?: e.attrs["click"] ?: "text"
-                overset.add("$what: ${engine.hiddenLines} line${if (engine.hiddenLines == 1) "" else "s"} hidden")
-            }
-            probeName?.let { pn ->
-                if (e.text.contains("{{$pn}}")) {
-                    probeRects = engine.glyphRects(size.left, top)
-                    probeText = engine.engineText
-                    probeOverset = engine.hiddenLines > 0
-                    probeBox = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
-                    probeLayer = drawingLayer
-                }
-            }
+        // <font=name> in the card text: a name from the layout's `namefonts` list, else a font file name.
+        val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
+            assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
+        }
+        // Fit steps: <fitsteps>on</fitsteps> with <fitstep1>..<fitstep6> ("size px / leading px / tracking") and
+        // <fitsqueeze> (squeeze limits in % for 1 / 2 / 3+ paragraphs).
+        val steps = if (ctx.sub(e.options["fitsteps"] ?: "").trim().equals("on", ignoreCase = true))
+            (1..6).mapNotNull { com.kyriedevles.turtleboxgx.text.parseFitStep(ctx.sub(e.options["fitstep$it"] ?: "")) }
+        else emptyList()
+        val squeeze = ctx.sub(e.options["fitsqueeze"] ?: "").split('/', ',', ' ', ';').mapNotNull { it.trim().toFloatOrNull() }.filter { it > 0f }
+        val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup, steps, squeeze)
+        val used = engine.fit()
+        publishFit(e, opt, engine, steps.size)
+        val top = size.top + (size.height - used).coerceAtLeast(0f) * v
+        if (nameFx != null) {
+            // Name Style effects (outline, shadow, gradient...) around the whole block of lines.
+            val block = RectF(size.left, minOf(size.top, top), size.left + size.width, maxOf(size.top + size.height, top + used))
+            NameFx.drawBlock(c, block, nameFx, curScale, layout.width, layout, assets) { cv -> engine.draw(cv, size.left, top, h) }
         } else {
-            val engine = TextEngine(body, paint, width, size.height, opt, mats, matPct, matWidthPct, matLinePct)
-            val used = engine.fit()
-            engine.draw(c, size.left, size.top + (size.height - used).coerceAtLeast(0f) * v, h)
+            engine.draw(c, size.left, top, h)
+        }
+        if (engine.hiddenLines > 0) {
+            val what = drawingLayer?.name ?: e.label ?: e.attrs["click"] ?: "text"
+            overset.add("$what: ${engine.hiddenLines} line${if (engine.hiddenLines == 1) "" else "s"} hidden")
+        }
+        probeName?.let { pn ->
+            if (e.text.contains("{{$pn}}")) {
+                probeRects = engine.glyphRects(size.left, top)
+                probeText = engine.engineText
+                probeOverset = engine.hiddenLines > 0
+                probeBox = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
+                probeLayer = drawingLayer
+            }
         }
         drawn++
     }
