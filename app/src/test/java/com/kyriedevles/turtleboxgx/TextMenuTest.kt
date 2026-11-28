@@ -79,4 +79,23 @@ class TextMenuTest {
         for (g in listOf("fitmenu_xros", "advancedmenu_xros", "paragraphmenu_xros"))
             for ((_, v) in datas[g]!!.items) if (v != "#") assertTrue("$g lists $v", datas.containsKey(v))
     }
+
+    @Test
+    fun oneLineAddsCharacterToOwnMenu() {
+        val datas = LinkedHashMap<String, DataDef>()
+        val menu = DataDef("namemenu", null, "multi_select", "Name")
+        menu.items.add("cardname" to "cardname")
+        datas["namemenu"] = menu
+        val e = textEl("textmenu" to "name", click = "namemenu")
+        e.attrs["singleline"] = "true"
+        e.text = "{{cardname}}"
+        e.aligns.add(Cond(null, "left"))
+        TextMenu.expand(datas, listOf(e))
+        // No box, no Fit; a literal alignment stays out, so only Character is added.
+        assertNull(e.attrs["boxdata"])
+        assertFalse("fitmenu_name" in datas)
+        assertEquals(listOf("cardname", "advancedmenu_name"), datas["namemenu"]!!.items.map { it.second })
+        assertEquals("{{tracking_name}}", e.options["tracking"])
+        assertEquals("Character", datas["advancedmenu_name"]!!.desc)
+    }
 }

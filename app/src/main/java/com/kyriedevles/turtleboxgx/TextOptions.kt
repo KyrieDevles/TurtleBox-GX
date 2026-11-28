@@ -5,7 +5,7 @@ fun exactWidth(p: android.graphics.Paint, s: String): Float =
     if (s.isEmpty()) 0f else p.getRunAdvance(s, 0, s.length, 0, s.length, false, s.length)
 
 /** The text options of one box, already turned into numbers. Zero means "not set". */
-class TextOptions(
+data class TextOptions(
     val condense: Float = 0f, // 0.3..1.0 (or a percent such as 85)
     val fitMode: Int = 1, // 1 squeeze, 2 shrink first, 3 balanced, 4/5/6 squeeze presets, 7 keep size
     val minSizePct: Float = 0f,

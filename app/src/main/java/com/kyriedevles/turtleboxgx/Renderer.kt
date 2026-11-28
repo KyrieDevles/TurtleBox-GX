@@ -473,7 +473,9 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
                 assets.font(file)?.let { paint.typeface = it }
             }
         }
-        if (singleLine) {
+        // One-line text with <textmenu> goes through the New engine below (tags, Character settings).
+        val newOneLine = singleLine && e.options.containsKey("textmenu")
+        if (singleLine && !newOneLine) {
             val measured = exactWidth(paint, text)
             if (measured > size.width && measured > 0f) paint.textScaleX = (size.width / measured).coerceAtLeast(0.5f)
             val drawW = exactWidth(paint, text)
@@ -548,6 +550,11 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             (1..6).mapNotNull { com.kyriedevles.turtleboxgx.text.parseFitStep(ctx.sub(e.options["fitstep$it"] ?: "")) }
         else emptyList()
         val squeeze = ctx.sub(e.options["fitsqueeze"] ?: "").split('/', ',', ' ', ';').mapNotNull { it.trim().toFloatOrNull() }.filter { it > 0f }
+        if (newOneLine) {
+            drawOneLine(c, e, body, paint, size, opt, fontLookup, nameFx, h, v)
+            drawn++
+            return
+        }
         val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, size.width, size.height, opt, mats, matPct, matWidthPct, matLinePct, fontLookup, steps, squeeze)
         val used = engine.fit()
         publishFit(e, opt, engine, steps.size)
@@ -573,6 +580,55 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             }
         }
         drawn++
+    }
+
+    /**
+     * One-line text through the New engine (`singleline="true"` with `<textmenu>`): never wraps, keeps its size (the
+     * layout's, or Font Size), and squeezes sideways to the box width when too long, down to half its width, as the
+     * plain one-line path does. Placed vertically like that path too, so turning it on does not move the line.
+     */
+    private fun drawOneLine(
+        c: Canvas, e: Element, raw: String, paint: TextPaint, size: Rect4, opt0: TextOptions,
+        fontLookup: (String) -> android.graphics.Typeface?, nameFx: Map<String, String>?, h: Int, v: Float,
+    ) {
+        val body = raw.replace(Regex("<br>", RegexOption.IGNORE_CASE), " ").replace('\n', ' ')
+        val base = opt0.copy(
+            fontScale = opt0.fontScale.takeIf { it > 0f } ?: 100f,
+            justify = 0f, lastStretch = 0f, flow = 0f, justifyMode = 0, minLines = 0f,
+            indentLeft = 0f, indentRight = 0f, indentFirst = 0f, spaceBefore = 0f, spaceAfter = 0f, hideOverflow = false,
+        )
+        val tall = 100000f
+        val probe = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, tall, tall, base, fontLookup = fontLookup)
+        probe.fit()
+        val natural = probe.naturalWidth
+        val hs0 = base.hScale.takeIf { it > 0f } ?: 100f
+        val squeeze = if (natural > size.width && natural > 0f) (size.width / natural).coerceAtLeast(0.5f) else 1f
+        val opt = base.copy(hScale = hs0 * squeeze)
+        // A hair wider than the box so a line squeezed to exactly the box width does not wrap.
+        val bw = maxOf(size.width, natural * squeeze) + 0.01f
+        val left = size.left + (size.width - bw) * h / 2f
+        val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, paint, bw, tall, opt, fontLookup = fontLookup)
+        engine.fit()
+        val sp = TextPaint(paint).apply { textSize = paint.textSize * base.fontScale / 100f }
+        val fm = sp.fontMetrics
+        val baseline = size.top + (size.height - (fm.bottom - fm.top)) * v - fm.top
+        val top = baseline - engine.firstBaseline
+        if (nameFx != null) {
+            NameFx.drawBlock(c, RectF(size.left, size.top, size.left + size.width, size.top + size.height), nameFx, curScale, layout.width, layout, assets) { cv ->
+                engine.draw(cv, left, top, h)
+            }
+        } else {
+            engine.draw(c, left, top, h)
+        }
+        probeName?.let { pn ->
+            if (e.text.contains("{{$pn}}")) {
+                probeRects = engine.glyphRects(left, top)
+                probeText = engine.engineText
+                probeOverset = false
+                probeBox = RectF(size.left, size.top, size.left + size.width, size.top + size.height)
+                probeLayer = drawingLayer
+            }
+        }
     }
 
     /**

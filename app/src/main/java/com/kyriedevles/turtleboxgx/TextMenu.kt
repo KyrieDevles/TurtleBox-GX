@@ -129,6 +129,23 @@ object TextMenu {
                 if (name !in datas) datas[name] = g
             }
 
+            // One-line text (singleline="true"): Character, and Alignment only; it never wraps, so no Fit, no
+            // paragraph settings and no box. The sections are added to its own click menu if that does not list them.
+            if (e.attrs["singleline"] == "true") {
+                group("advancedmenu_$id", "Character", characters)
+                group("paragraphmenu_$id", "Paragraph", paragraph.take(1))
+                val sections = listOf("advancedmenu_$id", "paragraphmenu_$id").filter { (datas[it]?.items?.size ?: 0) > 0 }
+                val top = e.attrs["click"]?.takeIf { it.isNotBlank() } ?: "textmenu_$id".also { e.attrs["click"] = it }
+                val m = datas[top] ?: DataDef(top, null, "multi_select", e.label ?: id).also { m ->
+                    ref(e.text)?.let { t ->
+                        if (t !in datas) datas[t] = DataDef(t, "", "text", "Text")
+                        m.items.add(t to t)
+                    }
+                    datas[top] = m
+                }
+                for (sct in sections) if (m.items.none { it.second == sct }) m.items.add(sct to sct)
+                continue
+            }
             // Settings and option tags first (Characters before Fit, so Status finds the size setting).
             group("advancedmenu_$id", "Character", characters)
             group("fitmenu_$id", if (hasSteps) "Fit steps" else "Fit", if (hasSteps) stepsRows + fitRows else fitRows)

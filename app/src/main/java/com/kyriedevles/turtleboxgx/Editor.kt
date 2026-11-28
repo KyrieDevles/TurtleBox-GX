@@ -211,7 +211,9 @@ class Editor(
         // ---- Highlighted text (TextPreviewView): Characters then edits only the highlighted letters, as inline tags ----
         val probeName = fields.firstOrNull {
             it.items.isEmpty() && it.type != "image" && it.type != "fontfile" && it.type != "box" && it.type != "fitstatus" && sliderRange(it.name) == null &&
-                (it.name.endsWith("text", ignoreCase = true) || it.name.startsWith("text_tl"))
+                (it.name.endsWith("text", ignoreCase = true) || it.name.startsWith("text_tl") ||
+                    // the text of any <textmenu> box (one-line ones like the card name too)
+                    layout.elements.any { el -> el.options.containsKey("textmenu") && el.text.contains("{{${it.name}}}") })
         }?.name
         val preview = TextPreviewView(activity)
         var textEt: EditText? = null

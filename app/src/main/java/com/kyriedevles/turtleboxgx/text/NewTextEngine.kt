@@ -343,6 +343,12 @@ class NewTextEngine(
     private fun hidden(line: LaidLine, pm: PaintMetrics): Boolean =
         opt.hideOverflow && matH + line.baseline + pm.descent * vs > boxHeight + 0.5f
 
+    /** Widest line of the last [fit], in card px (horizontal scale included). */
+    val naturalWidth: Float get() = (result?.lines?.maxOfOrNull { it.width * it.scaleX } ?: 0f) * hs
+
+    /** How far below the top given to [draw] the first baseline lands (before Baseline Shift). */
+    val firstBaseline: Float get() = matH + (result?.lines?.firstOrNull()?.baseline ?: 0f)
+
     /** The text as the engine lays it out (tags removed, <br> as U+2028, [[ ]] removed). */
     val engineText: String get() = text
 
