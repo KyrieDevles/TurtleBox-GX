@@ -614,7 +614,12 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         val baseline = size.top + (size.height - (fm.bottom - fm.top)) * v - fm.top
         val top = baseline - engine.firstBaseline
         if (nameFx != null) {
-            NameFx.drawBlock(c, RectF(size.left, size.top, size.left + size.width, size.top + size.height), nameFx, curScale, layout.width, layout, assets) { cv ->
+            // Gradients and patterns stretch over the letters, as on the plain one-line path, not the whole box.
+            val glyphs = engine.glyphRects(left, top).filterNotNull()
+            val plain = engine.engineText.replace('\u2028', ' ')
+            val ink = android.graphics.Rect().also { sp.getTextBounds(plain, 0, plain.length, it) }
+            val pat = if (glyphs.isEmpty()) null else RectF(glyphs.minOf { it.left }, baseline + ink.top - 1f, glyphs.maxOf { it.right }, baseline + ink.bottom + 1f)
+            NameFx.drawBlock(c, RectF(size.left, size.top, size.left + size.width, size.top + size.height), nameFx, curScale, layout.width, layout, assets, patRect = pat) { cv ->
                 engine.draw(cv, left, top, h)
             }
         } else {

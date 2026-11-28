@@ -329,6 +329,8 @@ object NameFx {
         assets: Assets,
         /** False for pictures (image layers): the style's text colour does not paint over them. */
         recolor: Boolean = true,
+        /** Where gradients and patterns are stretched (default [rect]); one line of text passes its letters' bounds. */
+        patRect: RectF? = null,
         drawContent: (Canvas) -> Unit,
     ) {
         fun fl(key: String, d: Float) = m[key]?.toFloatOrNull() ?: d
@@ -353,7 +355,7 @@ object NameFx {
             fp.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             lc.drawRect(RectF(rect.left - pad / k, rect.top - pad / k, rect.right + pad / k, rect.bottom + pad / k), fp)
         }
-        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, rect, u)
+        compose(c, layer, lw, lh, pad, k, rect, m, layout, assets, patRect ?: rect, u)
     }
 
     /** Copy suffixes of an effect that can be added several times ("" is the first, then "2".."5"), top first. */
