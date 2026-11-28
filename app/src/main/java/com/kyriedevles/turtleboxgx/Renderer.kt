@@ -209,14 +209,41 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     }
 
     /** Natural size of a point text layer: its widest line, and its lines' height (vertical scale included). */
-    fun pointSize(l: Layer): Pair<Float, Float> {
+    fun pointSize(l: Layer): Pair<Float, Float> = pointLayout(l).size
+
+    /**
+     * Point text laid out by the New engine, so it takes the same tags and highlight editing as box text: never wraps,
+     * lines aligned to each other by Alignment, Leading px or 120% of the size, tracking after each letter.
+     */
+    private class PointLayout(val engine: com.kyriedevles.turtleboxgx.text.NewTextEngine, val size: Pair<Float, Float>, val width: Float, val paint: TextPaint)
+    private val pointLayouts = HashMap<String, PointLayout>()
+
+    private fun pointLayout(l: Layer): PointLayout = pointLayouts.getOrPut(l.id + "|" + layerText(l)) {
         val p = pointPaint(l)
+        val tracking = p.letterSpacing
+        val hscale = p.textScaleX
+        // The engine applies tracking and horizontal scale itself.
+        p.letterSpacing = 0f
+        p.textScaleX = 1f
         val fm = p.fontMetrics
         val vs = layerValue("vscale", l).toFloatOrNull()?.takeIf { it > 0f }?.div(100f) ?: 1f
-        val lines = pointLines(l)
-        val w = lines.maxOf { exactWidth(p, it) }.coerceAtLeast(p.textSize * 0.5f)
-        val h = (fm.descent - fm.ascent) + (lines.size - 1) * pointLeading(l, p)
-        return w to h * vs
+        val lead = pointLeading(l, p)
+        val opt = TextOptions(
+            fontScale = 100f, letterSpace = tracking, hScale = hscale * 100f, leadingPx = lead, justifyMode = 0, trackAfter = true,
+        )
+        val body = layerText(l).replace(Regex("<br>", RegexOption.IGNORE_CASE), "\n")
+        val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
+            assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
+        }
+        val tall = 100000f
+        val probe = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, p, tall, tall, opt, fontLookup = fontLookup)
+        probe.fit()
+        val w = probe.naturalWidth.coerceAtLeast(p.textSize * 0.5f)
+        val engine = com.kyriedevles.turtleboxgx.text.NewTextEngine(body, p, w + 0.01f, tall, opt, fontLookup = fontLookup)
+        engine.fit()
+        val lines = body.split('\n').size
+        val h = (fm.descent - fm.ascent) + (lines - 1) * lead
+        PointLayout(engine, w to h * vs, w, p)
     }
 
     /** Draws a text layer centred on (0, 0), unrotated. Returns its natural size. */
@@ -226,34 +253,40 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
             drawText(c, e)
             return l.w to l.h
         }
-        val p = pointPaint(l)
-        val (tw, th) = pointSize(l)
-        val lines = pointLines(l)
-        if (lines.all { it.isBlank() }) return tw to th
-        val fm = p.fontMetrics
+        val pl = pointLayout(l)
+        val (tw, th) = pl.size
+        if (pointLines(l).all { it.isBlank() }) return tw to th
         val vs = layerValue("vscale", l).toFloatOrNull()?.takeIf { it > 0f }?.div(100f) ?: 1f
         val shift = layerValue("baseline", l).toFloatOrNull() ?: 0f
-        val lead = pointLeading(l, p)
         val anchor = pointAnchor(l)
         val fx = NameStyle.resolve(layerValue("style", l), layout, ctx.value("namepresets_user").takeIf { u -> !u.startsWith("{{") } ?: "")
+        val engine = pl.engine
         c.save()
         c.translate(0f, -shift)
         c.scale(1f, vs, 0f, 0f)
         val top = -th / vs / 2f
-        for ((i, line) in lines.withIndex()) {
-            if (line.isBlank()) continue
-            val lw = exactWidth(p, line)
-            val x = -tw / 2f + when (anchor) { 1 -> (tw - lw) / 2f; 2 -> tw - lw; else -> 0f }
-            val y = top - fm.ascent + i * lead
-            // Tracking after each letter, like Photoshop (Android puts half of it before).
-            val tx = x - p.letterSpacing * p.textSize * p.textScaleX / 2f
-            if (fx != null) {
-                NameFx.draw(c, line, tx, y, p, RectF(x, y + fm.ascent, x + lw, y + fm.descent), lw, fx, curScale, layout.width, layout, assets)
-            } else {
-                c.drawText(line, tx, y, p)
-            }
+        val left = -tw / 2f
+        if (fx != null) {
+            val glyphs = engine.glyphRects(left, top).filterNotNull()
+            val block = RectF(left, top, left + tw, top + th / vs)
+            val pat = if (glyphs.isEmpty()) null else RectF(glyphs.minOf { it.left }, top, glyphs.maxOf { it.right }, top + th / vs)
+            NameFx.drawBlock(c, block, fx, curScale, layout.width, layout, assets, patRect = pat) { cv -> engine.draw(cv, left, top, anchor) }
+        } else {
+            engine.draw(c, left, top, anchor)
         }
         c.restore()
+        // Highlight editing: letter boxes in the layer's own frame (centre at 0, 0, before rotation), as for box text.
+        probeName?.let { pn ->
+            if (pn == "text_${TextLayers.tm(l.id)}") {
+                val off = pointOffset(l, pl.size)
+                fun tf(r: RectF) = RectF(r.left + off.first, off.second - shift + r.top * vs, r.right + off.first, off.second - shift + r.bottom * vs)
+                probeRects = engine.glyphRects(left, top).map { it?.let(::tf) }.toTypedArray()
+                probeText = engine.engineText
+                probeOverset = false
+                probeBox = RectF(-l.w / 2f, -l.h / 2f, l.w / 2f, l.h / 2f)
+                probeLayer = drawingLayer
+            }
+        }
         return tw to th
     }
 
