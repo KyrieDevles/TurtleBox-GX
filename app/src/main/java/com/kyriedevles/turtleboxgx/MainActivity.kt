@@ -1309,6 +1309,24 @@ class MainActivity : Activity() {
     private var layoutFontsFor: String? = null
     private var layoutFonts: List<String> = emptyList()
 
+    /**
+     * Materials used to be a separate field drawn above the effect text. In the Photoshop template they are simply the
+     * text's first paragraph, so a card's Materials value moves to the start of the text it belonged to (the element
+     * whose `<materials>` names it), once.
+     */
+    private fun migrateMaterials(l: Layout, st: CardState) {
+        val ref = Regex("^\\s*\\{\\{\\s*([^}]+?)\\s*\\}\\}\\s*$")
+        for (e in l.elements) {
+            val m = e.options["materials"]?.let { ref.find(it) }?.groupValues?.get(1) ?: continue
+            val t = ref.find(e.text)?.groupValues?.get(1) ?: continue
+            val mv = st.values[m]?.trim().orEmpty()
+            if (mv.isEmpty()) continue
+            val cur = st.values[t] ?: l.datas[t]?.default ?: ""
+            st.values[t] = if (cur.isBlank()) mv else mv.replace("\n", " ") + "\n" + cur
+            st.values[m] = ""
+        }
+    }
+
     /** Text layer menus, with every font file of the layout (read once per layout file) and the card's imported fonts. */
     private fun syncText(l: Layout, st: CardState) {
         val z = zipFile
@@ -2421,6 +2439,7 @@ class MainActivity : Activity() {
     private fun renderState(st: CardState) {
         val l = layout ?: return
         val z = zipFile
+        migrateMaterials(l, st)
         syncText(l, st)
         thread {
             val t0 = SystemClock.elapsedRealtime()

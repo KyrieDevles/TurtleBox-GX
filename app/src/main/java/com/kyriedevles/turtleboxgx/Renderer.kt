@@ -573,11 +573,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         // keepWord: do not break inside a word. The line breaker allows a break after "/", so glue it with a word joiner.
         // Not after the "/" of a closing tag (</i>, </b>): the joiner would break the tag before the engine reads it.
         if (e.attrs["keepWord"] == "true") body = body.replace(Regex("(?<!<)/"), "/\u2060")
-        // Optional <materials> child: its own first line in this box (Fusion / Synchro / Xyz / Link materials).
-        val mats = ctx.sub(e.options["materials"] ?: "").replace("\n", " ").trim()
-        val matPct = num("materialssize").takeIf { it > 0f } ?: 100f
-        val matWidthPct = num("materialswidth").takeIf { it > 0f } ?: 100f
-        val matLinePct = num("materialsline").takeIf { it > 0f } ?: 100f
+        // <materials>: drawn as the text's first paragraph, as in the Photoshop template (cards move the value into the
+        // text when they open; see MainActivity.migrateMaterials). The old separate row is no longer used.
+        ctx.sub(e.options["materials"] ?: "").replace("\n", " ").trim().takeIf { it.isNotEmpty() && !it.startsWith("{{") }?.let { body = "$it\n$body" }
+        val mats = ""
+        val matPct = 100f
+        val matWidthPct = 100f
+        val matLinePct = 100f
         // <font=name> in the card text: a name from the layout's `namefonts` list, else a font file name.
         val fontLookup: (String) -> android.graphics.Typeface? = { fn ->
             assets.font(layout.datas["namefonts"]?.items?.firstOrNull { it.first == fn }?.second ?: fn)
