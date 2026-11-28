@@ -10,8 +10,8 @@ package com.kyriedevles.turtleboxgx.text
  */
 object TagEdit {
     /** Tags with a value, then flags. Their order decides nesting when the text is written back. */
-    private val valued = listOf("font", "color", "size", "tracking", "leading", "scale", "baseline")
-    private val flags = listOf("b", "i", "u", "s", "sc")
+    private val valued = listOf("font", "color", "size", "tracking", "kern", "leading", "scale", "vscale", "baseline", "fauxbold")
+    private val flags = listOf("b", "i", "u", "s", "sc", "caps", "fauxitalic")
     private val order = valued + flags + "script"
 
     class Ch(val c: Char, val props: Map<String, String>)
@@ -79,8 +79,9 @@ object TagEdit {
             "font" -> v.replace("⁠", "").isNotBlank()
             "size" -> (num(v.removeSuffix("%")) ?: 0f) > 0f
             "leading" -> (num(v) ?: 0f) > 0f
-            "scale" -> (num(v.removeSuffix("%")) ?: 0f) > 0f
-            "tracking", "baseline" -> num(v) != null
+            "scale", "vscale" -> (num(v.removeSuffix("%")) ?: 0f) > 0f
+            "fauxbold" -> (num(v) ?: -1f) >= 0f
+            "tracking", "baseline", "kern" -> num(v) != null
             else -> false
         }
     }

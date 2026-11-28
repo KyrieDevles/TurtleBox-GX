@@ -30,6 +30,14 @@ data class RunExtra(
     val scale: Float = 0f,
     /** `<baseline=1.5>`: baseline shift in card px, + raises (0 = none). */
     val baseline: Float = 0f,
+    /** `<vscale=110>`: vertical scale % of these letters (0 = the box's), about the baseline. */
+    val vscale: Float = 0f,
+    /** `<fauxbold=30>`: faux bold in 1/1000 em of stroke, like the box's Faux Bold (0 = the box's). */
+    val weight: Float = 0f,
+    /** `<fauxitalic>`: slanted letters (Photoshop's Faux Italic). */
+    val fauxItalic: Boolean = false,
+    /** `<kern=-20>`: kerning in 1/1000 em after each of these letters, added to the tracking (0 = none). */
+    val kern: Float = 0f,
 ) {
     /** The font size of this run when the box's size is [boxSize]. */
     fun sizeAt(boxSize: Float): Float = when {
@@ -77,6 +85,11 @@ private class TagState {
     var strike = false
     var script = 0
     var smallCaps = false
+    var caps = false
+    var fauxItalic = false
+    val vscales = ArrayList<Float>()
+    val weights = ArrayList<Float>()
+    val kerns = ArrayList<Float>()
     val colors = ArrayList<Int>()
     val fonts = ArrayList<String>()
     val sizes = ArrayList<Pair<Float, Boolean>>() // value, is %
@@ -95,13 +108,18 @@ private class TagState {
             leading = leadings.lastOrNull() ?: 0f,
             scale = scales.lastOrNull() ?: 0f,
             baseline = baselines.lastOrNull() ?: 0f,
+            vscale = vscales.lastOrNull() ?: 0f,
+            weight = weights.lastOrNull() ?: 0f,
+            fauxItalic = fauxItalic,
+            kern = kerns.lastOrNull() ?: 0f,
         )
     }
 }
 
 /**
- * Reads `<b> <i> <u> <s> <sup> <sub> <sc>`, `<color=#rrggbb> <font=name>` and the Character tags
- * `<size=10.65>` (card px) or `<size=85%>`, `<tracking=-20>`, `<leading=11.14>`, `<scale=90>`, `<baseline=1.5>`, with their
+ * Reads `<b> <i> <u> <s> <sup> <sub> <sc> <caps> <fauxitalic>`, `<color=#rrggbb> <font=name>` and the Character tags
+ * `<size=10.65>` (card px) or `<size=85%>`, `<tracking=-20>`, `<leading=11.14>`, `<scale=90>`, `<vscale=110>`,
+ * `<baseline=1.5>`, `<fauxbold=30>`, `<kern=-20>`, with their
  * closing tags (a closing tag ends the innermost open one of its kind). A tag that is never closed stays on to the end of
  * the text, across lines and paragraphs. Tag names are not case sensitive. Anything else that looks like a tag, a value
  * that is not valid, or a tag without its `>` is left as ordinary text so a typo stays visible on the card.
@@ -146,7 +164,8 @@ fun parseRich(raw: String): RichText {
                 }
             }
         }
-        out.append(raw[i])
+        // <caps>: All Caps for these letters (one letter for one, so the highlight still lines up).
+        out.append(if (tags.caps) raw[i].uppercaseChar() else raw[i])
         st[n] = styleId()
         n++
         i++
@@ -178,6 +197,11 @@ private fun applyTag(body: String, t: TagState): Boolean {
         "sup" -> { if (value != null) return false; t.script = if (closing) 0 else 1 }
         "sub" -> { if (value != null) return false; t.script = if (closing) 0 else 2 }
         "sc" -> { if (value != null) return false; t.smallCaps = !closing }
+        "caps" -> { if (value != null) return false; t.caps = !closing }
+        "fauxitalic" -> { if (value != null) return false; t.fauxItalic = !closing }
+        "vscale" -> return pushPop(t.vscales, closing, if (closing) null else num(value?.removeSuffix("%"))?.takeIf { it > 0f } ?: return false)
+        "fauxbold" -> return pushPop(t.weights, closing, if (closing) null else num(value)?.takeIf { it >= 0f } ?: return false)
+        "kern" -> return pushPop(t.kerns, closing, if (closing) null else num(value) ?: return false)
         "color" -> return pushPop(t.colors, closing, if (closing) null else parseHexColor(value ?: return false) ?: return false)
         "font" -> {
             if (closing) return pushPop(t.fonts, true, null)
@@ -203,7 +227,7 @@ private fun applyTag(body: String, t: TagState): Boolean {
     return true
 }
 
-private val knownTag = Regex("</?(b|i|u|s|sup|sub|sc|br|color|font|size|tracking|leading|scale|baseline)(=[^>]*)?>", RegexOption.IGNORE_CASE)
+private val knownTag = Regex("</?(b|i|u|s|sup|sub|sc|caps|fauxitalic|br|color|font|size|tracking|leading|scale|baseline|vscale|fauxbold|kern)(=[^>]*)?>", RegexOption.IGNORE_CASE)
 
 /** Upper-cases the text but not the inline tags in it, so `<b>` and `<font=name>` keep working under All caps. */
 fun uppercaseOutsideTags(s: String): String {

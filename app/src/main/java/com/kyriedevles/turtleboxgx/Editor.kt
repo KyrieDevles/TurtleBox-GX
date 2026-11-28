@@ -240,13 +240,16 @@ class Editor(
                 n.startsWith("tracking") -> "tracking"
                 n.startsWith("leadingpx") -> "leading"
                 n.startsWith("hscale") -> "scale"
+                n.startsWith("vscale") -> "vscale"
                 n.startsWith("baseline") -> "baseline"
+                n.startsWith("weight") -> "fauxbold"
                 else -> null
             }
         }
         fun isBoxOnly(name: String): Boolean {
             val n = name.lowercase()
-            return n.startsWith("allcaps") || n.startsWith("italic") || n.startsWith("vscale") || n.startsWith("weight")
+            // All Caps and Faux Italic for a highlight are the Caps and FI buttons above.
+            return n.startsWith("allcaps") || n.startsWith("italic")
         }
         fun boxValue(name: String) = (state.values[name] ?: ctx.value(name)).trim().toFloatOrNull()
         fun enableDeep(v: View, on: Boolean) {
@@ -735,6 +738,64 @@ class Editor(
                 style(cd)
             }
             selPanel.addView(tools, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            // Second row: the rest of Photoshop's Character toggles, Font and Kerning for the highlight.
+            val tools2 = LinearLayout(activity).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, 0) }
+            fun chip2(t: String, click: () -> Unit) = TextView(activity).apply {
+                text = t
+                gravity = Gravity.CENTER
+                setTextColor(pink)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                background = Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
+                setOnClickListener { click() }
+                selTools.add(this)
+                tools2.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)).apply { rightMargin = dp(5) })
+                setPadding(dp(9), 0, dp(9), 0)
+            }
+            fun script(v: String) {
+                val cur = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, "script") as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v
+                applySel("script", if (cur == v) null else v, null, null)
+            }
+            fun ask(title: String, hint: String, tag: String, ok: (String) -> Boolean) {
+                val cur = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, tag) as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v ?: ""
+                val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); this.hint = hint; setText(cur) }
+                val cd = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle(title).setView(input)
+                    .setPositiveButton("Apply") { _, _ ->
+                        val t = input.text.toString().trim()
+                        if (t.isEmpty()) applySel(tag, null, null, null) else if (ok(t)) applySel(tag, t, null, null)
+                    }
+                    .setNegativeButton("Cancel", null).create()
+                cd.show()
+                style(cd)
+            }
+            chip2("S") { toggle("s") }.paintFlags = android.graphics.Paint.STRIKE_THRU_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
+            chip2("x²") { script("sup") }
+            chip2("x₂") { script("sub") }
+            chip2("Sc") { toggle("sc") }
+            chip2("TT") { toggle("caps") }
+            chip2("FI") { toggle("fauxitalic") }.setTypeface(null, Typeface.BOLD_ITALIC)
+            chip2("Font") {
+                // namefonts by label, then every other font file in the layout and the card (as the style editor lists them).
+                val named = layout.datas["namefonts"]?.items ?: emptyList()
+                val all = TextLayers.fontItems(layout, state.files.keys.filter { it.endsWith(".ttf", true) || it.endsWith(".otf", true) } + FontCatalog.layoutFonts)
+                val labels = listOf("Box font") + all.map { it.first }
+                val values = listOf<String?>(null) + all.mapIndexed { i, it -> if (i < named.size) it.first else it.second }
+                val cur = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, "font") as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v
+                val dlg = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Font of the highlight")
+                    .setSingleChoiceItems(labels.toTypedArray(), values.indexOf(cur).coerceAtLeast(0)) { dd, which ->
+                        applySel("font", values[which], null, null)
+                        dd.dismiss()
+                    }.create()
+                dlg.show()
+                style(dlg)
+            }
+            chip2("Kern") {
+                ask("Kerning (1/1000 em after each letter)", "-20 (empty = none)", "kern") { it.toFloatOrNull() != null }
+            }
+            selPanel.addView(android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tools2) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             refreshSel()
         }
 

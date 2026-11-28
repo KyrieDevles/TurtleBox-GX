@@ -117,7 +117,7 @@ class LayoutResult(
  * Per-run Character settings from inline tags: size in card px or in % of the box size (0 = the box's), tracking in em
  * replacing the box's (null = the box's), leading in card px (0 = the box's).
  */
-class RunSpec(val sizePx: Float = 0f, val sizePct: Float = 0f, val trackingEm: Float? = null, val leadingPx: Float = 0f) {
+class RunSpec(val sizePx: Float = 0f, val sizePct: Float = 0f, val trackingEm: Float? = null, val leadingPx: Float = 0f, val kernEm: Float = 0f) {
     fun sizeAt(boxSize: Float): Float = when {
         sizePx > 0f -> sizePx
         sizePct > 0f -> boxSize * sizePct / 100f
@@ -168,7 +168,10 @@ class LayoutCore(
     private val perLine: Boolean = styles.distinct().any { st -> spec(st)?.let { it.sizePx > 0f || it.sizePct > 0f || it.leadingPx > 0f } == true }
 
     /** The tracking a run is drawn with: its own (<tracking=..>) plus any line stretch, or the box's [letterEm]. */
-    fun runEm(style: Int, letterEm: Float): Float = spec(style)?.trackingEm?.let { it + (letterEm - opt.letterSpace) } ?: letterEm
+    fun runEm(style: Int, letterEm: Float): Float {
+        val sp = spec(style)
+        return (sp?.trackingEm?.let { it + (letterEm - opt.letterSpace) } ?: letterEm) + (sp?.kernEm ?: 0f)
+    }
     private val hs = (opt.hScale.takeIf { it > 0f } ?: 100f) / 100f
     private val wrapWidth = boxWidth / hs
     private val wordSpacePct = if (opt.wordSpace > 0f) opt.wordSpace else 100f

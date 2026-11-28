@@ -64,4 +64,12 @@ class TagEditTest {
         val map = TagEdit.align("[[a/b]]", "A/⁠B")
         assertEquals(listOf(2, 3, -1, 4), map.toList())
     }
+
+    @Test
+    fun editsTheNewTags() {
+        assertEquals("a<kern=-20>b</kern>c", TagEdit.set("abc", 1, 2, "kern", "-20"))
+        assertEquals("<caps>ab</caps>c", TagEdit.set("abc", 0, 2, "caps", ""))
+        assertEquals("a<sup>b</sup>c", TagEdit.set("abc", 1, 2, "script", "sup"))
+        assertEquals("abc", TagEdit.plain("<fauxitalic>a</fauxitalic><vscale=120>b</vscale><fauxbold=30>c</fauxbold>"))
+    }
 }

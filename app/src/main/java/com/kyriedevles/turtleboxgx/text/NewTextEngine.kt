@@ -74,6 +74,13 @@ class PaintMetrics(
         // <size=..> and <scale=..> runs.
         p.textSize = (ex?.sizeAt(size) ?: size) * mul
         if (ex != null && ex.scale > 0f) p.textScaleX = boxScaleX * ex.scale / 100f / boxHScale.coerceAtLeast(0.01f)
+        // <fauxbold=..> and <fauxitalic>, the same as the box's Faux Bold and Faux Italic.
+        if (ex != null && ex.weight > 0f) {
+            p.style = Paint.Style.FILL_AND_STROKE
+            p.strokeJoin = Paint.Join.ROUND
+            p.strokeWidth = p.textSize * ex.weight / 1000f
+        }
+        if (ex != null && ex.fauxItalic) p.textSkewX = -0.25f
         return p
     }
 
@@ -168,7 +175,7 @@ class NewTextEngine(
     /** The per-run Character settings the layout needs (size, tracking, leading), from the tags. */
     private val runSpecs: (Int) -> RunSpec? = { st ->
         extraOf(st, parsed.extras)?.let { e ->
-            if (e.sizePx > 0f || e.sizePct > 0f || e.tracking != null || e.leading > 0f) RunSpec(e.sizePx, e.sizePct, e.tracking?.div(1000f), e.leading) else null
+            if (e.sizePx > 0f || e.sizePct > 0f || e.tracking != null || e.leading > 0f || e.kern != 0f) RunSpec(e.sizePx, e.sizePct, e.tracking?.div(1000f), e.leading, e.kern / 1000f) else null
         }
     }
 
@@ -288,6 +295,18 @@ class NewTextEngine(
             2 -> baseline + runSize * SCRIPT_SHIFT
             else -> baseline
         } - (ex?.baseline ?: 0f)
+        // <vscale=..>: these letters stretched up or down from their baseline (the advance does not change).
+        if (ex != null && ex.vscale > 0f && ex.vscale != 100f) {
+            val saved = c.save()
+            c.scale(1f, ex.vscale / 100f, x, y)
+            val adv = drawRunPlain(c, pm, a, b, x, y, st, em, ex)
+            c.restoreToCount(saved)
+            return adv
+        }
+        return drawRunPlain(c, pm, a, b, x, y, st, em, ex)
+    }
+
+    private fun drawRunPlain(c: Canvas, pm: PaintMetrics, a: Int, b: Int, x: Float, y: Float, st: Int, em: Float, ex: RunExtra?): Float {
         if (ex == null || !ex.smallCaps) {
             val p = pm.paintFor(st, em)
             c.drawText(text, a, b, x - trackLead(p), y, p)
@@ -381,7 +400,8 @@ class NewTextEngine(
                     val ex = pm.extra(st)
                     val rs = ex?.sizeAt(r.size) ?: r.size
                     val y = baseline - (ex?.baseline ?: 0f)
-                    out[k] = android.graphics.RectF(toCard(x), y - rs * 0.8f * vs, toCard(x + adv), y + rs * 0.25f * vs)
+                    val rv = vs * ((ex?.vscale?.takeIf { it > 0f } ?: 100f) / 100f)
+                    out[k] = android.graphics.RectF(toCard(x), y - rs * 0.8f * rv, toCard(x + adv), y + rs * 0.25f * rv)
                     // The space after a word belongs to it, so a highlight across words has no gaps.
                     x += adv
                 }

@@ -118,4 +118,15 @@ class RichMarkupTest {
         // Not a known tag, so it is ordinary text and is upper-cased.
         assertEquals("<MONSTER EFFECT>", uppercaseOutsideTags("<Monster Effect>"))
     }
+
+    @Test
+    fun readsTheNewCharacterTags() {
+        val r = parseRich("a<caps>bc</caps><vscale=120>d</vscale><fauxbold=30>e</fauxbold><fauxitalic>f</fauxitalic><kern=-20>g</kern>")
+        assertEquals("aBCdefg", r.text)
+        assertEquals(120f, extraAt(r, 3)!!.vscale)
+        assertEquals(30f, extraAt(r, 4)!!.weight)
+        assertTrue(extraAt(r, 5)!!.fauxItalic)
+        assertEquals(-20f, extraAt(r, 6)!!.kern)
+        assertNull(extraAt(r, 0))
+    }
 }
