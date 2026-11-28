@@ -328,7 +328,10 @@ class Editor(
             liveApply()
         }
         /** Sets (or with null, removes) a tag on the highlight. Everything highlighted: the box setting takes it instead. */
-        fun applySel(tag: String, value: String?, boxName: String?, boxV: Float?) {
+        fun applySel(tag: String, value0: String?, boxName: String?, boxV: Float?) {
+            // A paragraph setting back at the box's value is removed, so no <para ...> tag is left behind.
+            val value = if (tag.startsWith("para.") && value0 != null && boxName != null &&
+                value0.toFloatOrNull()?.let { it == (boxValue(boxName) ?: 0f) } == true) null else value0
             val raw = rawText()
             val n = com.kyriedevles.turtleboxgx.text.TagEdit.plain(raw).length
             if (selA <= 0 && selB >= n && boxName != null && boxV != null) {
@@ -600,7 +603,7 @@ class Editor(
                                     val raw = rawText()
                                     val n = com.kyriedevles.turtleboxgx.text.TagEdit.plain(raw).length
                                     if (selA > 0 || selB < n) {
-                                        applySel("para.align", v, null, null)
+                                        applySel("para.align", if (v == chosen) null else v, null, null)
                                         return@setOnClickListener
                                     }
                                     // All of the text: the box's alignment, and no paragraph keeps its own.
