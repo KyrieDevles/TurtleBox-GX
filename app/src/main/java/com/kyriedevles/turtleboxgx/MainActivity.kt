@@ -1003,6 +1003,7 @@ class MainActivity : Activity() {
         val st = state ?: return
         // A text layer is moved as a picture of itself; point text that is scaled changes its Size px.
         var pointH = 0f
+        var pointW = 0f
         val textBmp: Bitmap? = if (!layer.isText) null else try {
             syncText(l, st)
             val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
@@ -1020,6 +1021,7 @@ class MainActivity : Activity() {
                     layer.w = size.first
                     layer.h = size.second
                     pointH = size.second
+                    pointW = size.first
                 }
                 b
             } finally {
@@ -1046,12 +1048,24 @@ class MainActivity : Activity() {
         val win = LayerEditWindow(
             this, ed, layer.name,
             save = {
-                // Scaling point text scales its font size, as in Photoshop.
-                if (pointH > 0f && layer.h > 0f && Math.abs(layer.h - pointH) > 0.01f) {
-                    val key = "sizepx_" + TextLayers.tm(layer.id)
-                    val old = st.values[key]?.toFloatOrNull()?.takeIf { it > 0f } ?: TextLayers.DEFAULT_SIZE
-                    st.values[key] = String.format(java.util.Locale.US, "%.2f", old * layer.h / pointH).trimEnd('0').trimEnd('.')
+                // Scaling point text keeps the shape it was dragged to, as in Photoshop: the height scales Font Size,
+                // Leading px and Baseline Shift; any extra width (or narrowing) goes into Horizontally Scale %.
+                if (pointH > 0f && pointW > 0f && layer.h > 0f && layer.w > 0f &&
+                    (Math.abs(layer.h - pointH) > 0.01f || Math.abs(layer.w - pointW) > 0.01f)) {
+                    val t = TextLayers.tm(layer.id)
+                    val sy = layer.h / pointH
+                    val sx = layer.w / pointW
+                    fun fmt(v: Float) = String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
+                    val size = st.values["sizepx_$t"]?.toFloatOrNull()?.takeIf { it > 0f } ?: TextLayers.DEFAULT_SIZE
+                    st.values["sizepx_$t"] = fmt(size * sy)
+                    st.values["leadingpx_$t"]?.toFloatOrNull()?.takeIf { it > 0f }?.let { st.values["leadingpx_$t"] = fmt(it * sy) }
+                    st.values["baseline_$t"]?.toFloatOrNull()?.takeIf { it != 0f }?.let { st.values["baseline_$t"] = fmt(it * sy) }
+                    if (Math.abs(sx / sy - 1f) > 0.002f) {
+                        val hs = st.values["hscale_$t"]?.toFloatOrNull()?.takeIf { it > 0f } ?: 100f
+                        st.values["hscale_$t"] = fmt(hs * sx / sy)
+                    }
                     pointH = layer.h
+                    pointW = layer.w
                 }
                 val cur = ImageLayers.read(st.values)
                 cur.firstOrNull { it.id == layer.id }?.let { c ->
