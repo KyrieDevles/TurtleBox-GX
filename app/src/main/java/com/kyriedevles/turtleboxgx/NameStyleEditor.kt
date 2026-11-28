@@ -711,7 +711,7 @@ class NameStyleEditor(
                 if (b != null) activity.runOnUiThread { strip.setImageBitmap(b) }
             }.start()
         }
-        for ((lab, mode) in listOf("Auto" to "auto", "Predefined" to "predefined", "Custom" to "custom")) {
+        for ((lab, mode) in listOf("Auto" to "auto", "Preset" to "predefined", "Custom" to "custom")) {
             val tv = TextView(activity).apply {
                 text = lab
                 typeface = Typeface.DEFAULT_BOLD
