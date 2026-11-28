@@ -151,6 +151,8 @@ class Assets(
                 val f = File(dir, "${name.hashCode()}_${b.size}.${name.substringAfterLast('.', "ttf")}")
                 if (!f.exists()) f.writeBytes(b)
                 tf = Typeface.createFromFile(f)
+                // Its own underline / strikethrough positions, which Android does not always pass on.
+                com.kyriedevles.turtleboxgx.text.FontLines.register(tf, com.kyriedevles.turtleboxgx.text.FontLines.parse(b))
             } catch (e: Exception) {
                 missing.add("$name (cannot load font)")
             }

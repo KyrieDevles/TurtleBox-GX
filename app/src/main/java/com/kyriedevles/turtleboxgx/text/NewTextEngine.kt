@@ -338,14 +338,20 @@ class NewTextEngine(
     private fun drawLine(c: Canvas, p: TextPaint, baseline: Float, x0: Float, x1: Float, strike: Boolean) {
         if (x1 <= x0) return
         val sz = p.textSize
-        val off: Float
-        val thick: Float
+        var off: Float
+        var thick: Float
         if (Build.VERSION.SDK_INT >= 29) {
             off = if (strike) p.strikeThruPosition else p.underlinePosition
             thick = if (strike) p.strikeThruThickness else p.underlineThickness
         } else {
             off = if (strike) -sz * 0.3f else sz * 0.12f
             thick = sz / 16f
+        }
+        // The font file's own values win (as in Photoshop): Android falls back to fixed ones for some fonts.
+        FontLines.of(p.typeface)?.let { fl ->
+            val pos = if (strike) fl.strikePos else fl.underlinePos
+            val size = if (strike) fl.strikeSize else fl.underlineSize
+            if (pos != null && size != null) { off = -pos * sz; thick = size * sz }
         }
         // Card px: 1 px here is 2-3 px in the exported image, so allow a thin line.
         val t = thick.coerceAtLeast(0.4f)
