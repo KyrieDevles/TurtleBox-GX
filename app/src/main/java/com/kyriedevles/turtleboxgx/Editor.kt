@@ -232,6 +232,10 @@ class Editor(
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         }
         val selTools = ArrayList<View>()
+        // Highlight buttons that show whether their setting is on for the highlight: tag, and the value that means on
+        // (null = any value, e.g. a colour or a font).
+        class ChipState(val view: TextView, val tag: String, val on: String?)
+        val chipStates = ArrayList<ChipState>()
         fun rawText(): String = probeName?.let { state.values[it] ?: ctx.value(it) } ?: ""
         fun tagFor(name: String): String? {
             val n = name.lowercase()
@@ -282,6 +286,21 @@ class Editor(
             }
             for (views in boxOnly.values) views.forEach { it.alpha = if (active) 0.35f else 1f; enableDeep(it, !active) }
             selTools.forEach { it.alpha = if (active) 1f else 0.4f; it.isEnabled = active }
+            // Lit when the whole highlight has it, outlined when only part of it does.
+            for (cs in chipStates) {
+                val v = if (active) com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(raw, selA, selB, cs.tag) else null
+                val state = when (v) {
+                    is com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same -> if (v.v != null && (cs.on == null || v.v.equals(cs.on, true))) 2 else 0
+                    com.kyriedevles.turtleboxgx.text.TagEdit.Value.Mixed -> 1
+                    else -> 0
+                }
+                cs.view.background = when (state) {
+                    2 -> Theme.choice(true, dp(8).toFloat(), 0f, dp(3).toFloat())
+                    1 -> Theme.choice(false, dp(8).toFloat(), dp(1).toFloat() * 2.5f, dp(3).toFloat())
+                    else -> Theme.field(dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(3).toFloat())
+                }
+                cs.view.setTextColor(if (state == 2) Theme.onPink else pink)
+            }
             val n = selB - selA
             selStatus.text = if (active) "Selection · $n character${if (n == 1) "" else "s"}" else "Whole box · long-press a word to highlight"
         }
@@ -732,10 +751,10 @@ class Editor(
                 val on = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, tag) as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v == ""
                 applySel(tag, if (on) null else "", null, null)
             }
-            chip("B") { toggle("b") }.typeface = Typeface.DEFAULT_BOLD
-            chip("I") { toggle("i") }.setTypeface(null, Typeface.BOLD_ITALIC)
-            chip("U") { toggle("u") }.paintFlags = android.graphics.Paint.UNDERLINE_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
-            chip("Colour") {
+            chip("B") { toggle("b") }.also { chipStates.add(ChipState(it, "b", "")) }.typeface = Typeface.DEFAULT_BOLD
+            chip("I") { toggle("i") }.also { chipStates.add(ChipState(it, "i", "")) }.setTypeface(null, Typeface.BOLD_ITALIC)
+            chip("U") { toggle("u") }.also { chipStates.add(ChipState(it, "u", "")) }.paintFlags = android.graphics.Paint.UNDERLINE_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
+            val colourChip = chip("Colour") {
                 val cur = (com.kyriedevles.turtleboxgx.text.TagEdit.valueOf(rawText(), selA, selB, "color") as? com.kyriedevles.turtleboxgx.text.TagEdit.Value.Same)?.v ?: ""
                 val input = EditText(activity).apply { setSingleLine(true); setTextColor(Color.WHITE); hint = "#ff0000 (empty = box colour)"; setText(cur) }
                 val cd = AlertDialog.Builder(activity, android.R.style.Theme_Material_Dialog_Alert)
@@ -781,13 +800,13 @@ class Editor(
                 cd.show()
                 style(cd)
             }
-            chip2("S") { toggle("s") }.paintFlags = android.graphics.Paint.STRIKE_THRU_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
-            chip2("x²") { script("sup") }
-            chip2("x₂") { script("sub") }
-            chip2("Sc") { toggle("sc") }
-            chip2("TT") { toggle("caps") }
-            chip2("FI") { toggle("fauxitalic") }.setTypeface(null, Typeface.BOLD_ITALIC)
-            chip2("Font") {
+            chip2("S") { toggle("s") }.also { chipStates.add(ChipState(it, "s", "")) }.paintFlags = android.graphics.Paint.STRIKE_THRU_TEXT_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG
+            chip2("x²") { script("sup") }.also { chipStates.add(ChipState(it, "script", "sup")) }
+            chip2("x₂") { script("sub") }.also { chipStates.add(ChipState(it, "script", "sub")) }
+            chip2("Sc") { toggle("sc") }.also { chipStates.add(ChipState(it, "sc", "")) }
+            chip2("TT") { toggle("caps") }.also { chipStates.add(ChipState(it, "caps", "")) }
+            chip2("FI") { toggle("fauxitalic") }.also { chipStates.add(ChipState(it, "fauxitalic", "")) }.setTypeface(null, Typeface.BOLD_ITALIC)
+            val fontChip = chip2("Font") {
                 // namefonts by label, then every other font file in the layout and the card (as the style editor lists them).
                 val named = layout.datas["namefonts"]?.items ?: emptyList()
                 val all = TextLayers.fontItems(layout, state.files.keys.filter { it.endsWith(".ttf", true) || it.endsWith(".otf", true) } + FontCatalog.layoutFonts)
@@ -803,9 +822,12 @@ class Editor(
                 dlg.show()
                 style(dlg)
             }
-            chip2("Kern") {
+            val kernChip = chip2("Kern") {
                 ask("Kerning (1/1000 em after each letter)", "-20 (empty = none)", "kern") { it.toFloatOrNull() != null }
             }
+            chipStates.add(ChipState(colourChip, "color", null))
+            chipStates.add(ChipState(fontChip, "font", null))
+            chipStates.add(ChipState(kernChip, "kern", null))
             selPanel.addView(android.widget.HorizontalScrollView(activity).apply { isHorizontalScrollBarEnabled = false; addView(tools2) },
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             refreshSel()
