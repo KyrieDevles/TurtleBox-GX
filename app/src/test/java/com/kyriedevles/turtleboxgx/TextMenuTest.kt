@@ -36,7 +36,7 @@ class TextMenuTest {
         assertEquals(listOf("fitmode_flavor", "condense_flavor", "maxsize_flavor", "minsize_flavor"), fit)
         // Headings in Paragraph.
         val para = datas["paragraphmenu_flavor"]!!.items
-        assertTrue(para.contains("Word spacing" to "#"))
+        assertTrue(para.contains("Word Spacing" to "#"))
         assertEquals("#", para[para.indexOfFirst { it.second == "wordspace_flavor" } - 1].second)
     }
 
