@@ -1203,7 +1203,25 @@ class Editor(
      * Options that read better as a slider: Condense and the font size limits (percent).
      * Matching is by prefix so a box can have its own copy in the layout (condense_pendulum, maxsize_flavor, ...).
      */
+    /**
+     * A slider's range. Font Size runs from 0 to twice its box's own size (at least 40), so small effect text and large
+     * names both get a useful slider. Any range stretches to include the value already set, so the row shows it as is;
+     * typed numbers are never limited.
+     */
     private fun sliderRange(name: String): Pair<Int, Int>? {
+        val r = baseSliderRange(name) ?: return null
+        val cur = (state.values[name] ?: layout.datas[name]?.default)?.trim()?.toFloatOrNull() ?: return r
+        return minOf(r.first, Math.floor(cur.toDouble()).toInt()) to maxOf(r.second, Math.ceil(cur.toDouble()).toInt())
+    }
+
+    /** The font size of the box a Font Size setting belongs to (text layers: their default size). */
+    private fun boxFontSize(name: String): Float {
+        if (TextLayers.ownerOf(name) != null) return TextLayers.DEFAULT_SIZE
+        val ref = Regex("^\\s*\\{\\{\\s*" + Regex.escape(name) + "\\s*\\}\\}\\s*$")
+        return layout.elements.firstOrNull { e -> e.options["sizepx"]?.let { ref.matches(it) } == true }?.fonts?.firstOrNull()?.value?.size ?: 20f
+    }
+
+    private fun baseSliderRange(name: String): Pair<Int, Int>? {
         val n = name.lowercase()
         return when {
             n.startsWith("condense") -> 30 to 100
@@ -1219,7 +1237,7 @@ class Editor(
             n.startsWith("weight") -> 0 to 100
             n.startsWith("justifylast") || n.startsWith("justifyflow") -> 0 to 100
             // Size and paragraph settings in card px (0 on Size = automatic fit).
-            n.startsWith("sizepx") -> 0 to 120
+            n.startsWith("sizepx") -> 0 to maxOf(40, Math.ceil(boxFontSize(name) * 2.0).toInt())
             n.startsWith("indentfirst") -> -50 to 100
             n.startsWith("indentleft") || n.startsWith("indentright") -> 0 to 100
             n.startsWith("spacebefore") || n.startsWith("spaceafter") -> 0 to 50
