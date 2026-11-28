@@ -475,9 +475,10 @@ object NameFx {
         // Pattern: an image from the asset zip laid over the text with a blend mode, kept inside the letters.
         val pn = m["pattern"].orEmpty()
         if (pn.isNotEmpty() && pn != "none") {
+            // A namepatterns label, else a picture file (one imported into the card, "path|mode").
             val item = layout.datas["namepatterns"]?.items?.firstOrNull { it.first == pn }
-            val parts = item?.second?.split('|')
-            val pbmp = parts?.getOrNull(0)?.let { assets.bitmap(it) }
+            val parts = (item?.second ?: pn).split('|')
+            val pbmp = parts.getOrNull(0)?.let { assets.bitmap(it) }
             if (pbmp != null) {
                 val mode = when (parts.getOrNull(1)) {
                     "multiply" -> PorterDuff.Mode.MULTIPLY

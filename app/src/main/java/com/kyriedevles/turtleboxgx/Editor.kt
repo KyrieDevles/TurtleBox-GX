@@ -100,6 +100,8 @@ class Editor(
     private val onTop: ((Int) -> Unit)? = null,
     /** Starts moving and resizing a text box on the card (data name, what to run when finished). */
     private val onBox: ((String, () -> Unit) -> Unit)? = null,
+    /** Imports a font or pattern file into the card for the Layer Effects editor (kind, then the stored path or null). */
+    private val importFile: ((String, (String?) -> Unit) -> Unit)? = null,
 ) {
     companion object {
         /** The height the user last dragged a docked menu to, kept for the session (0 = half the screen). */
@@ -409,7 +411,7 @@ class Editor(
                     dlgRef?.dismiss()
                     onChanged()
                     val pv = namePreview
-                    NameStyleEditor(activity, layout, state, f.name, onChanged, pv?.let { p -> { maps: List<Map<String, String>?> -> p(maps, f.name) } }) { open(click) }.show()
+                    NameStyleEditor(activity, layout, state, f.name, onChanged, pv?.let { p -> { maps: List<Map<String, String>?> -> p(maps, f.name) } }, importFile) { open(click) }.show()
                 }
                 into.addView(b, row())
                 return

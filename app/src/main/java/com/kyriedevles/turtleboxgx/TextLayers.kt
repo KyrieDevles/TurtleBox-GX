@@ -9,6 +9,11 @@ package com.kyriedevles.turtleboxgx
  * - Point text: one line, drawn at Size px around the layer centre; scaling it on the card changes Size px.
  * - Box text: wraps inside the layer's box with the New text engine, like the Effect text (Fit, Characters, Paragraph).
  */
+/** Every font file in the loaded layout (set by MainActivity), for lists that cannot open the layout's files. */
+object FontCatalog {
+    @Volatile var layoutFonts: List<String> = emptyList()
+}
+
 object TextLayers {
     fun tm(id: String) = "tl$id"
 

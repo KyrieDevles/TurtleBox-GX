@@ -917,6 +917,7 @@ class MainActivity : Activity() {
                             a.close()
                         }
                     },
+                    { kind, done -> importForEffects(kind, done) },
                 ) { openLayers() }.show()
             },
             editText = { layer ->
@@ -1279,6 +1280,32 @@ class MainActivity : Activity() {
         }
     }
 
+    private var pendingFxImport: Pair<String, (String?) -> Unit>? = null
+
+    /** Layer Effects: picks a font or a pattern picture from the phone; [done] gets its path in the card's files. */
+    private fun importForEffects(kind: String, done: (String?) -> Unit) {
+        pendingFxImport = kind to done
+        startActivityForResult(
+            Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(if (kind == "font") "*/*" else "image/*"),
+            REQ_FX_FILE,
+        )
+    }
+
+    /** Reads a picked font file, checks it loads, and stores it under fonts/ in the card. Returns its path. */
+    private fun storeFont(st: CardState, uri: android.net.Uri): String {
+        var name = (DocumentFile.fromSingleUri(this, uri)?.name ?: "font.ttf").substringAfterLast('/')
+        val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+        if (!name.endsWith(".ttf", true) && !name.endsWith(".otf", true)) {
+            // OpenType starts with "OTTO"; anything else is treated as TrueType.
+            name += if (bytes.size >= 4 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "OTTO") ".otf" else ".ttf"
+        }
+        val file = TextLayers.FONT_DIR + name.replace(Regex("[^A-Za-z0-9._ -]"), "_")
+        val tmp = File(cacheDir, "fontcheck.tmp").apply { writeBytes(bytes) }
+        try { android.graphics.Typeface.createFromFile(tmp) } catch (e: Exception) { throw IllegalArgumentException("That file is not a font.") } finally { tmp.delete() }
+        st.files[file] = bytes
+        return file
+    }
+
     private var layoutFontsFor: String? = null
     private var layoutFonts: List<String> = emptyList()
 
@@ -1292,6 +1319,7 @@ class MainActivity : Activity() {
                 Assets(z, emptyMap(), cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir()).let { a -> try { a.fontFiles() } finally { a.close() } }
             } catch (e: Exception) { emptyList() }
         }
+        FontCatalog.layoutFonts = layoutFonts
         val own = st.files.keys.filter { it.endsWith(".ttf", true) || it.endsWith(".otf", true) }
         TextLayers.sync(l, st.values, own + layoutFonts)
     }
@@ -1316,6 +1344,7 @@ class MainActivity : Activity() {
                 )
             },
             onBox = { name, after -> beginBoxEdit(name, after) },
+            importFile = { kind, done -> importForEffects(kind, done) },
             onTop = { topY ->
                 if (topY < 0) {
                     cardView.insetBottom = 0
@@ -2081,21 +2110,35 @@ class MainActivity : Activity() {
                 scanSetsFolder()
             }
             REQ_LAYER -> handleLayerImage(uri)
+            REQ_FX_FILE -> {
+                val (kind, done) = pendingFxImport ?: return
+                pendingFxImport = null
+                val st = state ?: return done(null)
+                try {
+                    val path = if (kind == "font") storeFont(st, uri) else {
+                        val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IllegalArgumentException("That file is not a picture.")
+                        bmp.recycle()
+                        val name = (DocumentFile.fromSingleUri(this, uri)?.name ?: "pattern.png").substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_")
+                        val file = NameStyleEditor.PATTERN_DIR + (if (name.contains('.')) name else "$name.png")
+                        st.files[file] = bytes
+                        file
+                    }
+                    layout?.let { syncText(it, st) }
+                    toast("Imported ${path.substringAfterLast('/').substringBeforeLast('.')}")
+                    done(path)
+                } catch (e: Exception) {
+                    toast(e.message ?: "Could not import that file.")
+                    done(null)
+                }
+            }
             REQ_FONT -> {
                 val key = pendingImageKey ?: return
                 val l = layout ?: return
                 val st = state ?: return
                 try {
-                    var name = (DocumentFile.fromSingleUri(this, uri)?.name ?: "font.ttf").substringAfterLast('/')
-                    val bytes = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-                    if (!name.endsWith(".ttf", true) && !name.endsWith(".otf", true)) {
-                        // OpenType starts with "OTTO"; anything else is treated as TrueType.
-                        name += if (bytes.size >= 4 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "OTTO") ".otf" else ".ttf"
-                    }
-                    val file = TextLayers.FONT_DIR + name.replace(Regex("[^A-Za-z0-9._ -]"), "_")
-                    val tmp = java.io.File(cacheDir, "fontcheck.tmp").apply { writeBytes(bytes) }
-                    try { android.graphics.Typeface.createFromFile(tmp) } catch (e: Exception) { throw IllegalArgumentException("That file is not a font.") } finally { tmp.delete() }
-                    st.files[file] = bytes
+                    val file = storeFont(st, uri)
+                    val name = file.substringAfterLast('/')
                     val target = key.replaceFirst("fontimport_", "font_")
                     st.values[target] = file
                     syncText(l, st)
@@ -2472,6 +2515,7 @@ class MainActivity : Activity() {
         private const val REQ_SET = 1002
         private const val REQ_IMAGE = 1003
         private const val REQ_FONT = 1009
+        private const val REQ_FX_FILE = 1010
         private const val REQ_SAVE = 1004
         private const val REQ_PNG = 1005
     }

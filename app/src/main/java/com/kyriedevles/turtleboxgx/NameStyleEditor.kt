@@ -43,6 +43,8 @@ class NameStyleEditor(
     private val key: String,
     private val onChanged: () -> Unit,
     private val previewer: ((List<Map<String, String>?>) -> List<Bitmap>)?,
+    /** Picks a file from the phone into the card ("font" or "pattern"); calls back with its path, or null. */
+    private val importFile: ((String, (String?) -> Unit) -> Unit)? = null,
     private val after: () -> Unit,
 ) {
     private val pink = Theme.pink
@@ -51,6 +53,9 @@ class NameStyleEditor(
     private val userKey = "namepresets_user"
 
     companion object {
+        /** Folder (inside the card's files) that imported pattern pictures are kept in. */
+        const val PATTERN_DIR = "patterns/"
+
         /** The panel height the user last dragged to, kept for the session. */
         var lastH = 0
     }
@@ -270,6 +275,21 @@ class NameStyleEditor(
             parent.addView(rowD)
             upd()
             d.setOnTouchListener { _, ev -> val r = d.onTouchEvent(ev); upd(); r }
+        }
+
+        /** A button that imports a file from the phone into the card and then uses it. */
+        fun importRow(text: String, kind: String, use: (String) -> Unit) {
+            val imp = importFile ?: return
+            val b = Button(activity).apply {
+                this.text = text
+                setAllCaps(false)
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(pink)
+                tidyBtn(this, 13f)
+                background = Theme.choice(false, dp(8).toFloat(), dp(1).toFloat() * 1.5f, dp(4).toFloat())
+                setOnClickListener { imp(kind) { path -> if (path != null) use(path) } }
+            }
+            host.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) })
         }
 
         fun tiles(items: List<Pair<String, Map<String, String>?>>, selected: (Int) -> Boolean, pick: (Int) -> Unit) {
@@ -631,30 +651,32 @@ class NameStyleEditor(
                     cur = card("Satin colour"); colorPicker(null, "satcolor", "#000000", false)
                 }
                 "Pattern" -> {
-                    val items = layout.datas["namepatterns"]?.items ?: emptyList<Pair<String, String>>()
-                    if (items.isEmpty()) {
-                        host.addView(label("This layout has no namepatterns list."))
-                    } else {
-                        val list = ArrayList<Pair<String, Map<String, String>?>>()
-                        list.add("None" to withFill(emptyMap()))
-                        for (it in items) list.add(it.first to withFill(mapOf("pattern" to it.first)))
-                        tiles(list, { n -> (st.v["pattern"] ?: "") == (if (n == 0) "" else items[n - 1].first) }) { n ->
-                            setV("pattern", if (n == 0) "" else items[n - 1].first)
-                        }
+                    // The layout's namepatterns (stored by label), then pictures imported into the card (by path).
+                    val named = layout.datas["namepatterns"]?.items ?: emptyList<Pair<String, String>>()
+                    val values = ArrayList<String>()
+                    val list = ArrayList<Pair<String, Map<String, String>?>>()
+                    list.add("None" to withFill(emptyMap())); values.add("")
+                    for (it in named) { list.add(it.first to withFill(mapOf("pattern" to it.first))); values.add(it.first) }
+                    for (f in state.files.keys.filter { it.startsWith(PATTERN_DIR, true) }.sorted()) {
+                        list.add(f.substringAfterLast('/').substringBeforeLast('.') + " (imported)" to withFill(mapOf("pattern" to f)))
+                        values.add(f)
                     }
+                    importRow("Import pattern…", "pattern") { setV("pattern", it); rebuildFwd() }
+                    tiles(list, { n -> (st.v["pattern"] ?: "") == values[n] }) { n -> setV("pattern", values[n]) }
                 }
                 "Font" -> {
-                    val items = layout.datas["namefonts"]?.items ?: emptyList<Pair<String, String>>()
-                    if (items.isEmpty()) {
-                        host.addView(label("This layout has no namefonts list."))
-                    } else {
-                        val list = ArrayList<Pair<String, Map<String, String>?>>()
-                        list.add("Auto" to withFill(emptyMap()))
-                        for (it in items) list.add(it.first to withFill(mapOf("font" to it.first)))
-                        tiles(list, { n -> (st.v["font"] ?: "") == (if (n == 0) "" else items[n - 1].first) }) { n ->
-                            setV("font", if (n == 0) "" else items[n - 1].first)
-                        }
+                    // namefonts (stored by label, as before), then every other font file in the layout and the card.
+                    val named = layout.datas["namefonts"]?.items ?: emptyList<Pair<String, String>>()
+                    val all = TextLayers.fontItems(layout, state.files.keys.filter { it.endsWith(".ttf", true) || it.endsWith(".otf", true) } + FontCatalog.layoutFonts)
+                    val values = ArrayList<String>()
+                    val list = ArrayList<Pair<String, Map<String, String>?>>()
+                    list.add("Auto" to withFill(emptyMap())); values.add("")
+                    for ((i, it) in all.withIndex()) {
+                        val v = if (i < named.size) it.first else it.second
+                        list.add(it.first to withFill(mapOf("font" to v))); values.add(v)
                     }
+                    importRow("Import font…", "font") { setV("font", it); rebuildFwd() }
+                    tiles(list, { n -> (st.v["font"] ?: "") == values[n] }) { n -> setV("font", values[n]) }
                 }
                 "Glow" -> {
                     header("Has Glow?", "glow")
