@@ -16,6 +16,18 @@ import android.text.TextPaint
 class Hit(val click: String, val rect: RectF)
 
 class Renderer(private val layout: Layout, private val ctx: Ctx, private val assets: Assets, private val values: Map<String, String> = emptyMap()) {
+    companion object {
+        /** Longest style sample: longer text would make the preview so small its effects are hard to see. */
+        const val SAMPLE_MAX = 16
+
+        /** A style preview's text: the first line of [raw] without tags, cut to [SAMPLE_MAX] letters with "…", or "Sample". */
+        fun shortSample(raw: String): String {
+            val line = raw.replace(Regex("<br>", RegexOption.IGNORE_CASE), "\n").replace(Regex("<[^>]*>"), "")
+                .lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: return "Sample"
+            return if (line.length <= SAMPLE_MAX) line else line.take(SAMPLE_MAX - 1).trimEnd() + "…"
+        }
+    }
+
     /** A layer that is being edited on screen is left out here; the screen draws it live instead. */
     var hideLayerId: String? = null
 
@@ -295,6 +307,13 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
     }
 
     /** Small "Card Name" samples of name styles (for the Name Style panel), drawn with the layout's name font and colour. */
+    /** The card's own text of the element styled by [key] (a namestyle setting), tags and all; "" when none. */
+    fun styledText(key: String): String {
+        val rx = Regex("\\{\\{\\s*" + Regex.escape(key) + "\\s*\\}\\}")
+        val e = layout.elements.firstOrNull { el -> el.options["namestyle"]?.let { rx.containsMatchIn(it) } == true } ?: return ""
+        return ctx.sub(e.text)
+    }
+
     fun previewName(maps: List<Map<String, String>?>, w: Int, h: Int, sample: String = "Card Name", fontFile: String? = null, color: Int? = null): List<Bitmap> {
         val e = layout.elements.firstOrNull { it.options.containsKey("namestyle") }
         val out = ArrayList<Bitmap>()

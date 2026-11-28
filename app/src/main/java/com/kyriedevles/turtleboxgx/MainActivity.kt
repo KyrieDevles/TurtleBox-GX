@@ -1293,10 +1293,10 @@ class MainActivity : Activity() {
                     val id = key.removePrefix("style_tl").takeIf { key.startsWith("style_tl") }
                     if (id != null) {
                         val t = TextLayers.tm(id)
-                        val sample = (st.values["text_$t"] ?: "").replace(Regex("<[^>]*>"), "").lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(24)?.ifBlank { null } ?: "Text"
+                        val sample = Renderer.shortSample(st.values["text_$t"] ?: "")
                         val color = try { android.graphics.Color.parseColor(st.values["color_$t"] ?: "#000000") } catch (e: Exception) { android.graphics.Color.BLACK }
                         r.previewName(maps, 360, 110, sample, TextLayers.fontFile(l, st.values, id), color)
-                    } else r.previewName(maps, 360, 110)
+                    } else r.previewName(maps, 360, 110, Renderer.shortSample(r.styledText(key)))
                 } finally {
                     a.close()
                 }
