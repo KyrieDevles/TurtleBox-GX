@@ -50,7 +50,15 @@ data class RunExtra(
     val changesLines: Boolean get() = sizePx > 0f || sizePct > 0f || leading > 0f
 }
 
-class RichText(val text: String, val styles: IntArray, val extras: List<RunExtra>)
+class RichText(val text: String, val styles: IntArray, val extras: List<RunExtra>, val paras: Map<Int, ParaSpec> = emptyMap())
+
+/** The attributes of a `<para ...>` tag body ("para align=right left=10"), or null when it is not one. */
+fun paraAttrs(body: String): String? {
+    val b = body.trim()
+    if (!b.startsWith("para", ignoreCase = true)) return null
+    if (b.length > 4 && !b[4].isWhitespace()) return null
+    return b.substring(4).trim()
+}
 
 fun extraIndexOf(style: Int): Int = style ushr 2
 
@@ -129,6 +137,7 @@ fun parseRich(raw: String): RichText {
     val plain = listOf(RunExtra())
     if (raw.indexOf('<') < 0) return RichText(raw, IntArray(raw.length), plain)
 
+
     val extras = ArrayList<RunExtra>()
     extras.add(RunExtra())
     val index = HashMap<RunExtra, Int>()
@@ -138,6 +147,9 @@ fun parseRich(raw: String): RichText {
     val st = IntArray(raw.length)
     var n = 0
     val tags = TagState()
+    // <para ...> at a paragraph's start: that paragraph's own Paragraph settings.
+    val paras = HashMap<Int, ParaSpec>()
+    var para = 0
     var cur = 0
     var dirty = true
 
@@ -157,6 +169,12 @@ fun parseRich(raw: String): RichText {
             val close = raw.indexOf('>', i + 1)
             if (close > i && close - i <= 200) {
                 val body = raw.substring(i + 1, close)
+                val pa = paraAttrs(body)?.let { ParaSpec.parse(it) }
+                if (pa != null) {
+                    paras[para] = pa
+                    i = close + 1
+                    continue
+                }
                 if (applyTag(body, tags)) {
                     dirty = true
                     i = close + 1
@@ -166,11 +184,12 @@ fun parseRich(raw: String): RichText {
         }
         // <caps>: All Caps for these letters (one letter for one, so the highlight still lines up).
         out.append(if (tags.caps) raw[i].uppercaseChar() else raw[i])
+        if (raw[i] == '\n') para++
         st[n] = styleId()
         n++
         i++
     }
-    return RichText(out.toString(), st.copyOf(n), extras)
+    return RichText(out.toString(), st.copyOf(n), extras, paras)
 }
 
 private fun num(v: String?): Float? = v?.replace("\u2060", "")?.trim()?.removeSuffix("px")?.trim()?.toFloatOrNull()
@@ -227,7 +246,7 @@ private fun applyTag(body: String, t: TagState): Boolean {
     return true
 }
 
-private val knownTag = Regex("</?(b|i|u|s|sup|sub|sc|caps|fauxitalic|br|color|font|size|tracking|leading|scale|baseline|vscale|fauxbold|kern)(=[^>]*)?>", RegexOption.IGNORE_CASE)
+private val knownTag = Regex("<para(\\s[^>]*)?>|</?(b|i|u|s|sup|sub|sc|caps|fauxitalic|br|color|font|size|tracking|leading|scale|baseline|vscale|fauxbold|kern)(=[^>]*)?>", RegexOption.IGNORE_CASE)
 
 /** Upper-cases the text but not the inline tags in it, so `<b>` and `<font=name>` keep working under All caps. */
 fun uppercaseOutsideTags(s: String): String {

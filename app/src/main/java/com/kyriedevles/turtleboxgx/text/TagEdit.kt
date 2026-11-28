@@ -37,6 +37,13 @@ object TagEdit {
                         i = close + 1
                         continue
                     }
+                    // <para ...>: the paragraph's own settings, kept on every character of the paragraph.
+                    val pa = paraAttrs(body)
+                    if (pa != null && ParaSpec.parse(pa) != null) {
+                        on[PARA] = tidyPara(pa)
+                        i = close + 1
+                        continue
+                    }
                     if (apply(body, stacks, on)) {
                         i = close + 1
                         continue
@@ -44,7 +51,41 @@ object TagEdit {
                 }
             }
             out.add(Ch(raw[i], props()))
+            if (raw[i] == '\n') on.remove(PARA)
             i++
+        }
+        return out
+    }
+
+    private const val PARA = "para"
+
+    /** "align=right left=10" in a fixed order, keys lower case; "" when nothing is set. */
+    private fun tidyPara(attrs: String): String {
+        val m = paraMap(attrs)
+        return ParaSpec.KEYS.mapNotNull { k -> m[k]?.let { "$k=$it" } }.joinToString(" ")
+    }
+
+    private fun paraMap(attrs: String?): Map<String, String> {
+        if (attrs.isNullOrBlank()) return emptyMap()
+        val m = HashMap<String, String>()
+        for (part in attrs.trim().split(Regex("\\s+"))) {
+            val eq = part.indexOf('=')
+            if (eq > 0) m[part.substring(0, eq).lowercase()] = part.substring(eq + 1).lowercase()
+        }
+        return m
+    }
+
+    /** The paragraphs (ranges of visible characters, each with its line break) that [from, to) touches. */
+    private fun paragraphsTouched(chars: List<Ch>, from: Int, to: Int): List<IntRange> {
+        val out = ArrayList<IntRange>()
+        var s = 0
+        for (i in 0..chars.size) {
+            if (i == chars.size || chars[i].c == '\n') {
+                val e = if (i == chars.size) i - 1 else i
+                val hit = from <= e && maxOf(to, from + 1) > s
+                if (hit && e >= s) out.add(s..e)
+                s = i + 1
+            }
         }
         return out
     }
@@ -90,6 +131,7 @@ object TagEdit {
     fun write(chars: List<Ch>): String {
         val sb = StringBuilder()
         val open = ArrayList<Pair<String, String>>()
+        var paraStart = true
         fun openTag(k: String, v: String) = when {
             k == "script" -> "<$v>"
             k in flags -> "<$k>"
@@ -101,6 +143,8 @@ object TagEdit {
             var same = 0
             while (same < open.size && same < need.size && open[same] == need[same]) same++
             while (open.size > same) { val (k, v) = open.removeAt(open.size - 1); sb.append(closeTag(k, v)) }
+            if (paraStart) ch.props[PARA]?.takeIf { it.isNotEmpty() }?.let { sb.append("<para $it>") }
+            paraStart = ch.c == '\n'
             for (p in need.drop(same)) { sb.append(openTag(p.first, p.second)); open.add(p) }
             sb.append(if (ch.c == ' ') "<br>" else ch.c.toString())
         }
@@ -116,6 +160,7 @@ object TagEdit {
      * take "" to switch on; "script" takes "sup" or "sub". Returns the new text.
      */
     fun set(raw: String, from: Int, to: Int, tag: String, value: String?): String {
+        if (tag.startsWith("$PARA.")) return setPara(raw, from, to, tag.removePrefix("$PARA."), value)
         val chars = parse(raw)
         val a = from.coerceIn(0, chars.size)
         val b = to.coerceIn(a, chars.size)
@@ -137,6 +182,13 @@ object TagEdit {
     }
 
     fun valueOf(raw: String, from: Int, to: Int, tag: String): Value {
+        if (tag.startsWith("$PARA.")) {
+            val key = tag.removePrefix("$PARA.")
+            val chars = parse(raw)
+            val vals = paragraphsTouched(chars, from, to).map { r -> paraMap(chars[r.first].props[PARA])[key] }
+            if (vals.isEmpty()) return Value.Same(null)
+            return if (vals.all { it == vals.first() }) Value.Same(vals.first()) else Value.Mixed
+        }
         val chars = parse(raw)
         val a = from.coerceIn(0, chars.size)
         val b = to.coerceIn(a, chars.size)
@@ -179,7 +231,28 @@ object TagEdit {
     /** The visible character index at raw offset [rawPos] (how many visible characters start before it). */
     fun visibleAt(raw: String, rawPos: Int): Int = spans(raw).count { it.first < rawPos }
 
-    private fun isKnownTag(body: String): Boolean = apply(body, HashMap(), HashMap())
+    private fun isKnownTag(body: String): Boolean =
+        paraAttrs(body)?.let { ParaSpec.parse(it) } != null || apply(body, HashMap(), HashMap())
+
+    /**
+     * Sets one Paragraph setting ([key]: align, left, right, first, before, after) on every paragraph that visible
+     * characters [from, to) touch, or removes it when [value] is null, as Photoshop's Paragraph panel does.
+     */
+    fun setPara(raw: String, from: Int, to: Int, key: String, value: String?): String {
+        val chars = parse(raw)
+        val out = chars.toMutableList()
+        for (r in paragraphsTouched(chars, from, to)) {
+            val m = HashMap(paraMap(chars[r.first].props[PARA]))
+            if (value == null) m.remove(key) else m[key] = value.trim().lowercase()
+            val v = ParaSpec.KEYS.mapNotNull { k -> m[k]?.let { "$k=$it" } }.joinToString(" ")
+            for (i in r) {
+                val p = HashMap(chars[i].props)
+                if (v.isEmpty()) p.remove(PARA) else p[PARA] = v
+                out[i] = Ch(chars[i].c, p)
+            }
+        }
+        return write(out)
+    }
 
     /**
      * Matches the engine's text (after `<br>`, `[[ ]]`, word joiners and indents) to the visible characters. Returns, for

@@ -113,4 +113,14 @@ class RunTagsTest {
         assertTrue(r.size < 10f)
         assertEquals(1, r.lines.size)
     }
+
+    @Test
+    fun paraTagSetsOneParagraph() {
+        val r = parseRich("one\n<para align=right left=10 before=4>two\nthree")
+        assertEquals("one\ntwo\nthree", r.text)
+        assertEquals(ParaSpec(align = 2, justifyMode = -1, indentLeft = 10f, spaceBefore = 4f), r.paras[1])
+        assertEquals(null, r.paras[0])
+        // A tag that is not valid stays text.
+        assertEquals("<para align=up>x", parseRich("<para align=up>x").text)
+    }
 }

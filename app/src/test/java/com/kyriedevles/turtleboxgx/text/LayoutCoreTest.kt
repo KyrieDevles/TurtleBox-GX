@@ -419,4 +419,24 @@ class LayoutCoreTest {
         // The box is used fully: one more line would not fit.
         assertTrue("height ${r.textHeight} is far below the box", r.textHeight > 180f - r.lineHeight * 1.5f)
     }
+
+    @Test
+    fun paragraphSettingsApplyToTheirParagraphOnly() {
+        val t = "ab cd\nef gh\nij"
+        val src = Source(t, IntArray(t.length), paras = mapOf(1 to ParaSpec(align = 2, justifyMode = -1, indentLeft = 30f, spaceBefore = 10f)))
+        val c = LayoutCore(src, fake, 300f, 10000f, LayoutOptions(), { 0f }, 20f)
+        val r = c.place(20f, 1f)
+        val first = r.words.first { it.line == 0 }
+        val second = r.words.first { it.line == 1 }
+        val third = r.words.first { it.line == 2 }
+        assertEquals(0f, first.x, 0.01f)
+        assertEquals(0f, third.x, 0.01f)
+        // Paragraph 2 is right-aligned: its last word ends at the box edge.
+        assertEquals(300f, right(r, r.words.last { it.line == 1 }, t), 0.6f)
+        assertTrue(second.x > 30f)
+        // Space before paragraph 2 only.
+        val gap1 = r.lines[1].baseline - r.lines[0].baseline
+        val gap2 = r.lines[2].baseline - r.lines[1].baseline
+        assertEquals(10f, gap1 - gap2, 0.01f)
+    }
 }

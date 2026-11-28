@@ -125,8 +125,58 @@ class RunSpec(val sizePx: Float = 0f, val sizePct: Float = 0f, val trackingEm: F
     }
 }
 
+/**
+ * One paragraph's own Paragraph settings (Photoshop keeps them per paragraph), from a `<para ...>` tag at its start.
+ * Null fields use the box's. Indents and spacing are card px; [align] 0 left, 1 centre, 2 right, and [justifyMode] as in
+ * [LayoutOptions.justifyMode].
+ */
+data class ParaSpec(
+    val align: Int? = null,
+    val justifyMode: Int? = null,
+    val indentLeft: Float? = null,
+    val indentRight: Float? = null,
+    val indentFirst: Float? = null,
+    val spaceBefore: Float? = null,
+    val spaceAfter: Float? = null,
+) {
+    companion object {
+        /** The seven alignment names of the Paragraph menu, as (align, justifyMode). */
+        val ALIGNS = mapOf(
+            "ragleft" to (0 to 0), "hcenter" to (1 to -1), "right" to (2 to -1), "left" to (0 to -1),
+            "justcenter" to (1 to 1), "justright" to (2 to 1), "justall" to (0 to 2),
+        )
+        val KEYS = listOf("align", "left", "right", "first", "before", "after")
+
+        /** Reads "align=right left=10 first=-5" (any order, spaces between). Null when a part is not valid. */
+        fun parse(attrs: String): ParaSpec? {
+            var p = ParaSpec()
+            for (part in attrs.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }) {
+                val eq = part.indexOf('=')
+                if (eq <= 0) return null
+                val k = part.substring(0, eq).lowercase()
+                val v = part.substring(eq + 1).trim().lowercase()
+                if (k == "align") {
+                    val a = ALIGNS[v] ?: return null
+                    p = p.copy(align = a.first, justifyMode = a.second)
+                    continue
+                }
+                val x = v.removeSuffix("px").toFloatOrNull() ?: return null
+                p = when (k) {
+                    "left" -> p.copy(indentLeft = x)
+                    "right" -> p.copy(indentRight = x)
+                    "first" -> p.copy(indentFirst = x)
+                    "before" -> p.copy(spaceBefore = x)
+                    "after" -> p.copy(spaceAfter = x)
+                    else -> return null
+                }
+            }
+            return p
+        }
+    }
+}
+
 /** Inline style of every character: 0 plain, 1 bold, 2 italic, 3 both; [spec] gives a style's per-run settings, if any. */
-class Source(val text: String, val styles: IntArray, val spec: (Int) -> RunSpec? = { null }) {
+class Source(val text: String, val styles: IntArray, val spec: (Int) -> RunSpec? = { null }, val paras: Map<Int, ParaSpec> = emptyMap()) {
     init { require(styles.size == text.length) { "one style per character" } }
 }
 
@@ -181,24 +231,37 @@ class LayoutCore(
 
     // Paragraph indents are in card px. The whole block is drawn with the horizontal scale applied to the canvas, so they
     // are divided by it here to stay the same size on the card.
-    private val indL = opt.indentLeft / hs
-    private val indR = opt.indentRight / hs
-    private val indF = opt.indentFirst / hs
+    /** The paragraph (0, 1, ...) each text position is in: paragraphs end at '\n'. */
+    private val paraOfPos: IntArray = IntArray(text.length + 1).also { a ->
+        var p = 0
+        for (i in text.indices) { a[i] = p; if (text[i] == '\n') p++ }
+        a[text.length] = p
+    }
+    private fun paraAt(pos: Int): Int = paraOfPos[pos.coerceIn(0, text.length)]
+    private fun ps(p: Int): ParaSpec? = src.paras[p]
+    private fun indL(p: Int) = (ps(p)?.indentLeft ?: opt.indentLeft) / hs
+    private fun indR(p: Int) = (ps(p)?.indentRight ?: opt.indentRight) / hs
+    private fun indF(p: Int) = (ps(p)?.indentFirst ?: opt.indentFirst) / hs
 
-    /** Where a line starts, from the box's left edge. */
-    private fun lineX(paraFirst: Boolean): Float = (indL + if (paraFirst) indF else 0f).coerceAtLeast(0f)
+    /** Where a line of paragraph [p] starts, from the box's left edge. */
+    private fun lineX(p: Int, paraFirst: Boolean): Float = (indL(p) + if (paraFirst) indF(p) else 0f).coerceAtLeast(0f)
 
-    /** The width a line has between its indents, when the box is [breakWidth] wide. */
-    private fun lineAvail(breakWidth: Float, paraFirst: Boolean): Float =
-        (breakWidth - lineX(paraFirst) - indR).coerceAtLeast(1f)
+    /** The width a line of paragraph [p] has between its indents, when the box is [breakWidth] wide. */
+    private fun lineAvail(breakWidth: Float, p: Int, paraFirst: Boolean): Float =
+        (breakWidth - lineX(p, paraFirst) - indR(p)).coerceAtLeast(1f)
+
+    /** Space between paragraph [p] and the one above: the space after that one plus the space before this one. */
+    private fun gapBefore(p: Int): Float =
+        (ps(p - 1)?.spaceAfter ?: opt.spaceAfter) + (ps(p)?.spaceBefore ?: opt.spaceBefore)
+
+    /** The paragraph a line is in. */
+    private fun paraOfLine(rl: RawLine, atoms: List<Atom>): Int = paraAt(if (rl.first in atoms.indices) atoms[rl.first].start else text.length)
 
     /** Extra height of all the paragraph breaks: space after the paragraph above plus space before this one. */
-    private fun paraSpacing(lines: List<RawLine>): Float {
-        val per = opt.spaceBefore + opt.spaceAfter
-        if (per <= 0f) return 0f
-        var n = 0
-        for ((i, l) in lines.withIndex()) if (i > 0 && l.paraFirst) n++
-        return n * per
+    private fun paraSpacing(lines: List<RawLine>, atoms: List<Atom>): Float {
+        var sum = 0f
+        for ((i, l) in lines.withIndex()) if (i > 0 && l.paraFirst) sum += gapBefore(paraOfLine(l, atoms))
+        return sum
     }
 
     private fun isCjk(c: Char): Boolean =
@@ -326,7 +389,7 @@ class LayoutCore(
             val a = atoms[i]
             a.width = runWidth(m, a.start, a.end, letterEm)
             if (lineFirst < 0) {
-                val avail = lineAvail(breakWidth, pf)
+                val avail = lineAvail(breakWidth, paraAt(a.start), pf)
                 if (a.lock < 0 && a.width > avail + 0.01f && a.end - a.start > 1) {
                     // Too long for a line of its own: cut it where it stops fitting; the rest carries on.
                     var cut = a.start + 1
@@ -434,7 +497,7 @@ class LayoutCore(
                     sW += gapW[i]
                     spaces += gapN[i]
                 }
-                val avail = lineAvail(breakWidth, i == 0 && firstPara)
+                val avail = lineAvail(breakWidth, paraAt(atoms[from + i].start), i == 0 && firstPara)
                 val atMin = aW + sW * wsMinF
                 if (atMin > avail + 0.01f && i < j - 1) break // more pieces only make it wider
                 if (best[i] == inf) { i--; continue }
@@ -546,7 +609,7 @@ class LayoutCore(
             }
             if (f <= 0f) { f = 1f; lead = baseLead }
             out[li] = if (li == 0) firstBaseline(m) * f
-            else out[li - 1] + lead + if (rl.paraFirst) opt.spaceBefore + opt.spaceAfter else 0f
+            else out[li - 1] + lead + if (rl.paraFirst) gapBefore(paraOfLine(rl, atoms)) else 0f
             lastF = f
         }
         if (lines.isEmpty()) return out to 0f
@@ -563,7 +626,7 @@ class LayoutCore(
         val m = factory.at(size, scaleX)
         val (lines, atoms) = wrap(m, wrapWidth)
         if (perLine) return reserve(size) + perLineBaselines(m, size, lines, atoms).second
-        return reserve(size) + blockHeight(m, lines.size) + paraSpacing(lines)
+        return reserve(size) + blockHeight(m, lines.size) + paraSpacing(lines, atoms)
     }
 
     private fun fits(size: Float, scaleX: Float): Boolean = heightAt(size, scaleX) <= boxHeight
@@ -656,16 +719,20 @@ class LayoutCore(
         val words = ArrayList<Placed>()
         var widest = 0f
         val plainSpace = m.advance(" ", 0, 1, 0, letterEm)
-        val justifyFull = if (opt.justifyMode < 0) align == 0 else opt.justifyMode >= 1
-        val justifyAll = opt.justifyMode == 2
         // Space after the paragraph above and before this one, added once per paragraph break.
         var extraY = 0f
 
         for ((li, rl) in lines.withIndex()) {
-            if (li > 0 && rl.paraFirst) extraY += opt.spaceBefore + opt.spaceAfter
+            val p = paraOfLine(rl, atoms)
+            // This paragraph's own alignment (a <para align=..> tag), else the box's.
+            val al = ps(p)?.align ?: align
+            val jm = ps(p)?.justifyMode ?: opt.justifyMode
+            val justifyFull = if (jm < 0) al == 0 else jm >= 1
+            val justifyAll = jm == 2
+            if (li > 0 && rl.paraFirst) extraY += gapBefore(p)
             val baseline = vertical?.first?.get(li) ?: (first + li * lineH + extraY)
-            val lx = lineX(rl.paraFirst)
-            val avail = lineAvail(wrapWidth, rl.paraFirst)
+            val lx = lineX(p, rl.paraFirst)
+            val avail = lineAvail(wrapWidth, p, rl.paraFirst)
             if (rl.last < rl.first) {
                 laid.add(LaidLine(li, text.length, text.length, baseline, 0f, 0f, 1f, lx))
                 continue
@@ -732,7 +799,7 @@ class LayoutCore(
             }
             val em = letterEm + letterExtra
             val total = if (lineScale < 1f) avail else if (justified) natural(em) + spread * gaps else lw
-            var x = lx + if (justified) 0f else when (align) {
+            var x = lx + if (justified) 0f else when (al) {
                 2 -> avail - lw
                 1 -> (avail - lw) / 2f
                 else -> 0f

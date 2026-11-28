@@ -243,6 +243,12 @@ class Editor(
                 n.startsWith("vscale") -> "vscale"
                 n.startsWith("baseline") -> "baseline"
                 n.startsWith("weight") -> "fauxbold"
+                // Paragraph settings: on the paragraphs the highlight touches (a <para ...> tag at each one's start).
+                n.startsWith("indentleft") -> "para.left"
+                n.startsWith("indentright") -> "para.right"
+                n.startsWith("indentfirst") -> "para.first"
+                n.startsWith("spacebefore") -> "para.before"
+                n.startsWith("spaceafter") -> "para.after"
                 else -> null
             }
         }
@@ -551,6 +557,12 @@ class Editor(
                             setPadding(if (icons) 0 else dp(14), 0, if (icons) 0 else dp(14), 0)
                             minimumHeight = dp(if (icons) 40 else if (joined) 38 else 40)
                             setOnClickListener {
+                                // With a highlight, Alignment goes on the paragraphs it touches, like Photoshop.
+                                if (icons && probeName != null && selActive()) {
+                                    applySel("para.align", v, null, null)
+                                    iconName?.text = "$name · paragraph"
+                                    return@setOnClickListener
+                                }
                                 chosen = v
                                 paint()
                                 state.values[f.name] = chosen

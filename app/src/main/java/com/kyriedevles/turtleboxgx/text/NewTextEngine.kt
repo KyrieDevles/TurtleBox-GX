@@ -180,7 +180,7 @@ class NewTextEngine(
     }
 
     private fun makeCore(o: LayoutOptions) = LayoutCore(
-        Source(text, styled.styles, runSpecs),
+        Source(text, styled.styles, runSpecs, parsed.paras),
         { size, scaleX -> PaintMetrics(paint, size, scaleX, parsed.extras, fontLookup, hs) },
         boxWidth,
         boxHeight,

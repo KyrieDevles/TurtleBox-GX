@@ -72,4 +72,18 @@ class TagEditTest {
         assertEquals("a<sup>b</sup>c", TagEdit.set("abc", 1, 2, "script", "sup"))
         assertEquals("abc", TagEdit.plain("<fauxitalic>a</fauxitalic><vscale=120>b</vscale><fauxbold=30>c</fauxbold>"))
     }
+
+    @Test
+    fun paragraphSettingsGoOnTheParagraphsTouched() {
+        val raw = "one\ntwo\nthree"
+        val r = TagEdit.setPara(raw, 5, 6, "align", "right")
+        assertEquals("one\n<para align=right>two\nthree", r)
+        assertEquals("one\ntwo\nthree", TagEdit.plain(r))
+        val r2 = TagEdit.set(r, 2, 6, "para.left", "10")
+        assertEquals("<para left=10>one\n<para align=right left=10>two\nthree", r2)
+        assertTrue(TagEdit.valueOf(r2, 5, 6, "para.align").let { it is TagEdit.Value.Same && it.v == "right" })
+        assertEquals("one\ntwo\nthree", TagEdit.plain(TagEdit.setPara(TagEdit.setPara(r2, 0, 1, "left", null), 4, 5, "align", null).let { TagEdit.setPara(it, 4, 5, "left", null) }))
+        // Other tags still work next to it.
+        assertEquals("one\n<para align=right><b>two</b>\nthree", TagEdit.set(r, 4, 7, "b", ""))
+    }
 }
