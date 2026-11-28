@@ -1219,7 +1219,7 @@ class Editor(
             n.startsWith("weight") -> 0 to 100
             n.startsWith("justifylast") || n.startsWith("justifyflow") -> 0 to 100
             // Size and paragraph settings in card px (0 on Size = automatic fit).
-            n.startsWith("sizepx") -> 0 to 40
+            n.startsWith("sizepx") -> 0 to 120
             n.startsWith("indentfirst") -> -50 to 100
             n.startsWith("indentleft") || n.startsWith("indentright") -> 0 to 100
             n.startsWith("spacebefore") || n.startsWith("spaceafter") -> 0 to 50
