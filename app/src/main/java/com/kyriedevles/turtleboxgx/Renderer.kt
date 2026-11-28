@@ -435,7 +435,7 @@ class Renderer(private val layout: Layout, private val ctx: Ctx, private val ass
         // Same rules as the old app: align tokens become Android gravity flags. Without a vertical token the
         // text sits at the top (TextView adds TOP), and "top"/"bottom" are not recognised, so they count as top.
         val flags = ctx.sub(pick(e.aligns) ?: "left").lowercase().split('|').map { it.trim() }
-        // Photoshop's paragraph alignments (New engine; Classic treats them as the nearest plain alignment):
+        // Photoshop's paragraph alignments:
         // ragleft = Left (ragged), justcenter / justright = Justify Last Centred / Right, justall = Justify All.
         // Plain "left" keeps its old meaning, which is Justify Last Left.
         val h = when {
