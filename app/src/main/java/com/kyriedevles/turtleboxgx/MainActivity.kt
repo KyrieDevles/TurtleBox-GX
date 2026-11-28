@@ -1004,6 +1004,9 @@ class MainActivity : Activity() {
         // A text layer is moved as a picture of itself; point text that is scaled changes its Size px.
         var pointH = 0f
         var pointW = 0f
+        // Box text: the box as it was, so scaling it on the card can scale the text too (Photoshop's Free Transform).
+        var boxW0 = if (layer.isText && !TextLayers.isPoint(st.values, layer.id)) layer.w else 0f
+        var boxH0 = layer.h
         val textBmp: Bitmap? = if (!layer.isText) null else try {
             syncText(l, st)
             val a = Assets(zipFile, st.files, cacheDir, selectedTemplate.ifBlank { null }, templateAssetDir())
@@ -1066,6 +1069,31 @@ class MainActivity : Activity() {
                     }
                     pointH = layer.h
                     pointW = layer.w
+                }
+                // Box text with a set Font Size scales with its box, like Photoshop's Free Transform: heights by the
+                // height change, horizontal indents by the width change, and Horizontally Scale % takes the stretch.
+                // Font Size 0 (fit to box) only resizes the box; "Move / resize text box…" never scales the text.
+                if (boxW0 > 0f && boxH0 > 0f && layer.w > 0f && layer.h > 0f &&
+                    (Math.abs(layer.h - boxH0) > 0.01f || Math.abs(layer.w - boxW0) > 0.01f)) {
+                    val t = TextLayers.tm(layer.id)
+                    val size = st.values["sizepx_$t"]?.toFloatOrNull() ?: 0f
+                    if (size > 0f) {
+                        val sy = layer.h / boxH0
+                        val sx = layer.w / boxW0
+                        fun fmt(v: Float) = String.format(java.util.Locale.US, "%.2f", v).trimEnd('0').trimEnd('.')
+                        fun scale(k: String, f: Float) {
+                            st.values["${k}_$t"]?.toFloatOrNull()?.takeIf { it != 0f }?.let { st.values["${k}_$t"] = fmt(it * f) }
+                        }
+                        st.values["sizepx_$t"] = fmt(size * sy)
+                        for (k in listOf("leadingpx", "baseline", "spacebefore", "spaceafter")) scale(k, sy)
+                        for (k in listOf("indentleft", "indentright", "indentfirst")) scale(k, sx)
+                        if (Math.abs(sx / sy - 1f) > 0.002f) {
+                            val hs = st.values["hscale_$t"]?.toFloatOrNull()?.takeIf { it > 0f } ?: 100f
+                            st.values["hscale_$t"] = fmt(hs * sx / sy)
+                        }
+                    }
+                    boxW0 = layer.w
+                    boxH0 = layer.h
                 }
                 val cur = ImageLayers.read(st.values)
                 cur.firstOrNull { it.id == layer.id }?.let { c ->
