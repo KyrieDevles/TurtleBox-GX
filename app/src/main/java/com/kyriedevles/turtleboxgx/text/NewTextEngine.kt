@@ -67,7 +67,10 @@ class PaintMetrics(
         val p = TextPaint(plain)
         ex?.font?.let { f -> fonts(f)?.let { p.typeface = it } }
         val k = style and 3
+        val fileFont = p.typeface
         if (k != 0) StyleSpan(spanStyle(k)).updateDrawState(p)
+        // Bold / italic make a new typeface: it keeps the font file's underline and strikethrough positions.
+        if (fileFont != null && p.typeface !== fileFont) FontLines.alias(p.typeface, fileFont)
         ex?.color?.let { p.color = it }
         var mul = sizeMul
         if (ex != null && ex.script != 0) mul *= SCRIPT_SIZE

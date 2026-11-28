@@ -21,6 +21,11 @@ data class FontLines(val strikePos: Float?, val strikeSize: Float?, val underlin
 
         @Synchronized fun of(font: Any?): FontLines? = font?.let { byFont[it] }
 
+        /** A typeface derived from [from] (bold or italic of it) uses the same values. */
+        @Synchronized fun alias(font: Any?, from: Any) {
+            if (font != null && !byFont.containsKey(font)) byFont[from]?.let { byFont[font] = it }
+        }
+
         /** Reads a TrueType / OpenType file. Null when it is not one or the tables are missing. */
         fun parse(b: ByteArray): FontLines? {
             try {
