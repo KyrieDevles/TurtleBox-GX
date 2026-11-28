@@ -108,7 +108,7 @@ object TextLayers {
             def("style_$t", "auto", "namestyle", "Layer Effects")
             def("box_$t", "", "box", "Move / resize text box…")
             // Point text: one line, so only the character settings that apply to it.
-            val pc = DataDef("pointchars_$t", null, "multi_select", "Characters")
+            val pc = DataDef("pointchars_$t", null, "multi_select", "Character")
             for (k in listOf("allcaps", "italic", "sizepx", "tracking", "leadingpx", "hscale", "vscale", "baseline", "weight")) pc.items.add("${k}_$t" to "${k}_$t")
             datas[pc.name] = pc
             // Point text: Alignment (which side stays put, and how lines line up).

@@ -28,14 +28,14 @@ object TextMenu {
     private val offOn = listOf("Off" to "off", "On" to "on")
 
     private val characters = listOf(
-        Spec("allcaps", "off", "All caps", offOn),
-        Spec("italic", "off", "Italic", offOn),
-        Spec("sizepx", "0", "Size px"),
+        Spec("allcaps", "off", "All Caps", offOn),
+        Spec("italic", "off", "Faux Italic", offOn),
+        Spec("sizepx", "0", "Font Size (px)"),
         Spec("tracking", "0", "Tracking"),
-        Spec("leadingpx", "0", "Leading px"),
-        Spec("hscale", "100", "Horizontal Scale %"),
-        Spec("vscale", "100", "Vertical Scale %"),
-        Spec("baseline", "0", "Baseline Shift (px, + raises)"),
+        Spec("leadingpx", "0", "Leading (px, 0 = Auto)"),
+        Spec("hscale", "100", "Horizontally Scale %"),
+        Spec("vscale", "100", "Vertically Scale %"),
+        Spec("baseline", "0", "Baseline Shift (px)"),
         Spec("weight", "0", "Faux Bold (0 = off)"),
     )
 
@@ -48,19 +48,19 @@ object TextMenu {
                 "Justify Last Centre" to "justcenter", "Justify Last Right" to "justright", "Justify All" to "justall",
             ),
         ),
-        Spec("composer", "0", "Line Composer", listOf("Single-line" to "0", "Every-line" to "1")),
-        Spec("#Word spacing", "", ""),
+        Spec("composer", "0", "Composer", listOf("Adobe Single-line Composer" to "0", "Adobe Every-line Composer" to "1")),
+        Spec("#Word Spacing", "", ""),
         Spec("wordspace", "100", "Desired %"),
         Spec("wordspacemin", "80", "Minimum %"),
         Spec("wordspacemax", "133", "Maximum %"),
         Spec("#Leading", "", ""),
-        Spec("leading", "100", "Auto leading %"),
-        Spec("#Indents and spacing (px)", "", ""),
-        Spec("indentleft", "0", "Left indent"),
-        Spec("indentright", "0", "Right indent"),
-        Spec("indentfirst", "0", "First-line indent (negative = hanging)"),
-        Spec("spacebefore", "0", "Space before"),
-        Spec("spaceafter", "0", "Space after"),
+        Spec("leading", "100", "Auto Leading %"),
+        Spec("#Indents and Spacing (px)", "", ""),
+        Spec("indentleft", "0", "Indent Left Margin"),
+        Spec("indentright", "0", "Indent Right Margin"),
+        Spec("indentfirst", "0", "Indent First Line"),
+        Spec("spacebefore", "0", "Add Space Before Paragraph"),
+        Spec("spaceafter", "0", "Add Space After Paragraph"),
         Spec("valign", "0", "Vertical Align", listOf("top" to "0", "center" to "0.5", "bottom" to "1")),
         Spec("#Extras (not in Photoshop)", "", ""),
         Spec("justifylast", "0", "Last line stretch %"),
@@ -130,7 +130,7 @@ object TextMenu {
             }
 
             // Settings and option tags first (Characters before Fit, so Status finds the size setting).
-            group("advancedmenu_$id", "Characters", characters)
+            group("advancedmenu_$id", "Character", characters)
             group("fitmenu_$id", if (hasSteps) "Fit steps" else "Fit", if (hasSteps) stepsRows + fitRows else fitRows)
             group("paragraphmenu_$id", "Paragraph", paragraph)
 
